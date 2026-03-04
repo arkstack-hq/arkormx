@@ -1,0 +1,25 @@
+import { ModelStatic } from 'src/Model'
+import { Relation } from './Relation'
+
+export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated> {
+    public constructor(
+        private readonly parent: TParent & { getAttribute: (key: string) => unknown },
+        private readonly related: ModelStatic<TRelated>,
+        private readonly throughDelegate: string,
+        private readonly firstKey: string,
+        private readonly secondKey: string,
+        private readonly localKey: string,
+        private readonly secondLocalKey: string,
+    ) {
+        super()
+    }
+
+    public async getResults (): Promise<TRelated | null> {
+        const localValue = this.parent.getAttribute(this.localKey)
+        const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null
+        if (!intermediate)
+            return null
+
+        return this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }).first()
+    }
+}

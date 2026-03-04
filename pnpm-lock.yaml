@@ -8,9 +8,18 @@ importers:
 
   .:
     dependencies:
+      '@h3ravel/collect.js':
+        specifier: ^5.3.4
+        version: 5.3.4
       '@h3ravel/musket':
         specifier: ^0.10.1
         version: 0.10.1(@types/node@20.19.35)
+      '@h3ravel/support':
+        specifier: ^0.15.11
+        version: 0.15.11
+      '@prisma/client':
+        specifier: '>=5.0.0'
+        version: 7.4.2(typescript@5.9.3)
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -324,12 +333,18 @@ packages:
     resolution: {integrity: sha512-bIZEUzOI1jkhviX2cp5vNyXQc6olzb2ohewQubuYlMXZ2Q/XjBO0x0XhGPvc9fjSIiUN0vw+0hq53BJ4eQSJKQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
+  '@h3ravel/collect.js@5.3.4':
+    resolution: {integrity: sha512-XcdO4mbNzlDIycsF1h9OSn65os8rZW02+EOTGaq3MVAQ8oeUB8L8So1VWoFrD7dyAL6M0H8koIkLJE77KROEXQ==}
+
   '@h3ravel/musket@0.10.1':
     resolution: {integrity: sha512-M5pwj7tv5pWTdQnw48EGOEaecPSAZ08CPwS76IRP1QSGCj0gb8gMmrUDZkXTmmDjhJlAfAEAygzLzwQwB6XdgQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
   '@h3ravel/shared@0.30.3':
     resolution: {integrity: sha512-Qf2GJb5IF8LvAIHH7af2Ze0DvV4IlW+ZEPhodCQtUVq+sZI1PzdSnqYcqsJ4p5pqlVyOShw8s8UFgYz5WoUjLw==}
+
+  '@h3ravel/support@0.15.11':
+    resolution: {integrity: sha512-0bGhGK1F1JDuQmT0qdPx8b7BOFPWvGONmdZduxlJleW/hwyCc9FhpvyTTW7V1BhVAguPzEp8P6RN6nIs+wR1Ew==}
 
   '@humanfs/core@0.19.1':
     resolution: {integrity: sha512-5DyQ4+1JEUzejeK1JGICcideyfUbGixgS9jNgex5nqkW+cY7WZhxBigmieN5Qnw9ZosSNVC9KQKyb+GUaGyKUA==}
@@ -542,6 +557,21 @@ packages:
 
   '@poppinss/utils@7.0.1':
     resolution: {integrity: sha512-mveSvLI2YPC114mK5HCuSYfUtjpClf1wHG1VCqZJCp4U2ypPhIt62Iku5urh0kPAFvnvCVHx2bXBSH14qMTOlQ==}
+
+  '@prisma/client-runtime-utils@7.4.2':
+    resolution: {integrity: sha512-cID+rzOEb38VyMsx5LwJMEY4NGIrWCNpKu/0ImbeooQ2Px7TI+kOt7cm0NelxUzF2V41UVVXAmYjANZQtCu1/Q==}
+
+  '@prisma/client@7.4.2':
+    resolution: {integrity: sha512-ts2mu+cQHriAhSxngO3StcYubBGTWDtu/4juZhXCUKOwgh26l+s4KD3vT2kMUzFyrYnll9u/3qWrtzRv9CGWzA==}
+    engines: {node: ^20.19 || ^22.12 || >=24.0}
+    peerDependencies:
+      prisma: '*'
+      typescript: '>=5.4.0'
+    peerDependenciesMeta:
+      prisma:
+        optional: true
+      typescript:
+        optional: true
 
   '@quansync/fs@1.0.0':
     resolution: {integrity: sha512-4TJ3DFtlf1L5LDMaM6CanJ/0lckGNtJcMjQ1NAV6zDmA0tEHKZtxNKin8EgPaVX1YzljbxckyT2tJrpQKAtngQ==}
@@ -1765,6 +1795,10 @@ packages:
     resolution: {integrity: sha512-ESL2CrkS/2wTPfuend7Zhkzo2u0daGJ/A2VucJOgQ/C48S/zB8MMeMHSGKYpXhIjbPxfuezITkaBH1wqv00DDQ==}
     engines: {node: 20 || >=22}
 
+  luxon@3.7.2:
+    resolution: {integrity: sha512-vtEhXh/gNjI9Yg1u4jX/0YVPMvxzHuGgCm6tC5kZyb08yjGWGnqAjGJvcXbqQR2P3MyMEFnRbpcdFS6PBcLqew==}
+    engines: {node: '>=12'}
+
   magic-string@0.30.21:
     resolution: {integrity: sha512-vd2F4YUyEXKGcLHoq+TEyCjxueSeHnFxyyjNp80yg0XV4vUhnDer/lvvlqM/arB5bXQN5K2/3oinyCRyx8T2CQ==}
 
@@ -2700,6 +2734,8 @@ snapshots:
       '@eslint/core': 1.1.0
       levn: 0.4.1
 
+  '@h3ravel/collect.js@5.3.4': {}
+
   '@h3ravel/musket@0.10.1(@types/node@20.19.35)':
     dependencies:
       '@h3ravel/shared': 0.30.3(@types/node@20.19.35)
@@ -2729,6 +2765,11 @@ snapshots:
     transitivePeerDependencies:
       - '@types/node'
       - crossws
+
+  '@h3ravel/support@0.15.11':
+    dependencies:
+      dayjs: 1.11.19
+      luxon: 3.7.2
 
   '@humanfs/core@0.19.1': {}
 
@@ -2943,6 +2984,14 @@ snapshots:
       '@poppinss/string': 1.7.1
       '@poppinss/types': 1.2.1
       flattie: 1.1.1
+
+  '@prisma/client-runtime-utils@7.4.2': {}
+
+  '@prisma/client@7.4.2(typescript@5.9.3)':
+    dependencies:
+      '@prisma/client-runtime-utils': 7.4.2
+    optionalDependencies:
+      typescript: 5.9.3
 
   '@quansync/fs@1.0.0':
     dependencies:
@@ -4047,6 +4096,8 @@ snapshots:
   longest-streak@3.1.0: {}
 
   lru-cache@11.2.6: {}
+
+  luxon@3.7.2: {}
 
   magic-string@0.30.21:
     dependencies:

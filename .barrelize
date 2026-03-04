@@ -9,6 +9,22 @@
         "**/*.ts"
       ],
       "exclude": [
+        "relationship/**",
+        "types/**",
+        "**/types.ts",
+        "**/*.test.ts",
+        "**/index.ts"
+      ]
+    },
+    {
+      "root": "src/relationship",
+      "name": "index.ts",
+      "include": [
+        "**/*.ts"
+      ],
+      "exclude": [
+        "types/**",
+        "**/types.ts",
         "**/*.test.ts",
         "**/index.ts"
       ]

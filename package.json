@@ -77,6 +77,11 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@h3ravel/musket": "^0.10.1"
+    "@h3ravel/collect.js": "^5.3.4",
+    "@h3ravel/musket": "^0.10.1",
+    "@h3ravel/support": "^0.15.11"
+  },
+  "peerDependencies": {
+    "@prisma/client": ">=5.0.0"
   }
 }
