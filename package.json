@@ -1,0 +1,82 @@
+{
+  "name": "arkorm",
+  "version": "0.1.0",
+  "description": "An ORM for Node.js and TypeScript designed for simplicity and flexibility and for use in Arkstack.",
+  "keywords": [
+    "orm",
+    "database",
+    "typescript",
+    "nodejs",
+    "sql",
+    "query builder",
+    "migration",
+    "seeding",
+    "model",
+    "repository"
+  ],
+  "homepage": "https://arcstack-hq.github.io/arkorm",
+  "bugs": {
+    "url": "https://github.com/arcstack-hq/arkorm/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arcstack-hq/arkorm.git"
+  },
+  "license": "MIT",
+  "author": "3m1n1nce <3m1n1nce@toneflix.net>",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "stubs",
+    "bin",
+    "README.md",
+    "LICENSE"
+  ],
+  "bin": {
+    "arkorm": "bin/index.mjs"
+  },
+  "scripts": {
+    "cmd": "tsx src/cli/index.ts",
+    "lint": "eslint",
+    "test": "pnpm vitest",
+    "test:coverage": "pnpm vitest --coverage --watch=false",
+    "build": "pnpm tsdown",
+    "barrel": "barrelize",
+    "prepublishOnly": "pnpm build && pnpm vitest --watch=false",
+    "docs:dev": "vitepress dev docs",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@eslint/markdown": "^7.5.1",
+    "@types/express": "^4.17.21",
+    "@types/node": "^20.10.6",
+    "@vitest/coverage-v8": "4.0.18",
+    "barrelize": "^1.7.3",
+    "eslint": "^10.0.0",
+    "tsdown": "^0.20.3",
+    "tsx": "^4.21.0",
+    "typescript": "^5.3.3",
+    "typescript-eslint": "^8.56.0",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitepress": "2.0.0-alpha.16",
+    "vitest": "^4.0.18"
+  },
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@h3ravel/musket": "^0.10.1"
+  }
+}

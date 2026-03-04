@@ -1,0 +1,32 @@
+{
+  "compilerOptions": {
+    "module": "es2022",
+    "target": "es2022",
+    "lib": ["es2022", "DOM"],
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "strict": true,
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "declaration": true,
+    "sourceMap": true,
+    "outDir": "./dist",
+    "rootDir": "./",
+    "types": ["node", "vitest"],
+    "baseUrl": ".",
+    "paths": {
+      "resora": ["src/index.ts"]
+    }
+  },
+  "include": [
+    "src/**/*",
+    "types/**/*",
+    "tests/**/*",
+    "resora.config.ts",
+    "resora.config.ts",
+    "resora.config.cjs",
+    "vitest.config.ts",
+    "tsdown.config.ts"
+  ],
+  "exclude": ["node_modules", "dist"]
+}
