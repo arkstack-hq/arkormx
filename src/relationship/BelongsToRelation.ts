@@ -1,4 +1,4 @@
-import { ModelStatic } from 'src/Model'
+import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
 
 export class BelongsToRelation<TParent, TRelated> extends Relation<TRelated> {
@@ -13,7 +13,8 @@ export class BelongsToRelation<TParent, TRelated> extends Relation<TRelated> {
 
     public async getResults (): Promise<TRelated | null> {
         const foreignValue = this.parent.getAttribute(this.foreignKey)
+        const query = this.applyConstraint(this.related.query().where({ [this.ownerKey]: foreignValue }))
 
-        return this.related.query().where({ [this.ownerKey]: foreignValue }).first()
+        return query.first()
     }
 }

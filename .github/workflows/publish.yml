@@ -21,6 +21,24 @@ jobs:
       contents: write
       id-token: write
 
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arkorm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d arkorm_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arkorm_test?schema=public
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -124,6 +142,15 @@ jobs:
 
       - name: Run tests
         run: pnpm test
+
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Apply test migrations
+        run: pnpm db:migrate:test
+
+      - name: Run PostgreSQL integration tests
+        run: pnpm test:postgres
 
       - name: Build project
         run: pnpm build

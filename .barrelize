@@ -3,6 +3,17 @@
   "semi": false,
   "barrels": [
     {
+      "root": "src/types",
+      "name": "index.ts",
+      "include": [
+        "**/*.ts"
+      ],
+      "exclude": [
+        "**/*.test.ts",
+        "**/index.ts"
+      ]
+    },
+    {
       "root": "src",
       "name": "index.ts",
       "include": [

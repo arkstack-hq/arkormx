@@ -1,4 +1,4 @@
-import { ModelStatic } from 'src/Model'
+import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
 
 export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated> {
@@ -20,7 +20,8 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
             where: { [this.foreignPivotKey]: parentValue },
         }) as Record<string, unknown>[]
         const ids = pivotRows.map(row => row[this.relatedPivotKey])
+        const query = this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
 
-        return this.related.query().where({ [this.relatedKey]: { in: ids } }).get()
+        return query.get()
     }
 }

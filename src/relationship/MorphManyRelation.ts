@@ -1,4 +1,4 @@
-import { ModelStatic } from 'src/Model'
+import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
 
 export class MorphManyRelation<TParent, TRelated> extends Relation<TRelated> {
@@ -14,7 +14,8 @@ export class MorphManyRelation<TParent, TRelated> extends Relation<TRelated> {
     public async getResults (): Promise<TRelated[]> {
         const id = this.parent.getAttribute(this.localKey)
         const type = (this.parent as { constructor: { name: string } }).constructor.name
+        const query = this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
 
-        return this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }).get()
+        return query.get()
     }
 }

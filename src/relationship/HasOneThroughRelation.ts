@@ -1,4 +1,4 @@
-import { ModelStatic } from 'src/Model'
+import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
 
 export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated> {
@@ -20,6 +20,8 @@ export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated>
         if (!intermediate)
             return null
 
-        return this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }).first()
+        const query = this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }))
+
+        return query.first()
     }
 }

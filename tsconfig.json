@@ -22,9 +22,9 @@
     "src/**/*",
     "types/**/*",
     "tests/**/*",
-    "resora.config.ts",
-    "resora.config.ts",
-    "resora.config.cjs",
+    "arkorm.config.ts",
+    "arkorm.config.js",
+    "arkorm.config.cjs",
     "vitest.config.ts",
     "tsdown.config.ts"
   ],

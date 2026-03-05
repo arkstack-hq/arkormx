@@ -1,4 +1,4 @@
-import { ModelStatic } from 'src/Model'
+import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
 
 export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated> {
@@ -18,7 +18,8 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
         const localValue = this.parent.getAttribute(this.localKey)
         const intermediates = await this.related.getDelegate(this.throughDelegate).findMany({ where: { [this.firstKey]: localValue } }) as Record<string, unknown>[]
         const keys = intermediates.map(row => row[this.secondLocalKey])
+        const query = this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: keys } }))
 
-        return this.related.query().where({ [this.secondKey]: { in: keys } }).get()
+        return query.get()
     }
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { ArkCollection, Model } from '../src'
+import { ArkCollection, createPrismaAdapter, Model, QueryBuilder } from '../src'
 
 type Row = Record<string, unknown>
 
@@ -15,6 +15,12 @@ function matchesWhere (row: Row, where: Record<string, unknown> | undefined): bo
             const candidate = (value as { in: unknown[] }).in
 
             return Array.isArray(candidate) ? candidate.includes(row[key]) : false
+        }
+
+        if (value && typeof value === 'object' && !Array.isArray(value) && 'not' in (value as Record<string, unknown>)) {
+            const disallowed = (value as { not: unknown }).not
+
+            return row[key] !== disallowed
         }
 
         return row[key] === value
@@ -111,6 +117,10 @@ class User extends Model {
     public setNameAttribute (value: unknown): unknown {
         return String(value).trim()
     }
+
+    public scopeActive (query: QueryBuilder<User>) {
+        return query.where({ isActive: 1 })
+    }
 }
 
 class Profile extends Model {
@@ -153,6 +163,11 @@ class Tag extends Model {
     protected static override delegate = 'tags'
 }
 
+class Article extends Model {
+    protected static override delegate = 'articles'
+    protected static override softDeletes = true
+}
+
 const client = {
     users: makeDelegate([
         { id: 1, name: '  Jane  ', email: 'jane@example.com', password: 'secret', isActive: 1, meta: '{"tier":"pro"}', createdAt: '2026-03-04T12:00:00.000Z' },
@@ -191,15 +206,13 @@ const client = {
         { tagId: 1200, taggableId: 1, taggableType: 'User' },
         { tagId: 1201, taggableId: 1, taggableType: 'User' },
     ]),
+    articles: makeDelegate([
+        { id: 2000, title: 'Live', deletedAt: null },
+        { id: 2001, title: 'Archived', deletedAt: '2026-03-04T12:00:00.000Z' },
+    ]),
 }
 
-User.setClient(client)
-Profile.setClient(client)
-Post.setClient(client)
-Role.setClient(client)
-Image.setClient(client)
-Comment.setClient(client)
-Tag.setClient(client)
+globalThis.__ARKORM_PRISMA__ = client
 
 describe('Arkorm core', () => {
     it('supports querying and pagination', async () => {
@@ -251,7 +264,7 @@ describe('Arkorm core', () => {
     })
 
     it('supports polymorphic one-to-one, one-to-many and many-to-many', async () => {
-        class Media extends Model {
+        class _Media extends Model {
             protected static override delegate = 'images'
 
             public owner () {
@@ -259,7 +272,6 @@ describe('Arkorm core', () => {
             }
         }
 
-        Media.setClient(client)
         const user = (await User.query().find(1)) as User
 
         const comments = await user.comments().getResults()
@@ -272,5 +284,45 @@ describe('Arkorm core', () => {
     it('integrates collections with collect.js', () => {
         const collection = ArkCollection.make([{ id: 1 }, { id: 2 }])
         expect(collection.all().length).toBe(2)
+    })
+
+    it('supports local scopes on query builder', async () => {
+        const users = await User.scope('active').get()
+        expect(users.length).toBe(1)
+        expect((users[0] as User).getAttribute('email')).toBe('jane@example.com')
+    })
+
+    it('supports constrained eager loading callbacks', async () => {
+        const user = await User.query().with({
+            posts: (query) => (query as QueryBuilder<Post>).where({ title: 'A' }),
+        }).find(1)
+
+        expect(user).not.toBeNull()
+        const posts = (user as User).getAttribute('posts') as Post[]
+        expect(Array.isArray(posts)).toBe(true)
+        expect(posts.length).toBe(1)
+    })
+
+    it('supports soft deletes and trashed filters', async () => {
+        const visible = await Article.query().get()
+        const withTrashed = await Article.withTrashed().get()
+        const onlyTrashed = await Article.onlyTrashed().get()
+
+        expect(visible.length).toBe(1)
+        expect(withTrashed.length).toBe(2)
+        expect(onlyTrashed.length).toBe(1)
+
+        const article = (await Article.query().find(2000)) as Article
+        await article.delete()
+        expect(article.getAttribute('deletedAt')).toBeInstanceOf(Date)
+
+        await article.restore()
+        expect(article.getAttribute('deletedAt')).toBeNull()
+    })
+
+    it('creates a Prisma delegate adapter', () => {
+        const adapter = createPrismaAdapter(client)
+        expect(adapter.users).toBeDefined()
+        expect(typeof adapter.users.findMany).toBe('function')
     })
 })

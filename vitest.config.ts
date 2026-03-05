@@ -8,14 +8,32 @@ export default defineConfig({
         root: './',
         passWithNoTests: true,
         environment: 'node',
-        include: ['**/*.{test,spec}.?(c|m)[jt]s?(x)'],
-        env: {
-            NODE_ENV: 'test',
-        },
+        projects: [
+            {
+                test: {
+                    setupFiles: 'tests/setup.ts',
+                    include: ['**/tests/postgres.spec.{ts,tsx}'],
+                    name: { label: 'postgres', color: 'green' },
+                }
+            },
+            {
+                test: {
+                    setupFiles: 'tests/setup.ts',
+                    include: [
+                        '**/*.{test,spec}.?(c|m)[jt]s?(x)',
+                        '!**/tests/postgres.spec.{ts,tsx}'
+                    ],
+                    name: { label: 'vitest', color: 'blue' },
+                }
+            }
+        ],
         coverage: {
             reporter: ['text', 'json', 'html', 'lcov'],
             reportsDirectory: 'coverage',
             exclude: ['**/node_modules/**', '**/dist/**', '**/cypress/**', '**/.{idea,git,cache,output,temp}/**', '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*', '**/.h3ravel/**'],
-        }
+        },
+        env: {
+            NODE_ENV: 'test',
+        },
     }
 })

@@ -1,5 +1,7 @@
 export * from './casts'
 export * from './Collection'
+export * from './helpers/prisma'
+export * from './helpers/runtime-config'
 export * from './Model'
 export * from './Paginator'
 export * from './QueryBuilder'

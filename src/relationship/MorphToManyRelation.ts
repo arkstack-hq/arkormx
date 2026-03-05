@@ -1,4 +1,4 @@
-import { ModelStatic } from 'src/Model'
+import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
 
 export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
@@ -24,7 +24,8 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
             },
         }) as Record<string, unknown>[]
         const ids = pivots.map(row => row[this.relatedPivotKey])
+        const query = this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
 
-        return this.related.query().where({ [this.relatedKey]: { in: ids } }).get()
+        return query.get()
     }
 }
