@@ -10,11 +10,12 @@ import type {
     DelegateWhere,
     EagerLoadConstraint,
     EagerLoadMap,
+    ModelAttributes,
+    ModelStatic,
     PrismaDelegateLike,
     PrismaFindManyArgsLike
 } from './types'
 
-import type { ModelStatic } from './types/core'
 import { Paginator } from './Paginator'
 
 /**
@@ -61,6 +62,34 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         } as DelegateWhere<TDelegate>
 
         return this
+    }
+
+    /**
+     * Adds a strongly-typed equality where clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereKey<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: ModelAttributes<TModel>[TKey]
+    ): this {
+        return this.where({ [key]: value } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a strongly-typed IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public whereIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.where({ [key]: { in: values } } as DelegateWhere<TDelegate>)
     }
 
     /**
@@ -272,7 +301,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @param key 
      * @returns 
      */
-    public async find (value: string | number, key = 'id'): Promise<TModel | null> {
+    public async find<TKey extends keyof ModelAttributes<TModel> & string> (
+        value: ModelAttributes<TModel>[TKey],
+        key: TKey
+    ): Promise<TModel | null>
+    public async find (value: string | number, key?: string): Promise<TModel | null>
+    public async find (value: unknown, key = 'id'): Promise<TModel | null> {
         return this.where({ [key]: value } as DelegateWhere<TDelegate>).first()
     }
 
@@ -423,6 +457,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         } as DelegateWhere<TDelegate>
     }
 
+    /**
+     * Builds the arguments for the findMany delegate method, including the where clause.
+     * 
+     * @returns 
+     */
     private buildFindArgs (): DelegateFindManyArgs<TDelegate> {
         return {
             ...(this.args as DelegateFindManyArgs<TDelegate>),
@@ -430,7 +469,15 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
     }
 
-    private async resolveUniqueWhere (where: DelegateWhere<TDelegate>): Promise<DelegateUniqueWhere<TDelegate>> {
+    /**
+     * Resolves a unique where clause for update and delete operations. 
+     * 
+     * @param where 
+     * @returns 
+     */
+    private async resolveUniqueWhere (
+        where: DelegateWhere<TDelegate>
+    ): Promise<DelegateUniqueWhere<TDelegate>> {
         if (this.isUniqueWhere(where as Record<string, unknown>))
             return where as DelegateUniqueWhere<TDelegate>
 
@@ -445,6 +492,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return { id: record.id } as DelegateUniqueWhere<TDelegate>
     }
 
+    /**
+     * Checks if the provided where clause is already a unique 
+     * identifier (i.e., contains only an 'id' field).
+     * 
+     * @param where 
+     * @returns 
+     */
     private isUniqueWhere (where: Record<string, unknown>): boolean {
         return Object.keys(where).length === 1 && Object.prototype.hasOwnProperty.call(where, 'id')
     }

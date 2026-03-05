@@ -12,6 +12,7 @@ import {
 import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, Serializable, SoftDeleteConfig } from './types/core'
 import { ensureArkormConfigLoading, getRuntimePrismaClient, isDelegateLike } from './helpers/runtime-config'
 
+import { DelegateForModelSchema, ModelAttributesOf } from './types'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
@@ -24,7 +25,7 @@ import { str } from '@h3ravel/support'
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export abstract class Model {
+export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, unknown> | string = Record<string, any>> {
     protected static client: Record<string, unknown>
     protected static delegate: string
     protected static softDeletes = false
@@ -92,10 +93,17 @@ export abstract class Model {
      * @param this 
      * @returns 
      */
-    public static query<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> (
-        this: ModelStatic<TModel, TDelegate>
+    public static query<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
+        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+    > (
+        this: TThis
     ): QueryBuilder<TModel, TDelegate> {
-        return new QueryBuilder<TModel, TDelegate>(this.getDelegate(), this)
+        return new QueryBuilder<TModel, TDelegate>(
+            (this as unknown as ModelStatic<TModel, TDelegate>).getDelegate(),
+            this as unknown as ModelStatic<TModel, TDelegate>
+        )
     }
 
     /**
@@ -104,10 +112,14 @@ export abstract class Model {
      * @param this 
      * @returns 
      */
-    public static withTrashed<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> (
-        this: ModelStatic<TModel, TDelegate>
+    public static withTrashed<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
+        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+    > (
+        this: TThis
     ): QueryBuilder<TModel, TDelegate> {
-        return this.query().withTrashed()
+        return (this as unknown as ModelStatic<TModel, TDelegate>).query().withTrashed() as QueryBuilder<TModel, TDelegate>
     }
 
     /**
@@ -116,10 +128,14 @@ export abstract class Model {
      * @param this 
      * @returns 
      */
-    public static onlyTrashed<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> (
-        this: ModelStatic<TModel, TDelegate>
+    public static onlyTrashed<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
+        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+    > (
+        this: TThis
     ): QueryBuilder<TModel, TDelegate> {
-        return this.query().onlyTrashed()
+        return (this as unknown as ModelStatic<TModel, TDelegate>).query().onlyTrashed() as QueryBuilder<TModel, TDelegate>
     }
 
     /**
@@ -132,11 +148,15 @@ export abstract class Model {
      * @param args 
      * @returns 
      */
-    public static scope<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> (
-        this: ModelStatic<TModel, TDelegate>,
+    public static scope<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
+        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+    > (
+        this: TThis,
         name: string, ...args: unknown[]
     ): QueryBuilder<TModel, TDelegate> {
-        return this.query().scope(name, ...args)
+        return (this as unknown as ModelStatic<TModel, TDelegate>).query().scope(name, ...args) as QueryBuilder<TModel, TDelegate>
     }
 
     /**
@@ -187,6 +207,8 @@ export abstract class Model {
      * @param attributes 
      * @returns 
      */
+    public fill (attributes: Partial<ModelAttributesOf<TSchema>>): this
+    public fill (attributes: Record<string, unknown>): this
     public fill (attributes: Record<string, unknown>): this {
         Object.entries(attributes).forEach(([key, value]) => {
             this.setAttribute(key, value)
@@ -201,6 +223,8 @@ export abstract class Model {
      * @param key 
      * @returns 
      */
+    public getAttribute<TKey extends keyof ModelAttributesOf<TSchema> & string> (key: TKey): ModelAttributesOf<TSchema>[TKey]
+    public getAttribute (key: string): unknown
     public getAttribute (key: string): unknown {
         const mutator = this.resolveGetMutator(key)
         const cast = this.casts[key]
@@ -222,6 +246,11 @@ export abstract class Model {
      * @param value 
      * @returns 
      */
+    public setAttribute<TKey extends keyof ModelAttributesOf<TSchema> & string> (
+        key: TKey,
+        value: ModelAttributesOf<TSchema>[TKey]
+    ): this
+    public setAttribute (key: string, value: unknown): this
     public setAttribute (key: string, value: unknown): this {
         const mutator = this.resolveSetMutator(key)
         const cast = this.casts[key]
@@ -252,13 +281,13 @@ export abstract class Model {
         const constructor = this.constructor as unknown as ModelStatic<this>
         if (identifier == null) {
             const model = await constructor.query().create(payload)
-            this.fill((model as unknown as Model).getRawAttributes())
+            this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
 
             return this
         }
 
         const model = await constructor.query().where({ id: identifier }).update(payload)
-        this.fill((model as unknown as Model).getRawAttributes())
+        this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
 
         return this
     }
@@ -282,7 +311,7 @@ export abstract class Model {
             const model = await constructor.query()
                 .where({ id: identifier })
                 .update({ [softDeleteConfig.column]: new Date() })
-            this.fill((model as unknown as Model).getRawAttributes())
+            this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
 
             return this
         }
@@ -324,7 +353,7 @@ export abstract class Model {
         const model = await constructor.query().withTrashed()
             .where({ id: identifier })
             .update({ [softDeleteConfig.column]: null })
-        this.fill((model as unknown as Model).getRawAttributes())
+        this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
 
         return this
     }
@@ -359,8 +388,8 @@ export abstract class Model {
      * 
      * @returns 
      */
-    public getRawAttributes (): Record<string, unknown> {
-        return { ...this.attributes }
+    public getRawAttributes (): Partial<ModelAttributesOf<TSchema>> {
+        return { ...this.attributes } as Partial<ModelAttributesOf<TSchema>>
     }
 
     /**
@@ -375,7 +404,7 @@ export abstract class Model {
             : Object.keys(this.attributes).filter(key => !this.hidden.includes(key))
 
         const object = keys.reduce<Serializable>((accumulator, key) => {
-            let value = this.getAttribute(key)
+            let value: unknown = this.getAttribute(key as string)
             if (value instanceof Date)
                 value = value.toISOString()
 

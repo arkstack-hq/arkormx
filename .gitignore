@@ -154,3 +154,5 @@ docs/.vitepress/cache
 /src/dev
 apis.generated.ts
 apis.generated.js
+*-legend.md
+TESTING_*.md

@@ -1,18 +1,18 @@
 import 'dotenv/config'
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
-import { Model, QueryBuilder } from '../src'
-import { PrismaClient } from '@prisma/client'
+import { configureArkormRuntime, Model, QueryBuilder } from '../src'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '@prisma/client'
 
-class DbUser extends Model {
+class DbUser extends Model<'user'> {
     protected static override delegate = 'users'
 
-    public scopeActive (query: QueryBuilder<DbUser, PrismaClient['user']>) {
-        return query.where({ isActive: 1 })
+    public scopeActive (query: QueryBuilder<DbUser>) {
+        return query.whereKey('isActive', 1)
     }
 }
 
-class DbArticle extends Model {
+class DbArticle extends Model<'article'> {
     protected static override delegate = 'articles'
     protected static override softDeletes = true
 }
@@ -25,12 +25,14 @@ const prisma = new PrismaClient({
 
 describe('Arkorm PostgreSQL integration', () => {
     beforeAll(async () => {
-        globalThis.__ARKORM_PRISMA__ = prisma as unknown as Record<string, unknown>
+        configureArkormRuntime(prisma as unknown as Record<string, unknown>)
 
         await prisma.$connect()
     })
 
     beforeEach(async () => {
+        configureArkormRuntime(prisma as unknown as Record<string, unknown>)
+
         await prisma.article.deleteMany()
         await prisma.user.deleteMany()
 
@@ -59,7 +61,7 @@ describe('Arkorm PostgreSQL integration', () => {
 
         const activeUsers = await DbUser.scope('active').get()
         expect(activeUsers.length).toBe(1)
-        expect((activeUsers[0] as DbUser).getAttribute('email')).toBe('jane@example.com')
+        expect(activeUsers[0]?.getAttribute('email')).toBe('jane@example.com')
     })
 
     it('persists create/update/delete against PostgreSQL', async () => {
@@ -68,17 +70,19 @@ describe('Arkorm PostgreSQL integration', () => {
             email: 'mia@example.com',
             isActive: 1,
         })
-        expect((created as DbUser).getAttribute('id')).toBeDefined()
 
-        const model = created as DbUser
+        expect(created.getAttribute('id')).toBeDefined()
+
+        const model = created
         model.setAttribute('name', 'Mia Updated')
         await model.save()
 
-        const reloaded = await DbUser.query().find(model.getAttribute('id') as number)
-        expect((reloaded as DbUser).getAttribute('name')).toBe('Mia Updated')
+        const reloaded = await DbUser.query().find(model.getAttribute('id'))
+        expect(reloaded?.getAttribute('name')).toBe('Mia Updated')
 
-        await (reloaded as DbUser).delete()
-        const deleted = await DbUser.query().find(model.getAttribute('id') as number)
+        expect(reloaded).not.toBeNull()
+        await reloaded?.delete()
+        const deleted = await DbUser.query().find(model.getAttribute('id'))
         expect(deleted).toBeNull()
     })
 
@@ -91,7 +95,7 @@ describe('Arkorm PostgreSQL integration', () => {
         expect(withTrashed.length).toBe(2)
         expect(onlyTrashed.length).toBe(1)
 
-        const article = (await DbArticle.query().firstOrFail()) as DbArticle
+        const article = await DbArticle.query().firstOrFail()
         await article.delete()
         expect(article.getAttribute('deletedAt')).toBeInstanceOf(Date)
 

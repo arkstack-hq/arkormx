@@ -1,5 +1,5 @@
-import { describe, expect, it } from 'vitest'
-import { ArkCollection, createPrismaAdapter, Model, QueryBuilder } from '../src'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { ArkCollection, configureArkormRuntime, createPrismaAdapter, Model, QueryBuilder } from '../src'
 
 type Row = Record<string, unknown>
 
@@ -212,7 +212,9 @@ const client = {
     ]),
 }
 
-globalThis.__ARKORM_PRISMA__ = client
+beforeEach(() => {
+    configureArkormRuntime(client)
+})
 
 describe('Arkorm core', () => {
     it('supports querying and pagination', async () => {
