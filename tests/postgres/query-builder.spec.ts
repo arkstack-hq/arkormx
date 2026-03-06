@@ -47,7 +47,7 @@ describe('PostgreSQL QueryBuilder', () => {
         expect(scoped.all()[0]?.getAttribute('email')).toBe('jane@example.com')
     })
 
-    it('supports phase 1 query ergonomics', async () => {
+    it('supports query ergonomics', async () => {
         const latest = await DbUser.query().latest('id').firstOrFail()
         const oldest = await DbUser.query().oldest('id').firstOrFail()
         const limited = await DbUser.query().orderBy({ id: 'asc' }).limit(1).get()
@@ -65,7 +65,7 @@ describe('PostgreSQL QueryBuilder', () => {
         await expect(DbUser.query().whereKey('id', 99999).doesntExist()).resolves.toBe(true)
     })
 
-    it('supports phase 2 filtering parity helpers', async () => {
+    it('supports filtering parity helpers', async () => {
         const orWhere = await DbUser.query()
             .whereKey('id', 99999)
             .orWhere({ id: 2 })
@@ -119,7 +119,7 @@ describe('PostgreSQL QueryBuilder', () => {
         expect(whereYear.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
     })
 
-    it('supports phase 3 read helpers and utility shortcuts', async () => {
+    it('supports read helpers and utility shortcuts', async () => {
         const foundOr = await DbUser.query().findOr(1, () => ({ fallback: true }))
         expect((foundOr as DbUser).getAttribute('id')).toBe(1)
 
@@ -157,7 +157,7 @@ describe('PostgreSQL QueryBuilder', () => {
         expect(pipedCount).toBe(2)
     })
 
-    it('supports phase 4 aggregate and advanced query helpers', async () => {
+    it('supports aggregate and advanced query helpers', async () => {
         await expect(DbUser.query().min('id')).resolves.toBe(1)
         await expect(DbUser.query().max('id')).resolves.toBe(2)
         await expect(DbUser.query().sum('id')).resolves.toBe(3)
