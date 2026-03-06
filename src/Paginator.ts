@@ -1,3 +1,4 @@
+import { ArkormCollection } from './Collection'
 import type { PaginationMeta } from './types/core'
 
 /**
@@ -9,18 +10,18 @@ import type { PaginationMeta } from './types/core'
  * @since 0.1.0
  */
 export class Paginator<T> {
-    public readonly data: T[]
+    public readonly data: ArkormCollection<T>
     public readonly meta: PaginationMeta
 
     /**
      * Creates a new Paginator instance.
      * 
-     * @param data 
-     * @param total 
-     * @param perPage 
-     * @param currentPage 
+     * @param data          The collection of data being paginated.
+     * @param total         The total number of items.
+     * @param perPage       The number of items per page.
+     * @param currentPage   The current page number.
      */
-    public constructor(data: T[], total: number, perPage: number, currentPage: number) {
+    public constructor(data: ArkormCollection<T>, total: number, perPage: number, currentPage: number) {
         const lastPage = Math.max(1, Math.ceil(total / perPage))
         const from = total === 0 ? null : (currentPage - 1) * perPage + 1
         const to = total === 0 ? null : Math.min(currentPage * perPage, total)

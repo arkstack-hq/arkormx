@@ -23,3 +23,67 @@ model Article {
 
     @@map("articles")
 }
+
+model UserProfile {
+    id     Int @id @default(autoincrement())
+    userId Int
+
+    @@map("profiles")
+}
+
+model Post {
+    id     Int    @id @default(autoincrement())
+    userId Int
+    title  String
+
+    @@map("posts")
+}
+
+model Role {
+    id   Int    @id @default(autoincrement())
+    name String
+
+    @@map("roles")
+}
+
+model RoleUser {
+    userId Int
+    roleId Int
+
+    @@id([userId, roleId])
+    @@map("role_users")
+}
+
+model Image {
+    id        Int    @id @default(autoincrement())
+    profileId Int?
+    postId    Int?
+    url       String
+
+    @@map("images")
+}
+
+model Comment {
+    id              Int    @id @default(autoincrement())
+    commentableId   Int
+    commentableType String
+    body            String
+
+    @@map("comments")
+}
+
+model Tag {
+    id   Int    @id @default(autoincrement())
+    name String
+
+    @@map("tags")
+}
+
+model Taggable {
+    tagId        Int
+    taggableId   Int
+    taggableType String
+
+    @@id([tagId, taggableId, taggableType])
+    @@map("taggables")
+}

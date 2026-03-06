@@ -9,8 +9,8 @@ importers:
   .:
     dependencies:
       '@h3ravel/collect.js':
-        specifier: ^5.3.4
-        version: 5.3.4
+        specifier: ^5.3.6
+        version: 5.3.6
       '@h3ravel/musket':
         specifier: ^0.10.1
         version: 0.10.1(@types/node@20.19.35)
@@ -371,8 +371,8 @@ packages:
     resolution: {integrity: sha512-bIZEUzOI1jkhviX2cp5vNyXQc6olzb2ohewQubuYlMXZ2Q/XjBO0x0XhGPvc9fjSIiUN0vw+0hq53BJ4eQSJKQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
-  '@h3ravel/collect.js@5.3.4':
-    resolution: {integrity: sha512-XcdO4mbNzlDIycsF1h9OSn65os8rZW02+EOTGaq3MVAQ8oeUB8L8So1VWoFrD7dyAL6M0H8koIkLJE77KROEXQ==}
+  '@h3ravel/collect.js@5.3.6':
+    resolution: {integrity: sha512-pMuQ6C+oa/O//RCzG2VJsBBhOh3IG5sUqZFYYtJT6mPzoq0cKpv+YSiQL27oG0yCvj4TZ8YHIKJ9GlB7BWWfuA==}
 
   '@h3ravel/musket@0.10.1':
     resolution: {integrity: sha512-M5pwj7tv5pWTdQnw48EGOEaecPSAZ08CPwS76IRP1QSGCj0gb8gMmrUDZkXTmmDjhJlAfAEAygzLzwQwB6XdgQ==}
@@ -3118,7 +3118,7 @@ snapshots:
       '@eslint/core': 1.1.0
       levn: 0.4.1
 
-  '@h3ravel/collect.js@5.3.4': {}
+  '@h3ravel/collect.js@5.3.6': {}
 
   '@h3ravel/musket@0.10.1(@types/node@20.19.35)':
     dependencies:

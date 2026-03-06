@@ -10,3 +10,8 @@ export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = Pris
     getDelegate: (delegate?: string) => TDelegate
     getSoftDeleteConfig: () => SoftDeleteConfig
 }
+
+export interface RelationshipModelStatic {
+    query: () => QueryBuilder<any, any>
+    getDelegate: (delegate?: string) => PrismaDelegateLike
+}

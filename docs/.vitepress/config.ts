@@ -11,10 +11,15 @@ export default defineConfig({
             {
                 text: 'Guide',
                 items: [
+                    { text: 'Get Started', link: '/guide/getting-started' },
                     { text: 'Setup', link: '/guide/setup' },
                     { text: 'Typing', link: '/guide/typing' },
                 ],
             },
         ],
+        socialLinks: [
+            { icon: 'github', link: 'https://github.com/arkstack/arkorm' },
+            { icon: 'npm', link: 'https://www.npmjs.com/package/arkorm' },
+        ]
     },
 })

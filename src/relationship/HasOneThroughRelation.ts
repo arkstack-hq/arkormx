@@ -1,10 +1,17 @@
-import { ModelStatic } from 'src/types'
 import { Relation } from './Relation'
+import type { RelationshipModelStatic } from 'src/types'
 
+/**
+ * Represents a "has one through" relationship, where the parent model is related 
+ * to exactly one instance of the related model through an intermediate model.
+ * 
+ * @author Legacy (3m1n3nc3)
+ * @since 0.1.0
+ */
 export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated> {
     public constructor(
         private readonly parent: TParent & { getAttribute: (key: string) => unknown },
-        private readonly related: ModelStatic<TRelated>,
+        private readonly related: RelationshipModelStatic,
         private readonly throughDelegate: string,
         private readonly firstKey: string,
         private readonly secondKey: string,
@@ -14,6 +21,11 @@ export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated>
         super()
     }
 
+    /**
+     * Fetches the related models for this relationship.
+     * 
+     * @returns 
+     */
     public async getResults (): Promise<TRelated | null> {
         const localValue = this.parent.getAttribute(this.localKey)
         const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null

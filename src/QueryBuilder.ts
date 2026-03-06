@@ -16,6 +16,7 @@ import type {
     PrismaFindManyArgsLike
 } from './types'
 
+import { ArkormCollection } from './Collection'
 import { Paginator } from './Paginator'
 
 /**
@@ -245,11 +246,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
-     * Executes the query and returns the results as an array of model instances.
+     * Executes the query and returns the results as a collection of model instances.
      * 
      * @returns 
      */
-    public async get (): Promise<TModel[]> {
+    public async get (): Promise<ArkormCollection<TModel>> {
         const rows = await this.delegate.findMany(this.buildFindArgs())
         const models = this.model.hydrateMany(rows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
 
@@ -258,7 +259,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             await loadable.load(this.eagerLoads)
         }))
 
-        return models
+        return new ArkormCollection(models)
     }
 
     /**

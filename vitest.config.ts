@@ -11,8 +11,9 @@ export default defineConfig({
         projects: [
             {
                 test: {
-                    setupFiles: 'tests/setup.ts',
-                    include: ['**/tests/postgres.spec.{ts,tsx}'],
+                    setupFiles: ['tests/setup.ts', 'tests/postgres/setup.ts'],
+                    include: ['**/tests/postgres/**/*.spec.{ts,tsx}'],
+                    fileParallelism: false,
                     name: { label: 'postgres', color: 'green' },
                 }
             },
@@ -21,7 +22,7 @@ export default defineConfig({
                     setupFiles: 'tests/setup.ts',
                     include: [
                         '**/*.{test,spec}.?(c|m)[jt]s?(x)',
-                        '!**/tests/postgres.spec.{ts,tsx}'
+                        '!**/tests/postgres/**/*.spec.{ts,tsx}'
                     ],
                     name: { label: 'vitest', color: 'blue' },
                 }

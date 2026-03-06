@@ -9,13 +9,17 @@ import {
     MorphOneRelation,
     MorphToManyRelation
 } from './relationship'
-import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, Serializable, SoftDeleteConfig } from './types/core'
+import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, RelationshipModelStatic, Serializable, SoftDeleteConfig } from './types/core'
 import { ensureArkormConfigLoading, getRuntimePrismaClient, isDelegateLike } from './helpers/runtime-config'
 
 import { DelegateForModelSchema, ModelAttributesOf } from './types'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
+
+type RelatedModelClass<TInstance = unknown> =
+    (abstract new (attributes?: Record<string, unknown>) => TInstance)
+    & RelationshipModelStatic
 
 /**
  * Base model class that all models should extend. 
@@ -437,12 +441,12 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param localKey 
      * @returns 
      */
-    protected hasOne<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected hasOne<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         foreignKey: string,
         localKey = 'id'
-    ): HasOneRelation<this, TRelated> {
-        return new HasOneRelation<this, TRelated>(this, related, foreignKey, localKey)
+    ): HasOneRelation<this, InstanceType<TRelatedClass>> {
+        return new HasOneRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey)
     }
 
     /**
@@ -453,12 +457,12 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param localKey 
      * @returns 
      */
-    protected hasMany<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected hasMany<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         foreignKey: string,
         localKey = 'id'
-    ): HasManyRelation<this, TRelated> {
-        return new HasManyRelation<this, TRelated>(this, related, foreignKey, localKey)
+    ): HasManyRelation<this, InstanceType<TRelatedClass>> {
+        return new HasManyRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey)
     }
 
     /**
@@ -469,12 +473,12 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param ownerKey 
      * @returns 
      */
-    protected belongsTo<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected belongsTo<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         foreignKey: string,
         ownerKey = 'id'
-    ): BelongsToRelation<this, TRelated> {
-        return new BelongsToRelation<this, TRelated>(this, related, foreignKey, ownerKey)
+    ): BelongsToRelation<this, InstanceType<TRelatedClass>> {
+        return new BelongsToRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, ownerKey)
     }
 
     /**
@@ -488,15 +492,15 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param relatedKey 
      * @returns 
      */
-    protected belongsToMany<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected belongsToMany<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         throughDelegate: string,
         foreignPivotKey: string,
         relatedPivotKey: string,
         parentKey = 'id',
         relatedKey = 'id'
-    ): BelongsToManyRelation<this, TRelated> {
-        return new BelongsToManyRelation<this, TRelated>(this, related, throughDelegate, foreignPivotKey, relatedPivotKey, parentKey, relatedKey)
+    ): BelongsToManyRelation<this, InstanceType<TRelatedClass>> {
+        return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(this, related, throughDelegate, foreignPivotKey, relatedPivotKey, parentKey, relatedKey)
     }
 
     /**
@@ -510,14 +514,14 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param secondLocalKey 
      * @returns 
      */
-    protected hasOneThrough<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected hasOneThrough<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         throughDelegate: string,
         firstKey: string,
         secondKey: string,
         localKey = 'id',
         secondLocalKey = 'id'
-    ): HasOneThroughRelation<this, TRelated> {
+    ): HasOneThroughRelation<this, InstanceType<TRelatedClass>> {
         return new HasOneThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey, secondLocalKey)
     }
 
@@ -532,14 +536,14 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param secondLocalKey 
      * @returns 
      */
-    protected hasManyThrough<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected hasManyThrough<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         throughDelegate: string,
         firstKey: string,
         secondKey: string,
         localKey = 'id',
         secondLocalKey = 'id'
-    ): HasManyThroughRelation<this, TRelated> {
+    ): HasManyThroughRelation<this, InstanceType<TRelatedClass>> {
         return new HasManyThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey, secondLocalKey)
     }
 
@@ -551,11 +555,11 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param localKey 
      * @returns 
      */
-    protected morphOne<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected morphOne<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         morphName: string,
         localKey = 'id'
-    ): MorphOneRelation<this, TRelated> {
+    ): MorphOneRelation<this, InstanceType<TRelatedClass>> {
         return new MorphOneRelation(this, related, morphName, localKey)
     }
 
@@ -567,11 +571,11 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param localKey 
      * @returns 
      */
-    protected morphMany<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected morphMany<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         morphName: string,
         localKey = 'id'
-    ): MorphManyRelation<this, TRelated> {
+    ): MorphManyRelation<this, InstanceType<TRelatedClass>> {
         return new MorphManyRelation(this, related, morphName, localKey)
     }
 
@@ -586,14 +590,14 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param relatedKey 
      * @returns 
      */
-    protected morphToMany<TRelated> (
-        related: ModelStatic<TRelated>,
+    protected morphToMany<TRelatedClass extends RelatedModelClass> (
+        related: TRelatedClass,
         throughDelegate: string,
         morphName: string,
         relatedPivotKey: string,
         parentKey = 'id',
         relatedKey = 'id'
-    ): MorphToManyRelation<this, TRelated> {
+    ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
         return new MorphToManyRelation(this, related, throughDelegate, morphName, relatedPivotKey, parentKey, relatedKey)
     }
 

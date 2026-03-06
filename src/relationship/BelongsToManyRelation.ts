@@ -1,10 +1,17 @@
-import { ModelStatic } from 'src/types'
+import type { ArkormCollection } from 'src/Collection'
 import { Relation } from './Relation'
+import type { RelationshipModelStatic } from 'src/types'
 
+/**
+ * Defines a many-to-many relationship.
+ * 
+ * @author Legacy (3m1n3nc3)
+ * @since 0.1.0
+ */
 export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated> {
     public constructor(
         private readonly parent: TParent & { getAttribute: (key: string) => unknown },
-        private readonly related: ModelStatic<TRelated>,
+        private readonly related: RelationshipModelStatic,
         private readonly throughDelegate: string,
         private readonly foreignPivotKey: string,
         private readonly relatedPivotKey: string,
@@ -14,7 +21,12 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
         super()
     }
 
-    public async getResults (): Promise<TRelated[]> {
+    /**
+     * Fetches the related models for this relationship.
+     * 
+     * @returns 
+     */
+    public async getResults (): Promise<ArkormCollection<TRelated>> {
         const parentValue = this.parent.getAttribute(this.parentKey)
         const pivotRows = await this.related.getDelegate(this.throughDelegate).findMany({
             where: { [this.foreignPivotKey]: parentValue },
