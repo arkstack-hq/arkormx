@@ -1,0 +1,5 @@
+import { Model } from 'arkorm'
+{{FactoryImport}}
+export class {{ModelName}} extends Model<'{{DelegateName}}'> {
+    protected static override delegate = '{{DelegateName}}'{{FactoryLink}}
+}

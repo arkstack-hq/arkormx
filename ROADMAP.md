@@ -55,7 +55,6 @@ This document tracks all implemented and upcoming features for Arkorm.
 - [ ] Documentation site
 - [ ] More advanced relationship constraints
 - [ ] Performance optimizations
-- [ ] Additional database adapters (non-Prisma drivers)
 
 ## Eloquent Parity (Phased)
 
@@ -104,13 +103,19 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 
 ### Phase 5 — Relationship existence/query parity
 
-- [ ] `has(...)` / `orHas(...)`
-- [ ] `doesntHave(...)` / `orDoesntHave(...)`
-- [ ] `whereHas(...)` / `orWhereHas(...)`
-- [ ] `whereDoesntHave(...)` / `orWhereDoesntHave(...)`
-- [ ] `withCount(...)`
-- [ ] `withExists(...)`
-- [ ] `withSum(...)` / `withAvg(...)` / `withMin(...)` / `withMax(...)`
+- [x] `has(...)` / `orHas(...)`
+- [x] `doesntHave(...)` / `orDoesntHave(...)`
+- [x] `whereHas(...)` / `orWhereHas(...)`
+- [x] `whereDoesntHave(...)` / `orWhereDoesntHave(...)`
+- [x] `withCount(...)`
+- [x] `withExists(...)`
+- [x] `withSum(...)` / `withAvg(...)` / `withMin(...)` / `withMax(...)`
+
+### Phase 6 — Database migration, seeding and factory helpers
+
+- [x] Factory definitions and helpers
+- [x] Seeder classes and execution helpers
+- [x] Migration file generation and schema builder
 
 ### Out of scope
 

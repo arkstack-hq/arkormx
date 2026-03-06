@@ -6,6 +6,8 @@
 - Primary extension points live in `src/Model.ts`, `src/QueryBuilder.ts`, `src/adapters/DatabaseAdapter.ts`, and `src/helpers/prisma.ts`.
 - `Model.query()` always constructs `QueryBuilder` with `this.getDelegate()`; data write methods (`save`, `delete`, `restore`, `forceDelete`) route through query builder, not direct delegate calls.
 - Soft delete behavior is centralized in `QueryBuilder.buildWhere()` + `Model.getSoftDeleteConfig()`; do not re-implement soft-delete filters in model subclasses.
+- When implementing new features, prefer creating them as classes rather then functions.
+- Types should be defined/created in the `src/types` directory and imported into core files as needed; avoid defining types in core files unless they are tightly coupled to the implementation (e.g. `QueryBuilder`-specific types in `src/QueryBuilder.ts`).
 
 ## Model and relation conventions (repo-specific)
 

@@ -1,16 +1,19 @@
 import { DbArticle, DbUser, acquirePostgresTestLock, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 import { ArkormCollection, LengthAwarePaginator, Paginator } from '../../src'
 
 describe('PostgreSQL QueryBuilder', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
         await acquirePostgresTestLock()
-        await seedPostgresFixtures()
     })
 
-    afterEach(async () => {
+    afterAll(async () => {
         await releasePostgresTestLock()
+    })
+
+    beforeEach(async () => {
+        await seedPostgresFixtures()
     })
 
     it('supports filtering, ordering, and pagination with real data', async () => {
@@ -171,6 +174,46 @@ describe('PostgreSQL QueryBuilder', () => {
 
         expect(() => DbUser.query().whereRaw('id = ?', [1])).toThrow('Raw where clauses are not supported by the current adapter.')
         expect(() => DbUser.query().orWhereRaw('id = ?', [1])).toThrow('Raw where clauses are not supported by the current adapter.')
+    })
+
+    it('supports relationship existence/query helpers', async () => {
+        const hasPosts = await DbUser.query().has('posts').orderBy({ id: 'asc' }).get()
+        expect(hasPosts.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const hasManyPosts = await DbUser.query().has('posts', '>=', 2).get()
+        expect(hasManyPosts.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const noComments = await DbUser.query().doesntHave('comments').get()
+        expect(noComments.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const whereHasA = await DbUser.query().whereHas('posts', query => query.where({ title: 'A' })).get()
+        expect(whereHasA.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const orWhereHas = await DbUser.query().whereKey('id', 2).orWhereHas('posts', query => query.where({ title: 'A' })).orderBy({ id: 'asc' }).get()
+        expect(orWhereHas.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const whereDoesntHaveA = await DbUser.query().whereDoesntHave('posts', query => query.where({ title: 'A' })).get()
+        expect(whereDoesntHaveA.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const orWhereDoesntHaveA = await DbUser.query().whereKey('id', 1).orWhereDoesntHave('posts', query => query.where({ title: 'A' })).orderBy({ id: 'asc' }).get()
+        expect(orWhereDoesntHaveA.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const withCounts = await DbUser.query().withCount('posts').withExists('profile').orderBy({ id: 'asc' }).get()
+        expect(withCounts.all()[0]?.getAttribute('postsCount')).toBe(2)
+        expect(withCounts.all()[0]?.getAttribute('profileExists')).toBe(true)
+
+        const withAggregates = await DbUser.query()
+            .withSum('posts', 'id')
+            .withAvg('posts', 'id')
+            .withMin('posts', 'id')
+            .withMax('posts', 'id')
+            .whereKey('id', 1)
+            .firstOrFail()
+
+        expect(withAggregates.getAttribute('postsSumId')).toBe(3)
+        expect(withAggregates.getAttribute('postsAvgId')).toBe(1.5)
+        expect(withAggregates.getAttribute('postsMinId')).toBe(1)
+        expect(withAggregates.getAttribute('postsMaxId')).toBe(2)
     })
 
     it('throws firstOrFail when no records match', async () => {

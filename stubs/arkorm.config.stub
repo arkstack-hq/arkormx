@@ -1,0 +1,17 @@
+import { PrismaPg } from '@prisma/adapter-pg'
+import { PrismaClient } from '@prisma/client'
+import { defineConfig } from 'arkorm'
+
+export default defineConfig({
+    modelsDir: './src/models',
+    factoriesDir: './database/factories',
+    seedersDir: './database/seeders',
+    migrationsDir: './database/migrations',
+    prisma: () => {
+        return new PrismaClient({
+            adapter: new PrismaPg({
+                connectionString: process.env.DATABASE_URL,
+            }),
+        })
+    },
+})

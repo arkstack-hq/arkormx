@@ -1,8 +1,6 @@
 import { configureArkormRuntime, defineConfig, isDelegateLike } from './runtime-config'
 
-import type { PrismaDelegateLike } from '../types/core'
-
-type PrismaClientLike = Record<string, unknown>
+import type { PrismaClientLike, PrismaDelegateLike } from '../types/core'
 
 export type PrismaDelegateMap<TClient extends PrismaClientLike> = {
     [K in keyof TClient as TClient[K] extends PrismaDelegateLike ? K : never]:

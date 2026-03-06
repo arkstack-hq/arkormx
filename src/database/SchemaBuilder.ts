@@ -1,0 +1,93 @@
+import { SchemaOperation } from 'src/types/migrations'
+import { TableBuilder } from './TableBuilder'
+
+/**
+ * The SchemaBuilder class provides methods for defining the operations to be 
+ * performed in a migration, such as creating, altering, or dropping tables. 
+ *
+ * @author Legacy (3m1n3nc3)
+ * @since 0.1.0
+ */
+export class SchemaBuilder {
+    private readonly operations: SchemaOperation[] = []
+
+    /**
+     * Defines a new table to be created in the migration.
+     * 
+     * @param table     The name of the table to create.
+     * @param callback  A callback function to define the table's columns and structure.
+     * @returns         The current SchemaBuilder instance for chaining.
+     */
+    public createTable (table: string, callback: (table: TableBuilder) => void): this {
+        const builder = new TableBuilder()
+        callback(builder)
+        this.operations.push({
+            type: 'createTable',
+            table,
+            columns: builder.getColumns(),
+        })
+
+        return this
+    }
+
+    /**
+     * Defines alterations to an existing table in the migration.
+     * 
+     * @param table     The name of the table to alter.
+     * @param callback  A callback function to define the alterations to the table's columns and structure.
+     * @returns         The current SchemaBuilder instance for chaining.
+     */
+    public alterTable (table: string, callback: (table: TableBuilder) => void): this {
+        const builder = new TableBuilder()
+        callback(builder)
+        this.operations.push({
+            type: 'alterTable',
+            table,
+            addColumns: builder.getColumns(),
+            dropColumns: builder.getDropColumns(),
+        })
+
+        return this
+    }
+
+    /**
+     * Defines a table to be dropped in the migration.
+     * 
+     * @param table The name of the table to drop.
+     * @returns     The current SchemaBuilder instance for chaining.
+     */
+    public dropTable (table: string): this {
+        this.operations.push({
+            type: 'dropTable',
+            table,
+        })
+
+        return this
+    }
+
+    /**
+     * Returns a deep copy of the defined schema operations for the migration/
+     * 
+     * @returns An array of schema operations for the migration.
+     */
+    public getOperations (): SchemaOperation[] {
+        return this.operations.map((operation) => {
+            if (operation.type === 'createTable') {
+                return {
+                    ...operation,
+                    columns: operation.columns.map(column => ({ ...column })),
+                }
+            }
+
+            if (operation.type === 'alterTable') {
+                return {
+                    ...operation,
+                    addColumns: operation.addColumns.map(column => ({ ...column })),
+                    dropColumns: [...operation.dropColumns],
+                }
+            }
+
+            return { ...operation }
+        })
+    }
+}

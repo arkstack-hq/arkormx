@@ -9,6 +9,7 @@ import {
     MorphOneRelation,
     MorphToManyRelation
 } from './relationship'
+import type { ModelFactory } from './database/factories'
 import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, RelationshipModelStatic, Serializable, SoftDeleteConfig } from './types/core'
 import { ensureArkormConfigLoading, getRuntimePrismaClient, isDelegateLike } from './helpers/runtime-config'
 
@@ -47,6 +48,7 @@ type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void 
  * @since 0.1.0
  */
 export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, unknown> | string = Record<string, any>> {
+    protected static factoryClass?: new () => ModelFactory<any, any>
     protected static client: Record<string, unknown>
     protected static delegate: string
     protected static softDeletes = false
@@ -75,6 +77,24 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         client: Record<string, unknown>
     ): void {
         this.client = client
+    }
+
+    public static setFactory<TFactory extends ModelFactory<any, any>> (
+        factoryClass: new () => TFactory
+    ): void {
+        this.factoryClass = factoryClass as unknown as new () => ModelFactory<any, any>
+    }
+
+    public static factory<TFactory extends ModelFactory<any, any>> (count?: number): TFactory {
+        const factoryClass = this.factoryClass as (new () => TFactory) | undefined
+        if (!factoryClass)
+            throw new ArkormException(`Factory is not configured for model [${this.name}].`)
+
+        const factory = new factoryClass()
+        if (typeof count === 'number')
+            factory.count(count)
+
+        return factory
     }
 
     /**

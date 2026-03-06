@@ -22,6 +22,9 @@ import { LengthAwarePaginator, Paginator } from './Paginator'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
 import { ArkormException } from './Exceptions/ArkormException'
 
+type RelationResult = unknown[] | unknown | null
+type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<RelationResult>>>>
+
 /**
  * The QueryBuilder class provides a fluent interface for building and 
  * executing database queries.
@@ -36,6 +39,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     private includeTrashed = false
     private onlyTrashedRecords = false
     private randomOrderEnabled = false
+    private readonly relationFilters: Array<{
+        relation: string
+        callback?: (query: QueryBuilder<any, any>) => unknown
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<'
+        count: number
+        boolean: 'AND' | 'OR'
+    }> = []
+    private readonly relationAggregates: Array<{
+        type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max'
+        relation: string
+        column?: string
+    }> = []
 
     /**
      * Creates a new QueryBuilder instance.
@@ -447,6 +462,216 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
+     * Add a relationship count/existence constraint.
+     *
+     * @param relation
+     * @param operator
+     * @param count
+     * @param callback
+     * @returns
+     */
+    public has (
+        relation: string,
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+        count = 1,
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): this {
+        this.relationFilters.push({ relation, callback, operator, count, boolean: 'AND' })
+
+        return this
+    }
+
+    /**
+     * Add an OR relationship count/existence constraint.
+     *
+     * @param relation
+     * @param operator
+     * @param count
+     * @returns
+     */
+    public orHas (
+        relation: string,
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+        count = 1
+    ): this {
+        this.relationFilters.push({ relation, operator, count, boolean: 'OR' })
+
+        return this
+    }
+
+    /**
+     * Add a relationship does-not-have constraint.
+     *
+     * @param relation
+     * @param callback
+     * @returns
+     */
+    public doesntHave (
+        relation: string,
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): this {
+        return this.has(relation, '<', 1, callback)
+    }
+
+    /**
+     * Add an OR relationship does-not-have constraint.
+     *
+     * @param relation
+     * @returns
+     */
+    public orDoesntHave (relation: string): this {
+        return this.orHas(relation, '<', 1)
+    }
+
+    /**
+     * Add a constrained relationship has clause.
+     *
+     * @param relation
+     * @param callback
+     * @param operator
+     * @param count
+     * @returns
+     */
+    public whereHas (
+        relation: string,
+        callback?: (query: QueryBuilder<any, any>) => unknown,
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+        count = 1
+    ): this {
+        return this.has(relation, operator, count, callback)
+    }
+
+    /**
+     * Add an OR constrained relationship has clause.
+     *
+     * @param relation
+     * @param callback
+     * @param operator
+     * @param count
+     * @returns
+     */
+    public orWhereHas (
+        relation: string,
+        callback?: (query: QueryBuilder<any, any>) => unknown,
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+        count = 1
+    ): this {
+        this.relationFilters.push({ relation, callback, operator, count, boolean: 'OR' })
+
+        return this
+    }
+
+    /**
+     * Add a constrained relationship does-not-have clause.
+     *
+     * @param relation
+     * @param callback
+     * @returns
+     */
+    public whereDoesntHave (
+        relation: string,
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): this {
+        return this.whereHas(relation, callback, '<', 1)
+    }
+
+    /**
+     * Add an OR constrained relationship does-not-have clause.
+     *
+     * @param relation
+     * @param callback
+     * @returns
+     */
+    public orWhereDoesntHave (
+        relation: string,
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): this {
+        return this.orWhereHas(relation, callback, '<', 1)
+    }
+
+    /**
+     * Add relationship count aggregate attributes.
+     *
+     * @param relations
+     * @returns
+     */
+    public withCount (relations: string | string[]): this {
+        const names = Array.isArray(relations) ? relations : [relations]
+        names.forEach(relation => {
+            this.relationAggregates.push({ type: 'count', relation })
+        })
+
+        return this
+    }
+
+    /**
+     * Add relationship existence aggregate attributes.
+     *
+     * @param relations
+     * @returns
+     */
+    public withExists (relations: string | string[]): this {
+        const names = Array.isArray(relations) ? relations : [relations]
+        names.forEach(relation => {
+            this.relationAggregates.push({ type: 'exists', relation })
+        })
+
+        return this
+    }
+
+    /**
+     * Add relationship sum aggregate attribute.
+     *
+     * @param relation
+     * @param column
+     * @returns
+     */
+    public withSum (relation: string, column: string): this {
+        this.relationAggregates.push({ type: 'sum', relation, column })
+
+        return this
+    }
+
+    /**
+     * Add relationship average aggregate attribute.
+     *
+     * @param relation
+     * @param column
+     * @returns
+     */
+    public withAvg (relation: string, column: string): this {
+        this.relationAggregates.push({ type: 'avg', relation, column })
+
+        return this
+    }
+
+    /**
+     * Add relationship minimum aggregate attribute.
+     *
+     * @param relation
+     * @param column
+     * @returns
+     */
+    public withMin (relation: string, column: string): this {
+        this.relationAggregates.push({ type: 'min', relation, column })
+
+        return this
+    }
+
+    /**
+     * Add relationship maximum aggregate attribute.
+     *
+     * @param relation
+     * @param column
+     * @returns
+     */
+    public withMax (relation: string, column: string): this {
+        this.relationAggregates.push({ type: 'max', relation, column })
+
+        return this
+    }
+
+    /**
      * Includes soft-deleted records in the query results. 
      * This method is only applicable if the model has soft delete enabled.
      * 
@@ -662,18 +887,42 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async get (): Promise<ArkormCollection<TModel>> {
+        const relationCache: RelationResultCache = new WeakMap()
         const rows = await this.delegate.findMany(this.buildFindArgs())
         const normalizedRows = this.randomOrderEnabled
             ? this.shuffleRows(rows as unknown[])
             : rows
         const models = this.model.hydrateMany(normalizedRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
 
-        await Promise.all(models.map(async (model: TModel) => {
+        let filteredModels = models
+        if (this.hasRelationFilters()) {
+            if (this.hasOrRelationFilters() && this.args.where) {
+                const baseIds = new Set(models
+                    .map(model => this.getModelId(model))
+                    .filter((id): id is string | number => id != null)
+                )
+
+                const allRows = await this.delegate.findMany({
+                    ...(this.args as DelegateFindManyArgs<TDelegate>),
+                    where: this.buildSoftDeleteOnlyWhere(),
+                } as DelegateFindManyArgs<TDelegate>)
+                const allModels = this.model.hydrateMany(allRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
+
+                filteredModels = await this.filterModelsByRelationConstraints(allModels, relationCache, baseIds)
+            } else {
+                filteredModels = await this.filterModelsByRelationConstraints(models, relationCache)
+            }
+        }
+
+        if (this.hasRelationAggregates())
+            await this.applyRelationAggregates(filteredModels, relationCache)
+
+        await Promise.all(filteredModels.map(async (model: TModel) => {
             const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
             await loadable.load(this.eagerLoads)
         }))
 
-        return new ArkormCollection(models)
+        return new ArkormCollection(filteredModels)
     }
 
     /**
@@ -683,6 +932,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async first (): Promise<TModel | null> {
+        if (this.hasRelationFilters() || this.hasRelationAggregates()) {
+            const models = await this.get()
+
+            return models.all()[0] ?? null
+        }
+
         if (this.randomOrderEnabled) {
             const rows = await this.delegate.findMany(this.buildFindArgs())
             if (rows.length === 0)
@@ -880,6 +1135,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async count (): Promise<number> {
+        if (this.hasRelationFilters())
+            return (await this.get()).all().length
+
         return this.delegate.count({ where: this.buildWhere() })
     }
 
@@ -889,6 +1147,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async exists (): Promise<boolean> {
+        if (this.hasRelationFilters())
+            return (await this.count()) > 0
+
         const row = await this.delegate.findFirst(this.buildFindArgs())
 
         return row != null
@@ -1052,6 +1313,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             throw new ArkormException('Raw where clauses are not supported by the current adapter.')
 
         const rawWhere = delegate.applyRawWhere(undefined, sql, bindings)
+
         return this.orWhere(rawWhere)
     }
 
@@ -1069,6 +1331,17 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         perPage = 15,
         options: PaginationOptions = {}
     ): Promise<LengthAwarePaginator<TModel>> {
+        if (this.hasRelationFilters() || this.hasRelationAggregates()) {
+            const currentPage = Math.max(1, page)
+            const pageSize = Math.max(1, perPage)
+            const all = await this.get()
+            const rows = all.all()
+            const start = (currentPage - 1) * pageSize
+            const slice = new ArkormCollection(rows.slice(start, start + pageSize))
+
+            return new LengthAwarePaginator(slice, rows.length, pageSize, currentPage, options)
+        }
+
         const currentPage = Math.max(1, page)
         const pageSize = Math.max(1, perPage)
         const total = await this.count()
@@ -1092,6 +1365,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         page = 1,
         options: PaginationOptions = {}
     ): Promise<Paginator<TModel>> {
+        if (this.hasRelationFilters() || this.hasRelationAggregates()) {
+            const currentPage = Math.max(1, page)
+            const pageSize = Math.max(1, perPage)
+            const all = await this.get()
+            const rows = all.all()
+            const start = (currentPage - 1) * pageSize
+            const pageRows = rows.slice(start, start + pageSize)
+            const hasMorePages = start + pageSize < rows.length
+
+            return new Paginator(new ArkormCollection(pageRows), pageSize, currentPage, hasMorePages, options)
+        }
+
         const currentPage = Math.max(1, page)
         const pageSize = Math.max(1, perPage)
         const items = await this.clone()
@@ -1123,6 +1408,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         builder.includeTrashed = this.includeTrashed
         builder.onlyTrashedRecords = this.onlyTrashedRecords
         builder.randomOrderEnabled = this.randomOrderEnabled
+        this.relationFilters.forEach(filter => {
+            builder.relationFilters.push({ ...filter })
+        })
+        this.relationAggregates.forEach(aggregate => {
+            builder.relationAggregates.push({ ...aggregate })
+        })
         Object.entries(this.eagerLoads).forEach(([key, value]) => {
             builder.eagerLoads[key] = value
         })
@@ -1236,5 +1527,278 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         return shuffled
+    }
+
+    private hasRelationFilters (): boolean {
+        return this.relationFilters.length > 0
+    }
+
+    private hasOrRelationFilters (): boolean {
+        return this.relationFilters.some(filter => filter.boolean === 'OR')
+    }
+
+    private hasRelationAggregates (): boolean {
+        return this.relationAggregates.length > 0
+    }
+
+    private async filterModelsByRelationConstraints (
+        models: TModel[],
+        relationCache: RelationResultCache,
+        baseIds?: Set<string | number>
+    ): Promise<TModel[]> {
+        const evaluations = await Promise.all(models.map(async (model) => {
+            let result: boolean | null = null
+            if (baseIds)
+                result = baseIds.has(this.getModelId(model) as string | number)
+
+            for (const filter of this.relationFilters) {
+                const relatedCount = await this.resolveRelatedCount(model, filter.relation, relationCache, filter.callback)
+                const condition = this.compareCount(relatedCount, filter.operator, filter.count)
+
+                if (result == null)
+                    result = condition
+                else
+                    result = filter.boolean === 'AND'
+                        ? result && condition
+                        : result || condition
+            }
+
+            return { model, passes: result ?? true }
+        }))
+
+        return evaluations.filter(entry => entry.passes).map(entry => entry.model)
+    }
+
+    private getModelId (model: TModel): string | number | null {
+        const readable = model as unknown as {
+            getAttribute?: (key: string) => unknown
+        }
+        if (typeof readable.getAttribute !== 'function')
+            return null
+
+        const id = readable.getAttribute('id')
+        if (typeof id === 'number' || typeof id === 'string')
+            return id
+
+        return null
+    }
+
+    private buildSoftDeleteOnlyWhere (): DelegateWhere<TDelegate> | undefined {
+        const softDeleteConfig = this.model.getSoftDeleteConfig()
+        if (!softDeleteConfig.enabled)
+            return undefined
+
+        if (this.includeTrashed)
+            return undefined
+
+        const softDeleteClause = this.onlyTrashedRecords
+            ? { [softDeleteConfig.column]: { not: null } }
+            : { [softDeleteConfig.column]: null }
+
+        return softDeleteClause as DelegateWhere<TDelegate>
+    }
+
+    private async applyRelationAggregates (
+        models: TModel[],
+        relationCache?: RelationResultCache
+    ): Promise<void> {
+        const cache = relationCache ?? new WeakMap<object, Map<string, Map<unknown, Promise<RelationResult>>>>()
+        await Promise.all(models.map(async (model) => {
+            for (const aggregate of this.relationAggregates) {
+                const results = await this.resolveRelatedResults(model, aggregate.relation, cache)
+                const list = Array.isArray(results)
+                    ? results
+                    : results ? [results] : []
+
+                const attributeKey = this.buildAggregateAttributeKey(aggregate)
+                if (aggregate.type === 'count') {
+                    this.assignAggregate(model, attributeKey, list.length)
+                    continue
+                }
+
+                if (aggregate.type === 'exists') {
+                    this.assignAggregate(model, attributeKey, list.length > 0)
+                    continue
+                }
+
+                const values = list
+                    .map(item => (item as { getAttribute: (key: string) => unknown }).getAttribute(aggregate.column as string))
+                    .filter(value => value != null)
+
+                if (aggregate.type === 'sum') {
+                    const sum = values.reduce<number>((total, value) => {
+                        const numeric = typeof value === 'number' ? value : Number(value)
+
+                        return Number.isFinite(numeric) ? total + numeric : total
+                    }, 0)
+                    this.assignAggregate(model, attributeKey, sum)
+                    continue
+                }
+
+                if (aggregate.type === 'avg') {
+                    const numericValues = values
+                        .map(value => typeof value === 'number' ? value : Number(value))
+                        .filter(value => Number.isFinite(value))
+                    const avg = numericValues.length === 0
+                        ? null
+                        : numericValues.reduce((total, value) => total + value, 0) / numericValues.length
+                    this.assignAggregate(model, attributeKey, avg)
+                    continue
+                }
+
+                if (aggregate.type === 'min') {
+                    const min = values.length === 0
+                        ? null
+                        : values.reduce((left, right) =>
+                            (right as number | string | Date) < (left as number | string | Date) ? right : left
+                        )
+                    this.assignAggregate(model, attributeKey, min)
+                    continue
+                }
+
+                const max = values.length === 0
+                    ? null
+                    : values.reduce((left, right) =>
+                        (right as number | string | Date) > (left as number | string | Date) ? right : left
+                    )
+                this.assignAggregate(model, attributeKey, max)
+            }
+        }))
+    }
+
+    private async resolveRelatedCount (
+        model: TModel,
+        relation: string,
+        relationCache: RelationResultCache,
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): Promise<number> {
+        const results = await this.resolveRelatedResults(model, relation, relationCache, callback)
+
+        if (Array.isArray(results))
+            return results.length
+
+        return results ? 1 : 0
+    }
+
+    private async resolveRelatedResults (
+        model: TModel,
+        relation: string,
+        relationCache: RelationResultCache,
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): Promise<unknown[] | unknown | null> {
+        const modelCacheKey = model as unknown as object
+        const callbackCacheKey = callback ?? '__none__'
+
+        let relationMap = relationCache.get(modelCacheKey)
+        if (!relationMap) {
+            relationMap = new Map()
+            relationCache.set(modelCacheKey, relationMap)
+        }
+
+        let callbackMap = relationMap.get(relation)
+        if (!callbackMap) {
+            callbackMap = new Map()
+            relationMap.set(relation, callbackMap)
+        }
+
+        const cached = callbackMap.get(callbackCacheKey)
+        if (cached)
+            return await cached
+
+        const resolver = (async () => {
+            const relationMethod = (model as Record<string, unknown>)[relation]
+            if (typeof relationMethod !== 'function')
+                throw new ArkormException(`Relation [${relation}] is not defined on the model.`)
+
+            const relationInstance = relationMethod.call(model) as {
+                constrain?: (constraint: (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void) => unknown
+                get?: () => Promise<unknown>
+                getResults?: () => Promise<unknown>
+            }
+
+            if (callback && typeof relationInstance.constrain === 'function') {
+                relationInstance.constrain((query: QueryBuilder<any, any>) => {
+                    const constrained = callback(query)
+
+                    return (constrained as QueryBuilder<any, any> | void) ?? query
+                })
+            }
+
+            if (typeof relationInstance.get === 'function') {
+                const results = await relationInstance.get()
+
+                if (results instanceof ArkormCollection)
+                    return results.all()
+
+                return results as unknown | null
+            }
+
+            if (typeof relationInstance.getResults === 'function') {
+                const results = await relationInstance.getResults()
+
+                if (results instanceof ArkormCollection)
+                    return results.all()
+
+                return results as unknown | null
+            }
+
+            throw new ArkormException(`Relation [${relation}] does not support result resolution.`)
+        })()
+
+        callbackMap.set(callbackCacheKey, resolver)
+
+        return await resolver
+    }
+
+    private compareCount (
+        left: number,
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<',
+        right: number
+    ): boolean {
+        if (operator === '>=')
+            return left >= right
+        if (operator === '>')
+            return left > right
+        if (operator === '=')
+            return left === right
+        if (operator === '!=')
+            return left !== right
+        if (operator === '<=')
+            return left <= right
+
+        return left < right
+    }
+
+    private buildAggregateAttributeKey (aggregate: {
+        type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max'
+        relation: string
+        column?: string
+    }): string {
+        const relationName = aggregate.relation
+        if (aggregate.type === 'count')
+            return `${relationName}Count`
+        if (aggregate.type === 'exists')
+            return `${relationName}Exists`
+
+        const columnName = aggregate.column
+            ? `${aggregate.column.charAt(0).toUpperCase()}${aggregate.column.slice(1)}`
+            : ''
+        const aggregateType = `${aggregate.type.charAt(0).toUpperCase()}${aggregate.type.slice(1)}`
+
+        return `${relationName}${aggregateType}${columnName}`
+    }
+
+    private assignAggregate (model: TModel, key: string, value: unknown): void {
+        const assignable = model as unknown as {
+            setAttribute?: (key: string, value: unknown) => unknown
+        }
+
+        if (typeof assignable.setAttribute === 'function') {
+            assignable.setAttribute(key, value)
+
+            return
+        }
+
+        ; (model as Record<string, unknown>)[key] = value
     }
 }

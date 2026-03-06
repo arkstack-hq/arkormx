@@ -1,23 +1,24 @@
 import type {
+    ArkormConfig,
+    ClientResolver,
+    GetUserConfig,
     PaginationURLDriverFactory,
+    PrismaClientLike,
     PrismaDelegateLike
 } from '../types/core'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import path from 'path'
-import { pathToFileURL } from 'url'
+import { fileURLToPath, pathToFileURL } from 'url'
 
-type PrismaClientLike = Record<string, unknown>
-
-type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
-
-export interface ArkormConfig {
-    prisma: ClientResolver
-    pagination?: {
-        urlDriver?: PaginationURLDriverFactory
-    }
+const baseConfig: Partial<ArkormConfig> = {
+    stubsDir: fileURLToPath(new URL('../../stubs', import.meta.url)),
+    seedersDir: path.join(process.cwd(), 'database', 'seeders'),
+    modelsDir: path.join(process.cwd(), 'src', 'models'),
+    migrationsDir: path.join(process.cwd(), 'database', 'migrations'),
+    factoriesDir: path.join(process.cwd(), 'database', 'factories'),
 }
-
+const userConfig: Partial<ArkormConfig> = { ...baseConfig }
 let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
@@ -29,8 +30,21 @@ let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
  * @param config The ArkORM configuration object.
  * @returns The same configuration object.
  */
-export function defineConfig (config: ArkormConfig): ArkormConfig {
+export const defineConfig = (config: ArkormConfig): ArkormConfig => {
     return config
+}
+
+/**
+ * Get the user-provided ArkORM configuration. 
+ * 
+ * @returns The user-provided ArkORM configuration object.  
+ */
+export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?: K) => {
+    if (key) {
+        return userConfig[key]
+    }
+
+    return userConfig
 }
 
 /**
@@ -40,10 +54,11 @@ export function defineConfig (config: ArkormConfig): ArkormConfig {
  * @param prisma 
  * @param mapping 
  */
-export function configureArkormRuntime (
+export const configureArkormRuntime = (
     prisma: ClientResolver,
-    options: Pick<ArkormConfig, 'pagination'> = {}
-): void {
+    options: Omit<ArkormConfig, 'prisma'> = {}
+): void => {
+    Object.assign(userConfig, { prisma }, options)
     runtimeClientResolver = prisma
     runtimePaginationURLDriverFactory = options.pagination?.urlDriver
 }
@@ -52,7 +67,8 @@ export function configureArkormRuntime (
  * Reset the ArkORM runtime configuration. 
  * This is primarily intended for testing purposes.
  */
-export function resetArkormRuntimeForTests (): void {
+export const resetArkormRuntimeForTests = (): void => {
+    Object.assign(userConfig, { ...baseConfig })
     runtimeConfigLoaded = false
     runtimeConfigLoadingPromise = undefined
     runtimeClientResolver = undefined
@@ -66,7 +82,7 @@ export function resetArkormRuntimeForTests (): void {
  * @param resolver 
  * @returns 
  */
-function resolveClient (resolver: ClientResolver | undefined): PrismaClientLike | undefined {
+const resolveClient = (resolver: ClientResolver | undefined): PrismaClientLike | undefined => {
     if (!resolver)
         return undefined
 
@@ -88,14 +104,21 @@ function resolveClient (resolver: ClientResolver | undefined): PrismaClientLike 
  * @param imported 
  * @returns 
  */
-function resolveAndApplyConfig (imported: unknown): void {
+const resolveAndApplyConfig = (imported: unknown): void => {
     const candidate = imported as { default?: unknown }
     const config = (candidate?.default ?? imported) as Partial<ArkormConfig>
     if (!config || typeof config !== 'object' || !config.prisma)
         return
 
+    Object.assign(userConfig, config)
+
     configureArkormRuntime(config.prisma, {
         pagination: config.pagination,
+        stubsDir: config.stubsDir,
+        seedersDir: config.seedersDir,
+        modelsDir: config.modelsDir,
+        migrationsDir: config.migrationsDir,
+        factoriesDir: config.factoriesDir,
     })
     runtimeConfigLoaded = true
 }
@@ -105,15 +128,15 @@ function resolveAndApplyConfig (imported: unknown): void {
  * A cache-busting query parameter is appended to ensure the latest version is loaded.
  * 
  * @param configPath 
- * @returns 
+ * @returns A promise that resolves to the imported configuration module.   
  */
-function importConfigFile (configPath: string): Promise<unknown> {
+const importConfigFile = (configPath: string): Promise<unknown> => {
     const configUrl = `${pathToFileURL(configPath).href}?arkorm_runtime=${Date.now()}`
 
     return import(configUrl)
 }
 
-function loadRuntimeConfigSync (): boolean {
+const loadRuntimeConfigSync = (): boolean => {
     const require = createRequire(import.meta.url)
     const syncConfigPaths = [
         path.join(process.cwd(), 'arkorm.config.cjs'),
@@ -141,7 +164,7 @@ function loadRuntimeConfigSync (): boolean {
  * current working directory.
  * @returns 
  */
-export async function loadArkormConfig (): Promise<void> {
+export const loadArkormConfig = async (): Promise<void> => {
     if (runtimeConfigLoaded)
         return
 
@@ -184,7 +207,7 @@ export async function loadArkormConfig (): Promise<void> {
  * 
  * @returns 
  */
-export function ensureArkormConfigLoading (): void {
+export const ensureArkormConfigLoading = (): void => {
     if (runtimeConfigLoaded)
         return
 
@@ -199,7 +222,7 @@ export function ensureArkormConfigLoading (): void {
  * 
  * @returns 
  */
-export function getRuntimePrismaClient (): PrismaClientLike | undefined {
+export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
     if (!runtimeConfigLoaded)
         loadRuntimeConfigSync()
 
@@ -211,7 +234,7 @@ export function getRuntimePrismaClient (): PrismaClientLike | undefined {
  *
  * @returns
  */
-export function getRuntimePaginationURLDriverFactory (): PaginationURLDriverFactory | undefined {
+export const getRuntimePaginationURLDriverFactory = (): PaginationURLDriverFactory | undefined => {
     if (!runtimeConfigLoaded)
         loadRuntimeConfigSync()
 
@@ -223,9 +246,9 @@ export function getRuntimePaginationURLDriverFactory (): PaginationURLDriverFact
  * by verifying the presence of common delegate methods.
  * 
  * @param value The value to check.
- * @returns 
+ * @returns True if the value is a Prisma delegate-like object, false otherwise.    
  */
-export function isDelegateLike (value: unknown): value is PrismaDelegateLike {
+export const isDelegateLike = (value: unknown): value is PrismaDelegateLike => {
     if (!value || typeof value !== 'object')
         return false
 

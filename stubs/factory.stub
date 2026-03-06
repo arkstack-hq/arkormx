@@ -1,0 +1,10 @@
+import { ModelFactory } from 'arkorm'
+import { {{ModelName}} } from '{{ModelImportPath}}'
+
+export class {{FactoryName}} extends ModelFactory<{{ModelName}}> {
+    protected model = {{ModelName}}
+
+    protected definition (_sequence: number) {
+        return {}
+    }
+}
