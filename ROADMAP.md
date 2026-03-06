@@ -84,23 +84,23 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 
 ### Phase 3 — Read helpers and utility shortcuts
 
-- [ ] `findOr(id, callback)`
-- [ ] `value(column)` (first row column value)
-- [ ] `valueOrFail(column)`
-- [ ] `pluck(column, key?)`
-- [ ] `inRandomOrder()`
-- [ ] `reorder(column?, direction?)`
-- [ ] `when(value, callback, default?)` / `unless(value, callback, default?)`
-- [ ] `tap(callback)` / `pipe(callback)`
+- [x] `findOr(id, callback)`
+- [x] `value(column)` (first row column value)
+- [x] `valueOrFail(column)`
+- [x] `pluck(column, key?)`
+- [x] `inRandomOrder()`
+- [x] `reorder(column?, direction?)`
+- [x] `when(value, callback, default?)` / `unless(value, callback, default?)`
+- [x] `tap(callback)` / `pipe(callback)`
 
 ### Phase 4 — Aggregates and advanced querying
 
-- [ ] `min(column)`
-- [ ] `max(column)`
-- [ ] `sum(column)`
-- [ ] `avg(column)`
-- [ ] `whereRaw(...)` / `orWhereRaw(...)` (adapter-gated)
-- [ ] `existsOr(callback)` / `doesntExistOr(callback)`
+- [x] `min(column)`
+- [x] `max(column)`
+- [x] `sum(column)`
+- [x] `avg(column)`
+- [x] `whereRaw(...)` / `orWhereRaw(...)` (adapter-gated)
+- [x] `existsOr(callback)` / `doesntExistOr(callback)`
 
 ### Phase 5 — Relationship existence/query parity
 

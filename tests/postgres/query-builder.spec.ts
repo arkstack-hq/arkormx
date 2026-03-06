@@ -119,6 +119,60 @@ describe('PostgreSQL QueryBuilder', () => {
         expect(whereYear.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
     })
 
+    it('supports phase 3 read helpers and utility shortcuts', async () => {
+        const foundOr = await DbUser.query().findOr(1, () => ({ fallback: true }))
+        expect((foundOr as DbUser).getAttribute('id')).toBe(1)
+
+        const missingOr = await DbUser.query().findOr(99999, () => ({ fallback: true }))
+        expect(missingOr).toEqual({ fallback: true })
+
+        await expect(DbUser.query().value('email')).resolves.toBe('jane@example.com')
+        await expect(DbUser.query().whereKey('id', 99999).value('email')).resolves.toBeNull()
+        await expect(DbUser.query().valueOrFail('email')).resolves.toBe('jane@example.com')
+        await expect(DbUser.query().whereKey('id', 99999).valueOrFail('email')).rejects.toThrow('Record not found.')
+
+        const plucked = await DbUser.query().orderBy({ id: 'asc' }).pluck('email')
+        expect(plucked).toBeInstanceOf(ArkormCollection)
+        expect(plucked.all()).toEqual(['jane@example.com', 'john@example.com'])
+
+        const pluckedByKey = await DbUser.query().pluck('email', 'id')
+        expect(pluckedByKey.all().length).toBe(2)
+
+        const randomUsers = await DbUser.query().inRandomOrder().get()
+        expect(randomUsers.all().length).toBe(2)
+
+        const reordered = await DbUser.query().orderBy({ id: 'desc' }).reorder('id', 'asc').get()
+        expect(reordered.all()[0]?.getAttribute('id')).toBe(1)
+
+        const whenResult = DbUser.query().when(true, query => query.whereKey('id', 1)).get()
+        await expect(whenResult).resolves.toBeInstanceOf(ArkormCollection)
+
+        const unlessResult = DbUser.query().unless(false, query => query.whereKey('id', 1)).get()
+        await expect(unlessResult).resolves.toBeInstanceOf(ArkormCollection)
+
+        const tapped = DbUser.query().tap(query => query.whereKey('id', 1))
+        await expect(tapped.get()).resolves.toBeInstanceOf(ArkormCollection)
+
+        const pipedCount = await DbUser.query().pipe(query => query.count())
+        expect(pipedCount).toBe(2)
+    })
+
+    it('supports phase 4 aggregate and advanced query helpers', async () => {
+        await expect(DbUser.query().min('id')).resolves.toBe(1)
+        await expect(DbUser.query().max('id')).resolves.toBe(2)
+        await expect(DbUser.query().sum('id')).resolves.toBe(3)
+        await expect(DbUser.query().avg('id')).resolves.toBe(1.5)
+
+        await expect(DbUser.query().whereKey('id', 1).existsOr(() => 'missing')).resolves.toBe(true)
+        await expect(DbUser.query().whereKey('id', 99999).existsOr(() => 'missing')).resolves.toBe('missing')
+
+        await expect(DbUser.query().whereKey('id', 99999).doesntExistOr(() => 'exists')).resolves.toBe(true)
+        await expect(DbUser.query().whereKey('id', 1).doesntExistOr(() => 'exists')).resolves.toBe('exists')
+
+        expect(() => DbUser.query().whereRaw('id = ?', [1])).toThrow('Raw where clauses are not supported by the current adapter.')
+        expect(() => DbUser.query().orWhereRaw('id = ?', [1])).toThrow('Raw where clauses are not supported by the current adapter.')
+    })
+
     it('throws firstOrFail when no records match', async () => {
         await expect(DbUser.query().whereKey('id', 99999).firstOrFail()).rejects.toThrow('Record not found.')
     })

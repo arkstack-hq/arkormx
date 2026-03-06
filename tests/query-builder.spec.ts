@@ -59,11 +59,11 @@ describe('QueryBuilder', () => {
     it('supports phase 2 filtering parity helpers', async () => {
         const orWhere = await User.query()
             .whereKey('id', 999)
-            .orWhere({ id: 2 } as Record<string, unknown>)
+            .orWhere({ id: 2 })
             .get()
         expect(orWhere.all().map(user => user.getAttribute('id'))).toEqual([2])
 
-        const whereNot = await User.query().whereNot({ isActive: 1 } as Record<string, unknown>).get()
+        const whereNot = await User.query().whereNot({ isActive: 1 }).get()
         expect(whereNot.all().map(user => user.getAttribute('id'))).toEqual([2])
 
         const orWhereNot = await User.query()
@@ -108,6 +108,60 @@ describe('QueryBuilder', () => {
 
         const whereYear = await User.query().whereYear('createdAt', 2026).get()
         expect(whereYear.all().length).toBe(2)
+    })
+
+    it('supports phase 3 read helpers and utility shortcuts', async () => {
+        const foundOr = await User.query().findOr(1, () => ({ fallback: true }))
+        expect((foundOr as User).getAttribute('id')).toBe(1)
+
+        const missingOr = await User.query().findOr(999, () => ({ fallback: true }))
+        expect(missingOr).toEqual({ fallback: true })
+
+        await expect(User.query().value('email')).resolves.toBe('jane@example.com')
+        await expect(User.query().whereKey('id', 999).value('email')).resolves.toBeNull()
+        await expect(User.query().valueOrFail('email')).resolves.toBe('jane@example.com')
+        await expect(User.query().whereKey('id', 999).valueOrFail('email')).rejects.toThrow('Record not found.')
+
+        const plucked = await User.query().orderBy({ id: 'asc' }).pluck('email')
+        expect(plucked).toBeInstanceOf(ArkormCollection)
+        expect(plucked.all()).toEqual(['jane@example.com', 'john@example.com'])
+
+        const pluckedByKey = await User.query().pluck('email', 'id')
+        expect(pluckedByKey.all().length).toBe(2)
+
+        const randomUsers = await User.query().inRandomOrder().get()
+        expect(randomUsers.all().length).toBe(2)
+
+        const reordered = await User.query().orderBy({ id: 'desc' }).reorder('id', 'asc').get()
+        expect(reordered.all()[0]?.getAttribute('id')).toBe(1)
+
+        const whenResult = User.query().when(true, query => query.whereKey('id', 1)).get()
+        await expect(whenResult).resolves.toBeInstanceOf(ArkormCollection)
+
+        const unlessResult = User.query().unless(false, query => query.whereKey('id', 1)).get()
+        await expect(unlessResult).resolves.toBeInstanceOf(ArkormCollection)
+
+        const tapped = User.query().tap(query => query.whereKey('id', 1))
+        await expect(tapped.get()).resolves.toBeInstanceOf(ArkormCollection)
+
+        const pipedCount = await User.query().pipe(query => query.count())
+        expect(pipedCount).toBe(2)
+    })
+
+    it('supports phase 4 aggregate and advanced query helpers', async () => {
+        await expect(User.query().min('id')).resolves.toBe(1)
+        await expect(User.query().max('id')).resolves.toBe(2)
+        await expect(User.query().sum('id')).resolves.toBe(3)
+        await expect(User.query().avg('id')).resolves.toBe(1.5)
+
+        await expect(User.query().whereKey('id', 1).existsOr(() => 'missing')).resolves.toBe(true)
+        await expect(User.query().whereKey('id', 999).existsOr(() => 'missing')).resolves.toBe('missing')
+
+        await expect(User.query().whereKey('id', 999).doesntExistOr(() => 'exists')).resolves.toBe(true)
+        await expect(User.query().whereKey('id', 1).doesntExistOr(() => 'exists')).resolves.toBe('exists')
+
+        expect(() => User.query().whereRaw('id = ?', [1])).toThrow('Raw where clauses are not supported by the current adapter.')
+        expect(() => User.query().orWhereRaw('id = ?', [1])).toThrow('Raw where clauses are not supported by the current adapter.')
     })
 
     it('supports key-based find and local scopes', async () => {

@@ -49,6 +49,51 @@ export interface PrismaFindManyArgsLike {
     take?: number
 }
 
+export type PrismaLikeSortOrder = 'asc' | 'desc'
+
+export interface PrismaLikeScalarFilter {
+    equals?: unknown
+    not?: unknown | PrismaLikeScalarFilter
+    in?: unknown[]
+    notIn?: unknown[]
+    lt?: unknown
+    lte?: unknown
+    gt?: unknown
+    gte?: unknown
+    contains?: string
+    startsWith?: string
+    endsWith?: string
+}
+
+export interface PrismaLikeWhereInput {
+    AND?: PrismaLikeWhereInput[]
+    OR?: PrismaLikeWhereInput[]
+    NOT?: PrismaLikeWhereInput | PrismaLikeWhereInput[]
+    [key: string]: unknown
+}
+
+export type PrismaLikeOrderBy =
+    | Record<string, PrismaLikeSortOrder>
+    | Record<string, PrismaLikeSortOrder>[]
+
+export interface PrismaLikeSelect {
+    [key: string]: boolean | {
+        select?: PrismaLikeSelect
+        include?: PrismaLikeInclude
+    }
+}
+
+export interface PrismaLikeInclude {
+    [key: string]: boolean | {
+        where?: PrismaLikeWhereInput
+        orderBy?: PrismaLikeOrderBy
+        select?: PrismaLikeSelect
+        include?: PrismaLikeInclude
+        skip?: number
+        take?: number
+    }
+}
+
 export type EagerLoadConstraint = (query: unknown) => unknown
 
 export type EagerLoadMap = Record<string, EagerLoadConstraint | undefined>
@@ -79,23 +124,23 @@ export type DelegateFindManyArgs<TDelegate extends PrismaDelegateLike> =
 
 export type DelegateWhere<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { where?: infer TWhere }
-    ? FallbackIfUnknownOrNever<TWhere, Record<string, unknown>>
-    : Record<string, unknown>
+    ? FallbackIfUnknownOrNever<TWhere, PrismaLikeWhereInput>
+    : PrismaLikeWhereInput
 
 export type DelegateInclude<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { include?: infer TInclude }
-    ? FallbackIfUnknownOrNever<TInclude, Record<string, unknown>>
-    : Record<string, unknown>
+    ? FallbackIfUnknownOrNever<TInclude, PrismaLikeInclude>
+    : PrismaLikeInclude
 
 export type DelegateOrderBy<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { orderBy?: infer TOrderBy }
-    ? FallbackIfUnknownOrNever<TOrderBy, Record<string, unknown> | Record<string, unknown>[]>
-    : Record<string, unknown> | Record<string, unknown>[]
+    ? FallbackIfUnknownOrNever<TOrderBy, PrismaLikeOrderBy>
+    : PrismaLikeOrderBy
 
 export type DelegateSelect<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { select?: infer TSelect }
-    ? FallbackIfUnknownOrNever<TSelect, Record<string, unknown>>
-    : Record<string, unknown>
+    ? FallbackIfUnknownOrNever<TSelect, PrismaLikeSelect>
+    : PrismaLikeSelect
 
 export type DelegateCreateData<TDelegate extends PrismaDelegateLike> =
     Parameters<TDelegate['create']>[0] extends { data: infer TData }

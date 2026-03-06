@@ -35,6 +35,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     private readonly eagerLoads: EagerLoadMap = {}
     private includeTrashed = false
     private onlyTrashedRecords = false
+    private randomOrderEnabled = false
 
     /**
      * Creates a new QueryBuilder instance.
@@ -353,9 +354,38 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public orderBy (orderBy: DelegateOrderBy<TDelegate>): this {
+        this.randomOrderEnabled = false
         this.args.orderBy = orderBy
 
         return this
+    }
+
+    /**
+     * Puts the query results in random order.
+     *
+     * @returns
+     */
+    public inRandomOrder (): this {
+        this.randomOrderEnabled = true
+
+        return this
+    }
+
+    /**
+     * Removes existing order clauses and optionally applies a new one.
+     *
+     * @param column
+     * @param direction
+     * @returns
+     */
+    public reorder (column?: string, direction: 'asc' | 'desc' = 'asc'): this {
+        this.args.orderBy = undefined
+        this.randomOrderEnabled = false
+
+        if (!column)
+            return this
+
+        return this.orderBy({ [column]: direction } as DelegateOrderBy<TDelegate>)
     }
 
     /**
@@ -482,6 +512,80 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
+     * Apply the callback when value is truthy.
+     *
+     * @param value
+     * @param callback
+     * @param defaultCallback
+     * @returns
+     */
+    public when<TValue, TResult = this> (
+        value: TValue | (() => TValue),
+        callback: (query: this, value: TValue) => TResult,
+        defaultCallback?: (query: this, value: TValue) => TResult
+    ): this | TResult {
+        const resolved = typeof value === 'function'
+            ? (value as () => TValue)()
+            : value
+
+        if (resolved)
+            return callback(this, resolved)
+
+        if (defaultCallback)
+            return defaultCallback(this, resolved)
+
+        return this
+    }
+
+    /**
+     * Apply the callback when value is falsy.
+     *
+     * @param value
+     * @param callback
+     * @param defaultCallback
+     * @returns
+     */
+    public unless<TValue, TResult = this> (
+        value: TValue | (() => TValue),
+        callback: (query: this, value: TValue) => TResult,
+        defaultCallback?: (query: this, value: TValue) => TResult
+    ): this | TResult {
+        const resolved = typeof value === 'function'
+            ? (value as () => TValue)()
+            : value
+
+        if (!resolved)
+            return callback(this, resolved)
+
+        if (defaultCallback)
+            return defaultCallback(this, resolved)
+
+        return this
+    }
+
+    /**
+     * Pass the query builder into a callback and return this.
+     *
+     * @param callback
+     * @returns
+     */
+    public tap (callback: (query: this) => unknown): this {
+        callback(this)
+
+        return this
+    }
+
+    /**
+     * Pass the query builder into a callback and return callback result.
+     *
+     * @param callback
+     * @returns
+     */
+    public pipe<TResult> (callback: (query: this) => TResult): TResult {
+        return callback(this)
+    }
+
+    /**
      * Adds a select clause to the query. This will overwrite any existing select clause.
      * 
      * @param select 
@@ -559,7 +663,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public async get (): Promise<ArkormCollection<TModel>> {
         const rows = await this.delegate.findMany(this.buildFindArgs())
-        const models = this.model.hydrateMany(rows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
+        const normalizedRows = this.randomOrderEnabled
+            ? this.shuffleRows(rows as unknown[])
+            : rows
+        const models = this.model.hydrateMany(normalizedRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
 
         await Promise.all(models.map(async (model: TModel) => {
             const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
@@ -576,6 +683,23 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async first (): Promise<TModel | null> {
+        if (this.randomOrderEnabled) {
+            const rows = await this.delegate.findMany(this.buildFindArgs())
+            if (rows.length === 0)
+                return null
+
+            const shuffledRows = this.shuffleRows(rows as unknown[])
+            const row = shuffledRows[0]
+            if (!row)
+                return null
+
+            const model = this.model.hydrate(row as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+            const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
+            await loadable.load(this.eagerLoads)
+
+            return model
+        }
+
         const row = await this.delegate.findFirst(this.buildFindArgs())
         if (!row)
             return null
@@ -616,6 +740,91 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async find (value: string | number, key?: string): Promise<TModel | null>
     public async find (value: unknown, key = 'id'): Promise<TModel | null> {
         return this.where({ [key]: value } as DelegateWhere<TDelegate>).first()
+    }
+
+    /**
+     * Finds a record by id/key and returns callback result when not found.
+     *
+     * @param value
+     * @param callback
+     * @returns
+     */
+    public async findOr<TResult> (value: string | number, callback: () => TResult | Promise<TResult>): Promise<TModel | TResult>
+    public async findOr<TResult> (
+        value: string | number,
+        key: string,
+        callback: () => TResult | Promise<TResult>
+    ): Promise<TModel | TResult>
+    public async findOr<TResult> (
+        value: string | number,
+        keyOrCallback: string | (() => TResult | Promise<TResult>),
+        maybeCallback?: () => TResult | Promise<TResult>
+    ): Promise<TModel | TResult> {
+        const key = typeof keyOrCallback === 'string' ? keyOrCallback : 'id'
+        const callback = typeof keyOrCallback === 'function' ? keyOrCallback : maybeCallback
+        if (!callback)
+            throw new ArkormException('findOr requires a fallback callback.')
+
+        const found = await this.find(value, key)
+        if (found)
+            return found
+
+        return callback()
+    }
+
+    /**
+     * Returns a single column value from the first record.
+     *
+     * @param column
+     * @returns
+     */
+    public async value<TKey extends keyof ModelAttributes<TModel> & string> (
+        column: TKey
+    ): Promise<ModelAttributes<TModel>[TKey] | null> {
+        const row = await this.delegate.findFirst(this.buildFindArgs()) as Record<string, unknown> | null
+        if (!row)
+            return null
+
+        return (row[column] ?? null) as ModelAttributes<TModel>[TKey] | null
+    }
+
+    /**
+     * Returns a single column value from the first record or throws.
+     *
+     * @param column
+     * @returns
+     */
+    public async valueOrFail<TKey extends keyof ModelAttributes<TModel> & string> (
+        column: TKey
+    ): Promise<ModelAttributes<TModel>[TKey]> {
+        const result = await this.value(column)
+        if (result == null)
+            throw new ModelNotFoundException('Record not found.')
+
+        return result
+    }
+
+    /**
+     * Returns a collection with values for the given column.
+     *
+     * @param column
+     * @param key
+     * @returns
+     */
+    public async pluck<TKey extends keyof ModelAttributes<TModel> & string> (
+        column: TKey,
+        key?: keyof ModelAttributes<TModel> & string
+    ): Promise<ArkormCollection<ModelAttributes<TModel>[TKey]>> {
+        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+
+        if (!key)
+            return new ArkormCollection(rows.map(row => row[column] as ModelAttributes<TModel>[TKey]))
+
+        const keyedValues = rows
+            .sort((leftRow, rightRow) => String(leftRow[key]).localeCompare(String(rightRow[key])))
+            .map(row => row[column] as ModelAttributes<TModel>[TKey])
+
+        return new ArkormCollection(keyedValues)
     }
 
     /**
@@ -695,6 +904,158 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
+     * Execute callback when no records exist.
+     *
+     * @param callback
+     * @returns
+     */
+    public async existsOr<TResult> (callback: () => TResult | Promise<TResult>): Promise<boolean | TResult> {
+        if (await this.exists())
+            return true
+
+        return callback()
+    }
+
+    /**
+     * Execute callback when records exist.
+     *
+     * @param callback
+     * @returns
+     */
+    public async doesntExistOr<TResult> (callback: () => TResult | Promise<TResult>): Promise<boolean | TResult> {
+        if (await this.doesntExist())
+            return true
+
+        return callback()
+    }
+
+    /**
+     * Returns minimum value for a column.
+     *
+     * @param column
+     * @returns
+     */
+    public async min<TKey extends keyof ModelAttributes<TModel> & string> (
+        column: TKey
+    ): Promise<ModelAttributes<TModel>[TKey] | null> {
+        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        if (rows.length === 0)
+            return null
+
+        const values = rows.map(row => row[column]).filter(value => value != null)
+        if (values.length === 0)
+            return null
+
+        return values.reduce((minValue, currentValue) =>
+            (currentValue as number | string | Date) < (minValue as number | string | Date)
+                ? currentValue
+                : minValue
+        ) as ModelAttributes<TModel>[TKey]
+    }
+
+    /**
+     * Returns maximum value for a column.
+     *
+     * @param column
+     * @returns
+     */
+    public async max<TKey extends keyof ModelAttributes<TModel> & string> (
+        column: TKey
+    ): Promise<ModelAttributes<TModel>[TKey] | null> {
+        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        if (rows.length === 0)
+            return null
+
+        const values = rows.map(row => row[column]).filter(value => value != null)
+        if (values.length === 0)
+            return null
+
+        return values.reduce((maxValue, currentValue) =>
+            (currentValue as number | string | Date) > (maxValue as number | string | Date)
+                ? currentValue
+                : maxValue
+        ) as ModelAttributes<TModel>[TKey]
+    }
+
+    /**
+     * Returns sum of numeric values for a column.
+     *
+     * @param column
+     * @returns
+     */
+    public async sum<TKey extends keyof ModelAttributes<TModel> & string> (column: TKey): Promise<number> {
+        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+
+        return rows.reduce((total, row) => {
+            const value = row[column]
+            const numeric = typeof value === 'number' ? value : Number(value)
+
+            return Number.isFinite(numeric) ? total + numeric : total
+        }, 0)
+    }
+
+    /**
+     * Returns average of numeric values for a column.
+     *
+     * @param column
+     * @returns
+     */
+    public async avg<TKey extends keyof ModelAttributes<TModel> & string> (column: TKey): Promise<number | null> {
+        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        const values = rows
+            .map(row => {
+                const value = row[column]
+
+                return typeof value === 'number' ? value : Number(value)
+            })
+            .filter(value => Number.isFinite(value))
+
+        if (values.length === 0)
+            return null
+
+        return values.reduce((total, value) => total + value, 0) / values.length
+    }
+
+    /**
+     * Adds a raw where clause when supported by the adapter.
+     *
+     * @param sql
+     * @param bindings
+     * @returns
+     */
+    public whereRaw (sql: string, bindings: unknown[] = []): this {
+        const delegate = this.delegate as unknown as {
+            applyRawWhere?: (where: DelegateWhere<TDelegate> | undefined, sql: string, bindings: unknown[]) => DelegateWhere<TDelegate>
+        }
+
+        if (typeof delegate.applyRawWhere !== 'function')
+            throw new ArkormException('Raw where clauses are not supported by the current adapter.')
+
+        this.args.where = delegate.applyRawWhere(this.buildWhere(), sql, bindings)
+
+        return this
+    }
+
+    /**
+     * Adds a raw OR where clause when supported by the adapter.
+     *
+     * @param sql
+     * @param bindings
+     * @returns
+     */
+    public orWhereRaw (sql: string, bindings: unknown[] = []): this {
+        const delegate = this.delegate as unknown as {
+            applyRawWhere?: (where: DelegateWhere<TDelegate> | undefined, sql: string, bindings: unknown[]) => DelegateWhere<TDelegate>
+        }
+
+        if (typeof delegate.applyRawWhere !== 'function')
+            throw new ArkormException('Raw where clauses are not supported by the current adapter.')
+
+        const rawWhere = delegate.applyRawWhere(undefined, sql, bindings)
+        return this.orWhere(rawWhere)
+    }
+
+    /**
     * Paginates the query results and returns a LengthAwarePaginator instance 
     * containing data and total-aware pagination metadata.
      * 
@@ -761,6 +1122,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         builder.args.take = this.args.take
         builder.includeTrashed = this.includeTrashed
         builder.onlyTrashedRecords = this.onlyTrashedRecords
+        builder.randomOrderEnabled = this.randomOrderEnabled
         Object.entries(this.eagerLoads).forEach(([key, value]) => {
             builder.eagerLoads[key] = value
         })
@@ -861,5 +1223,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     private isUniqueWhere (where: Record<string, unknown>): boolean {
         return Object.keys(where).length === 1 && Object.prototype.hasOwnProperty.call(where, 'id')
+    }
+
+    private shuffleRows<TRow> (rows: TRow[]): TRow[] {
+        const shuffled = [...rows]
+
+        for (let index = shuffled.length - 1; index > 0; index--) {
+            const swapIndex = Math.floor(Math.random() * (index + 1))
+            const current = shuffled[index]
+            shuffled[index] = shuffled[swapIndex] as TRow
+            shuffled[swapIndex] = current as TRow
+        }
+
+        return shuffled
     }
 }
