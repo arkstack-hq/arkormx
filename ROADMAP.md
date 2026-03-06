@@ -50,10 +50,10 @@ This document tracks all implemented and upcoming features for Arkorm.
 - [ ] Transaction support
 - [x] Event hooks (creating, updating, deleting, etc.)
 - [ ] Validation integration
-- [ ] CLI tooling for model/resource generation
+- [x] CLI tooling for model/resource generation/runnging migrations and seeders
 - [ ] Improved error handling and messages
 - [ ] Documentation site
-- [ ] More advanced relationship constraints
+- [x] More advanced relationship constraints
 - [ ] Performance optimizations
 
 ## Eloquent Parity (Phased)
