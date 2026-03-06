@@ -38,7 +38,7 @@ describe('QueryBuilder', () => {
         expect(users.all()[0]?.getAttribute('email')).toBe('jane@example.com')
     })
 
-    it('supports phase 1 query ergonomics', async () => {
+    it('supports query ergonomics', async () => {
         const latest = await User.query().latest('id').firstOrFail()
         const oldest = await User.query().oldest('id').firstOrFail()
         const limited = await User.query().orderBy({ id: 'asc' }).limit(1).get()
@@ -56,7 +56,7 @@ describe('QueryBuilder', () => {
         await expect(User.query().whereKey('id', 999).doesntExist()).resolves.toBe(true)
     })
 
-    it('supports phase 2 filtering parity helpers', async () => {
+    it('supports filtering parity helpers', async () => {
         const orWhere = await User.query()
             .whereKey('id', 999)
             .orWhere({ id: 2 })
@@ -110,7 +110,7 @@ describe('QueryBuilder', () => {
         expect(whereYear.all().length).toBe(2)
     })
 
-    it('supports phase 3 read helpers and utility shortcuts', async () => {
+    it('supports read helpers and utility shortcuts', async () => {
         const foundOr = await User.query().findOr(1, () => ({ fallback: true }))
         expect((foundOr as User).getAttribute('id')).toBe(1)
 
@@ -148,7 +148,7 @@ describe('QueryBuilder', () => {
         expect(pipedCount).toBe(2)
     })
 
-    it('supports phase 4 aggregate and advanced query helpers', async () => {
+    it('supports aggregate and advanced query helpers', async () => {
         await expect(User.query().min('id')).resolves.toBe(1)
         await expect(User.query().max('id')).resolves.toBe(2)
         await expect(User.query().sum('id')).resolves.toBe(3)
