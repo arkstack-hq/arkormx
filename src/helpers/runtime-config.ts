@@ -1,4 +1,7 @@
-import type { PrismaDelegateLike } from '../types/core'
+import type {
+    PaginationURLDriverFactory,
+    PrismaDelegateLike
+} from '../types/core'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -10,11 +13,15 @@ type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
 
 export interface ArkormConfig {
     prisma: ClientResolver
+    pagination?: {
+        urlDriver?: PaginationURLDriverFactory
+    }
 }
 
 let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
+let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
 
 /**
  * Define the ArkORM runtime configuration. This function can be used to provide.
@@ -34,9 +41,11 @@ export function defineConfig (config: ArkormConfig): ArkormConfig {
  * @param mapping 
  */
 export function configureArkormRuntime (
-    prisma: ClientResolver
+    prisma: ClientResolver,
+    options: Pick<ArkormConfig, 'pagination'> = {}
 ): void {
     runtimeClientResolver = prisma
+    runtimePaginationURLDriverFactory = options.pagination?.urlDriver
 }
 
 /**
@@ -47,6 +56,7 @@ export function resetArkormRuntimeForTests (): void {
     runtimeConfigLoaded = false
     runtimeConfigLoadingPromise = undefined
     runtimeClientResolver = undefined
+    runtimePaginationURLDriverFactory = undefined
 }
 
 /**
@@ -84,7 +94,9 @@ function resolveAndApplyConfig (imported: unknown): void {
     if (!config || typeof config !== 'object' || !config.prisma)
         return
 
-    configureArkormRuntime(config.prisma)
+    configureArkormRuntime(config.prisma, {
+        pagination: config.pagination,
+    })
     runtimeConfigLoaded = true
 }
 
@@ -192,6 +204,18 @@ export function getRuntimePrismaClient (): PrismaClientLike | undefined {
         loadRuntimeConfigSync()
 
     return resolveClient(runtimeClientResolver)
+}
+
+/**
+ * Get the configured pagination URL driver factory from runtime config.
+ *
+ * @returns
+ */
+export function getRuntimePaginationURLDriverFactory (): PaginationURLDriverFactory | undefined {
+    if (!runtimeConfigLoaded)
+        loadRuntimeConfigSync()
+
+    return runtimePaginationURLDriverFactory
 }
 
 /**

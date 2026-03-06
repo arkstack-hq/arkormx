@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { ArkormCollection } from '../src'
+import { ArkormCollection, LengthAwarePaginator, Paginator } from '../src'
 import { User } from './helpers/core-fixtures'
 import { setupCoreRuntime } from './helpers/core-fixtures'
 
@@ -15,10 +15,17 @@ describe('QueryBuilder', () => {
         expect(users.all().length).toBe(2)
 
         const page = await User.query().paginate(1, 1)
+        expect(page).toBeInstanceOf(LengthAwarePaginator)
         expect(page.data).toBeInstanceOf(ArkormCollection)
         expect(page.data.all().length).toBe(1)
         expect(page.meta.total).toBe(2)
         expect(page.meta.lastPage).toBe(2)
+
+        const simplePage = await User.query().orderBy({ id: 'asc' }).simplePaginate(1, 1)
+        expect(simplePage).toBeInstanceOf(Paginator)
+        expect(simplePage.data).toBeInstanceOf(ArkormCollection)
+        expect(simplePage.data.all().length).toBe(1)
+        expect(simplePage.meta.hasMorePages).toBe(true)
     })
 
     it('supports whereKey and whereIn helpers', async () => {

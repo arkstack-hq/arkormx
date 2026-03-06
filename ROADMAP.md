@@ -11,7 +11,10 @@ This document tracks all implemented and upcoming features for Arkorm.
 - [x] Query ergonomics helpers (`latest`, `oldest`, `limit`, `offset`, `forPage`)
 - [x] Existence helpers (`exists`, `doesntExist`)
 - [x] Typed collection-based query results (`get()` returns `ArkormCollection`)
-- [x] Pagination support
+- [x] `LengthAwarePaginator` support via `paginate(page, perPage)`
+- [x] `Paginator` support via `simplePaginate(perPage, page)`
+- [x] Pagination URL options (`path`, `query`, `fragment`, `pageName`) via `URLDriver`
+- [x] Framework-specific URL driver override via `arkorm.config.*`
 - [x] Collection integration (collect.js)
 - [x] Attribute visibility (`hidden` / `visible` / `appends`)
 - [x] Local scopes
@@ -75,14 +78,20 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [ ] `whereNull(column)` / `whereNotNull(column)`
 - [ ] `whereBetween(column, [min, max])`
 - [ ] `whereDate/whereMonth/whereYear` (initial date helpers)
+- [ ] `whereKeyNot(key, value)`
+- [ ] `firstWhere(column, operator?, value?)`
+- [ ] `orWhereIn(...)` / `whereNotIn(...)` / `orWhereNotIn(...)`
 
 ### Phase 3 — Read helpers and utility shortcuts
 
 - [ ] `findOr(id, callback)`
 - [ ] `value(column)` (first row column value)
+- [ ] `valueOrFail(column)`
 - [ ] `pluck(column, key?)`
 - [ ] `inRandomOrder()`
 - [ ] `reorder(column?, direction?)`
+- [ ] `when(value, callback, default?)` / `unless(value, callback, default?)`
+- [ ] `tap(callback)` / `pipe(callback)`
 
 ### Phase 4 — Aggregates and advanced querying
 
@@ -91,6 +100,17 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [ ] `sum(column)`
 - [ ] `avg(column)`
 - [ ] `whereRaw(...)` / `orWhereRaw(...)` (adapter-gated)
+- [ ] `existsOr(callback)` / `doesntExistOr(callback)`
+
+### Phase 5 — Relationship existence/query parity
+
+- [ ] `has(...)` / `orHas(...)`
+- [ ] `doesntHave(...)` / `orDoesntHave(...)`
+- [ ] `whereHas(...)` / `orWhereHas(...)`
+- [ ] `whereDoesntHave(...)` / `orWhereDoesntHave(...)`
+- [ ] `withCount(...)`
+- [ ] `withExists(...)`
+- [ ] `withSum(...)` / `withAvg(...)` / `withMin(...)` / `withMax(...)`
 
 ### Out of scope (for now)
 

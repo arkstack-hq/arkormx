@@ -12,12 +12,13 @@ import type {
     EagerLoadMap,
     ModelAttributes,
     ModelStatic,
+    PaginationOptions,
     PrismaDelegateLike,
     PrismaFindManyArgsLike
 } from './types'
 
 import { ArkormCollection } from './Collection'
-import { Paginator } from './Paginator'
+import { LengthAwarePaginator, Paginator } from './Paginator'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
 import { ArkormException } from './Exceptions/ArkormException'
 
@@ -444,14 +445,19 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
-     * Paginates the query results and returns a Paginator instance containing 
-     * the data and pagination metadata.
+    * Paginates the query results and returns a LengthAwarePaginator instance 
+    * containing data and total-aware pagination metadata.
      * 
      * @param page 
      * @param perPage 
+     * @param options
      * @returns 
      */
-    public async paginate (page = 1, perPage = 15): Promise<Paginator<TModel>> {
+    public async paginate (
+        page = 1,
+        perPage = 15,
+        options: PaginationOptions = {}
+    ): Promise<LengthAwarePaginator<TModel>> {
         const currentPage = Math.max(1, page)
         const pageSize = Math.max(1, perPage)
         const total = await this.count()
@@ -460,7 +466,34 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             .take(pageSize)
             .get()
 
-        return new Paginator(items, total, pageSize, currentPage)
+        return new LengthAwarePaginator(items, total, pageSize, currentPage, options)
+    }
+
+    /**
+     * Paginates results without calculating total row count.
+     *
+     * @param perPage
+     * @param page
+     * @returns
+     */
+    public async simplePaginate (
+        perPage = 15,
+        page = 1,
+        options: PaginationOptions = {}
+    ): Promise<Paginator<TModel>> {
+        const currentPage = Math.max(1, page)
+        const pageSize = Math.max(1, perPage)
+        const items = await this.clone()
+            .skip((currentPage - 1) * pageSize)
+            .take(pageSize + 1)
+            .get()
+
+        const hasMorePages = items.all().length > pageSize
+        const data = hasMorePages
+            ? new ArkormCollection(items.all().slice(0, pageSize))
+            : items
+
+        return new Paginator(data, pageSize, currentPage, hasMorePages, options)
     }
 
     /**

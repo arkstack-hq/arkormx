@@ -1,4 +1,4 @@
-import { ModelNotFoundException } from 'src/Exceptions/ModelNotFoundException'
+import { ModelNotFoundException } from '../../src/Exceptions/ModelNotFoundException'
 import { configureArkormRuntime, Model, QueryBuilder } from '../../src'
 
 type Row = Record<string, unknown>

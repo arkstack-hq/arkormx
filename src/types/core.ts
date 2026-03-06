@@ -18,6 +18,28 @@ export interface PaginationMeta {
     to: number | null
 }
 
+export interface SimplePaginationMeta {
+    perPage: number
+    currentPage: number
+    from: number | null
+    to: number | null
+    hasMorePages: boolean
+}
+
+export interface PaginationOptions {
+    path?: string
+    query?: Record<string, string | number | boolean | null | undefined>
+    fragment?: string
+    pageName?: string
+}
+
+export interface PaginationURLDriver {
+    getPageName: () => string
+    url: (page: number) => string
+}
+
+export type PaginationURLDriverFactory = (options: PaginationOptions) => PaginationURLDriver
+
 export interface PrismaFindManyArgsLike {
     where?: unknown
     include?: unknown
