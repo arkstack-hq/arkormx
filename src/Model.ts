@@ -16,10 +16,27 @@ import { DelegateForModelSchema, ModelAttributesOf } from './types'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
+import { ArkormException } from './Exceptions/ArkormException'
 
 type RelatedModelClass<TInstance = unknown> =
     (abstract new (attributes?: Record<string, unknown>) => TInstance)
     & RelationshipModelStatic
+
+type GlobalScope = (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void
+type ModelEventName =
+    | 'saving'
+    | 'saved'
+    | 'creating'
+    | 'created'
+    | 'updating'
+    | 'updated'
+    | 'deleting'
+    | 'deleted'
+    | 'restoring'
+    | 'restored'
+    | 'forceDeleting'
+    | 'forceDeleted'
+type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void | Promise<void>
 
 /**
  * Base model class that all models should extend. 
@@ -34,6 +51,8 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
     protected static delegate: string
     protected static softDeletes = false
     protected static deletedAtColumn = 'deletedAt'
+    protected static globalScopes: Record<string, GlobalScope> = {}
+    protected static eventListeners: Partial<Record<ModelEventName, ModelEventListener<any>[]>> = {}
 
     protected casts: CastMap = {}
     protected hidden: string[] = []
@@ -56,6 +75,80 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         client: Record<string, unknown>
     ): void {
         this.client = client
+    }
+
+    /**
+     * Register a global scope for the model.
+     *
+     * @param name
+     * @param scope
+     */
+    public static addGlobalScope (name: string, scope: GlobalScope): void {
+        this.ensureOwnGlobalScopes()
+        this.globalScopes[name] = scope
+    }
+
+    /**
+     * Remove a global scope by name.
+     *
+     * @param name
+     */
+    public static removeGlobalScope (name: string): void {
+        this.ensureOwnGlobalScopes()
+        delete this.globalScopes[name]
+    }
+
+    /**
+     * Clear all global scopes for the model.
+     */
+    public static clearGlobalScopes (): void {
+        this.globalScopes = {}
+    }
+
+    /**
+     * Register an event listener for a model lifecycle event.
+     *
+     * @param event
+     * @param listener
+     */
+    public static on<TModel extends Model = Model> (
+        event: ModelEventName,
+        listener: ModelEventListener<TModel>
+    ): void {
+        this.ensureOwnEventListeners()
+        if (!this.eventListeners[event])
+            this.eventListeners[event] = []
+
+        this.eventListeners[event]?.push(listener as ModelEventListener<any>)
+    }
+
+    /**
+     * Remove listeners for an event. If listener is omitted, all listeners for that event are removed.
+     *
+     * @param event
+     * @param listener
+     */
+    public static off<TModel extends Model = Model> (
+        event: ModelEventName,
+        listener?: ModelEventListener<TModel>
+    ): void {
+        this.ensureOwnEventListeners()
+        if (!listener) {
+            delete this.eventListeners[event]
+
+            return
+        }
+
+        this.eventListeners[event] = (this.eventListeners[event] || []).filter(
+            registered => registered !== listener
+        )
+    }
+
+    /**
+     * Clears all event listeners for the model.
+     */
+    public static clearEventListeners (): void {
+        this.eventListeners = {}
     }
 
     /**
@@ -86,7 +179,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
             .find(candidate => isDelegateLike(candidate))
 
         if (!resolved)
-            throw new Error(`Database delegate [${key}] is not configured.`)
+            throw new ArkormException(`Database delegate [${key}] is not configured.`)
 
         return resolved as TDelegate
     }
@@ -104,10 +197,20 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
     > (
         this: TThis
     ): QueryBuilder<TModel, TDelegate> {
-        return new QueryBuilder<TModel, TDelegate>(
+        let builder = new QueryBuilder<TModel, TDelegate>(
             (this as unknown as ModelStatic<TModel, TDelegate>).getDelegate(),
             this as unknown as ModelStatic<TModel, TDelegate>
         )
+
+        const modelClass = this as unknown as typeof Model
+        modelClass.ensureOwnGlobalScopes()
+        Object.values(modelClass.globalScopes).forEach((scope) => {
+            const scoped = scope(builder as QueryBuilder<any, any>) as QueryBuilder<TModel, TDelegate> | void
+            if (scoped && scoped !== builder)
+                builder = scoped
+        })
+
+        return builder
     }
 
     /**
@@ -284,14 +387,26 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
 
         const constructor = this.constructor as unknown as ModelStatic<this>
         if (identifier == null) {
+            await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
+            await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
+
             const model = await constructor.query().create(payload)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+
+            await Model.dispatchEvent(constructor as unknown as typeof Model, 'created', this)
+            await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
 
             return this
         }
 
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
+
         const model = await constructor.query().where({ id: identifier }).update(payload)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'updated', this)
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
 
         return this
     }
@@ -307,9 +422,10 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
     public async delete (): Promise<this> {
         const identifier = this.getAttribute('id')
         if (identifier == null)
-            throw new Error('Cannot delete a model without an id.')
+            throw new ArkormException('Cannot delete a model without an id.')
 
         const constructor = this.constructor as unknown as ModelStatic<this>
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
         const softDeleteConfig = constructor.getSoftDeleteConfig()
         if (softDeleteConfig.enabled) {
             const model = await constructor.query()
@@ -317,10 +433,16 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
                 .update({ [softDeleteConfig.column]: new Date() })
             this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
 
+            await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
+
             return this
         }
 
-        return constructor.query().where({ id: identifier }).delete()
+        const deleted = await constructor.query().where({ id: identifier }).delete()
+        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
+
+        return this
     }
 
     /**
@@ -332,11 +454,19 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
     public async forceDelete (): Promise<this> {
         const identifier = this.getAttribute('id')
         if (identifier == null)
-            throw new Error('Cannot force delete a model without an id.')
+            throw new ArkormException('Cannot force delete a model without an id.')
 
         const constructor = this.constructor as unknown as ModelStatic<this>
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleting', this)
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
 
-        return constructor.query().withTrashed().where({ id: identifier }).delete()
+        const deleted = await constructor.query().withTrashed().where({ id: identifier }).delete()
+        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
+
+        return this
     }
 
     /**
@@ -347,17 +477,21 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
     public async restore (): Promise<this> {
         const identifier = this.getAttribute('id')
         if (identifier == null)
-            throw new Error('Cannot restore a model without an id.')
+            throw new ArkormException('Cannot restore a model without an id.')
 
         const constructor = this.constructor as unknown as ModelStatic<this>
         const softDeleteConfig = constructor.getSoftDeleteConfig()
         if (!softDeleteConfig.enabled)
             return this
 
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'restoring', this)
+
         const model = await constructor.query().withTrashed()
             .where({ id: identifier })
             .update({ [softDeleteConfig.column]: null })
         this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+
+        await Model.dispatchEvent(constructor as unknown as typeof Model, 'restored', this)
 
         return this
     }
@@ -625,6 +759,41 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         const method = (this as unknown as Record<string, unknown>)[methodName]
 
         return typeof method === 'function' ? method as (value: unknown) => unknown : null
+    }
+
+    /**
+     * Ensures global scopes are own properties on subclass constructors.
+     */
+    private static ensureOwnGlobalScopes (): void {
+        if (!Object.prototype.hasOwnProperty.call(this, 'globalScopes'))
+            this.globalScopes = { ...(this.globalScopes || {}) }
+    }
+
+    /**
+     * Ensures event listeners are own properties on subclass constructors.
+     */
+    private static ensureOwnEventListeners (): void {
+        if (!Object.prototype.hasOwnProperty.call(this, 'eventListeners'))
+            this.eventListeners = { ...(this.eventListeners || {}) }
+    }
+
+    /**
+     * Dispatches lifecycle events to registered listeners.
+     *
+     * @param modelClass
+     * @param event
+     * @param model
+     */
+    private static async dispatchEvent (
+        modelClass: typeof Model,
+        event: ModelEventName,
+        model: Model
+    ): Promise<void> {
+        modelClass.ensureOwnEventListeners()
+        const listeners = modelClass.eventListeners[event] || []
+
+        for (const listener of listeners)
+            await listener(model)
     }
 
     /**

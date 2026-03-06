@@ -1,6 +1,40 @@
+import { ModelNotFoundException } from 'src/Exceptions/ModelNotFoundException'
 import { configureArkormRuntime, Model, QueryBuilder } from '../../src'
 
 type Row = Record<string, unknown>
+
+function applyOrderBy (rows: Row[], orderBy: Row | Row[] | undefined): Row[] {
+    if (!orderBy)
+        return rows
+
+    const clauses = Array.isArray(orderBy) ? orderBy : [orderBy]
+
+    return [...rows].sort((leftRow, rightRow) => {
+        for (const clause of clauses) {
+            const [column, direction] = Object.entries(clause)[0] || []
+            if (!column)
+                continue
+
+            const leftValue = leftRow[column]
+            const rightValue = rightRow[column]
+            if (leftValue === rightValue)
+                continue
+
+            const descending = String(direction).toLowerCase() === 'desc'
+            if (leftValue == null)
+                return descending ? 1 : -1
+            if (rightValue == null)
+                return descending ? -1 : 1
+
+            if (leftValue > rightValue)
+                return descending ? -1 : 1
+            if (leftValue < rightValue)
+                return descending ? 1 : -1
+        }
+
+        return 0
+    })
+}
 
 function matchesWhere (row: Row, where: Record<string, unknown> | undefined): boolean {
     if (!where)
@@ -30,15 +64,18 @@ function makeDelegate (rows: Row[]) {
     const data = rows.map(row => ({ ...row }))
 
     return {
-        findMany: async (args?: { where?: Row, skip?: number, take?: number }) => {
+        findMany: async (args?: { where?: Row, orderBy?: Row | Row[], skip?: number, take?: number }) => {
             const filtered = data.filter(row => matchesWhere(row, args?.where))
+            const ordered = applyOrderBy(filtered, args?.orderBy)
             const skip = args?.skip || 0
-            const take = args?.take ?? filtered.length
+            const take = args?.take ?? ordered.length
 
-            return filtered.slice(skip, skip + take).map(row => ({ ...row }))
+            return ordered.slice(skip, skip + take).map(row => ({ ...row }))
         },
-        findFirst: async (args?: { where?: Row }) => {
-            const found = data.find(row => matchesWhere(row, args?.where))
+        findFirst: async (args?: { where?: Row, orderBy?: Row | Row[], skip?: number }) => {
+            const filtered = data.filter(row => matchesWhere(row, args?.where))
+            const ordered = applyOrderBy(filtered, args?.orderBy)
+            const found = ordered[args?.skip || 0]
 
             return found ? { ...found } : null
         },
@@ -50,7 +87,7 @@ function makeDelegate (rows: Row[]) {
         update: async ({ where, data: payload }: { where: Row, data: Row }) => {
             const index = data.findIndex(row => matchesWhere(row, where))
             if (index < 0)
-                throw new Error('Record not found')
+                throw new ModelNotFoundException('Record not found')
 
             data[index] = { ...data[index], ...payload }
 
@@ -59,7 +96,7 @@ function makeDelegate (rows: Row[]) {
         delete: async ({ where }: { where: Row }) => {
             const index = data.findIndex(row => matchesWhere(row, where))
             if (index < 0)
-                throw new Error('Record not found')
+                throw new ModelNotFoundException('Record not found')
 
             const [removed] = data.splice(index, 1)
 

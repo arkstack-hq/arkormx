@@ -31,6 +31,24 @@ describe('QueryBuilder', () => {
         expect(users.all()[0]?.getAttribute('email')).toBe('jane@example.com')
     })
 
+    it('supports phase 1 query ergonomics', async () => {
+        const latest = await User.query().latest('id').firstOrFail()
+        const oldest = await User.query().oldest('id').firstOrFail()
+        const limited = await User.query().orderBy({ id: 'asc' }).limit(1).get()
+        const offsetLimited = await User.query().orderBy({ id: 'asc' }).offset(1).limit(1).get()
+        const paged = await User.query().orderBy({ id: 'asc' }).forPage(2, 1).get()
+
+        expect(latest.getAttribute('id')).toBe(2)
+        expect(oldest.getAttribute('id')).toBe(1)
+        expect(limited.all().length).toBe(1)
+        expect(offsetLimited.all()[0]?.getAttribute('id')).toBe(2)
+        expect(paged.all()[0]?.getAttribute('id')).toBe(2)
+
+        await expect(User.query().whereKey('id', 1).exists()).resolves.toBe(true)
+        await expect(User.query().whereKey('id', 999).exists()).resolves.toBe(false)
+        await expect(User.query().whereKey('id', 999).doesntExist()).resolves.toBe(true)
+    })
+
     it('supports key-based find and local scopes', async () => {
         const byEmail = await User.query().find('jane@example.com', 'email')
         expect(byEmail?.getAttribute('id')).toBe(1)

@@ -18,6 +18,8 @@ import type {
 
 import { ArkormCollection } from './Collection'
 import { Paginator } from './Paginator'
+import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
+import { ArkormException } from './Exceptions/ArkormException'
 
 /**
  * The QueryBuilder class provides a fluent interface for building and 
@@ -103,6 +105,26 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         this.args.orderBy = orderBy
 
         return this
+    }
+
+    /**
+     * Adds an orderBy descending clause for a timestamp-like column.
+     *
+     * @param column
+     * @returns
+     */
+    public latest (column = 'createdAt'): this {
+        return this.orderBy({ [column]: 'desc' } as DelegateOrderBy<TDelegate>)
+    }
+
+    /**
+     * Adds an orderBy ascending clause for a timestamp-like column.
+     *
+     * @param column
+     * @returns
+     */
+    public oldest (column = 'createdAt'): this {
+        return this.orderBy({ [column]: 'asc' } as DelegateOrderBy<TDelegate>)
     }
 
     /**
@@ -199,7 +221,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const prototype = (this.model as unknown as { prototype?: Record<string, unknown> }).prototype
         const scope = prototype?.[methodName]
         if (typeof scope !== 'function')
-            throw new Error(`Scope [${name}] is not defined.`)
+            throw new ArkormException(`Scope [${name}] is not defined.`)
 
         const scoped = scope.call(undefined, this, ...args)
         if (scoped && scoped !== this)
@@ -234,6 +256,16 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
+     * Alias for skip.
+     *
+     * @param value
+     * @returns
+     */
+    public offset (value: number): this {
+        return this.skip(value)
+    }
+
+    /**
      * Adds a take clause to the query for pagination.
      * 
      * @param take 
@@ -243,6 +275,30 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         this.args.take = take
 
         return this
+    }
+
+    /**
+     * Alias for take.
+     *
+     * @param value
+     * @returns
+     */
+    public limit (value: number): this {
+        return this.take(value)
+    }
+
+    /**
+     * Sets offset/limit for a 1-based page.
+     *
+     * @param page
+     * @param perPage
+     * @returns
+     */
+    public forPage (page: number, perPage = 15): this {
+        const currentPage = Math.max(1, page)
+        const pageSize = Math.max(1, perPage)
+
+        return this.skip((currentPage - 1) * pageSize).take(pageSize)
     }
 
     /**
@@ -288,7 +344,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async firstOrFail (): Promise<TModel> {
         const model = await this.first()
         if (!model)
-            throw new Error('Record not found.')
+            throw new ModelNotFoundException('Record not found.')
 
         return model
     }
@@ -333,7 +389,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async update (data: DelegateUpdateData<TDelegate>): Promise<TModel> {
         const where = this.buildWhere()
         if (!where)
-            throw new Error('Update requires a where clause.')
+            throw new ArkormException('Update requires a where clause.')
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
         const updated = await this.delegate.update({ where: uniqueWhere, data } as Parameters<TDelegate['update']>[0])
@@ -350,7 +406,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async delete (): Promise<TModel> {
         const where = this.buildWhere()
         if (!where)
-            throw new Error('Delete requires a where clause.')
+            throw new ArkormException('Delete requires a where clause.')
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
         const deleted = await this.delegate.delete({ where: uniqueWhere } as Parameters<TDelegate['delete']>[0])
@@ -365,6 +421,26 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public async count (): Promise<number> {
         return this.delegate.count({ where: this.buildWhere() })
+    }
+
+    /**
+     * Determines if any records exist for the current query constraints.
+     *
+     * @returns
+     */
+    public async exists (): Promise<boolean> {
+        const row = await this.delegate.findFirst(this.buildFindArgs())
+
+        return row != null
+    }
+
+    /**
+     * Determines if no records exist for the current query constraints.
+     *
+     * @returns
+     */
+    public async doesntExist (): Promise<boolean> {
+        return !(await this.exists())
     }
 
     /**
@@ -484,11 +560,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         const row = await this.delegate.findFirst({ where } as DelegateFindManyArgs<TDelegate>) as DelegateRow<TDelegate> | null
         if (!row)
-            throw new Error('Record not found for update/delete operation.')
+            throw new ArkormException('Record not found for update/delete operation.')
 
         const record = row as Record<string, unknown>
         if (!Object.prototype.hasOwnProperty.call(record, 'id'))
-            throw new Error('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.')
+            throw new ArkormException('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.')
 
         return { id: record.id } as DelegateUniqueWhere<TDelegate>
     }

@@ -40,6 +40,24 @@ describe('PostgreSQL QueryBuilder', () => {
         expect(scoped.all()[0]?.getAttribute('email')).toBe('jane@example.com')
     })
 
+    it('supports phase 1 query ergonomics', async () => {
+        const latest = await DbUser.query().latest('id').firstOrFail()
+        const oldest = await DbUser.query().oldest('id').firstOrFail()
+        const limited = await DbUser.query().orderBy({ id: 'asc' }).limit(1).get()
+        const offsetLimited = await DbUser.query().orderBy({ id: 'asc' }).offset(1).limit(1).get()
+        const paged = await DbUser.query().orderBy({ id: 'asc' }).forPage(2, 1).get()
+
+        expect(latest.getAttribute('id')).toBe(2)
+        expect(oldest.getAttribute('id')).toBe(1)
+        expect(limited.all().length).toBe(1)
+        expect(offsetLimited.all()[0]?.getAttribute('id')).toBe(2)
+        expect(paged.all()[0]?.getAttribute('id')).toBe(2)
+
+        await expect(DbUser.query().whereKey('id', 1).exists()).resolves.toBe(true)
+        await expect(DbUser.query().whereKey('id', 99999).exists()).resolves.toBe(false)
+        await expect(DbUser.query().whereKey('id', 99999).doesntExist()).resolves.toBe(true)
+    })
+
     it('throws firstOrFail when no records match', async () => {
         await expect(DbUser.query().whereKey('id', 99999).firstOrFail()).rejects.toThrow('Record not found.')
     })

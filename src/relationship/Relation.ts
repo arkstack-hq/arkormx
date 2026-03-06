@@ -1,7 +1,7 @@
-import { ArkormCollection, QueryBuilder } from 'src'
-
-import type { ModelAttributes } from 'src/types'
-import { RelationConstraint } from 'src/types/relationship'
+import { ArkormCollection } from '../Collection'
+import { QueryBuilder } from '../QueryBuilder'
+import type { ModelAttributes } from '../types'
+import type { RelationConstraint } from '../types/relationship'
 
 /**
  * Base class for all relationship types. Not meant to be used directly.

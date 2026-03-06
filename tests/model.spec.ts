@@ -1,9 +1,16 @@
 import { User, setupCoreRuntime } from './helpers/core-fixtures'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 describe('Model lifecycle and serialization', () => {
     beforeEach(() => {
         setupCoreRuntime()
+        User.clearGlobalScopes()
+        User.clearEventListeners()
+    })
+
+    afterEach(() => {
+        User.clearGlobalScopes()
+        User.clearEventListeners()
     })
 
     it('applies mutators, casts, and serialization rules', async () => {
@@ -50,5 +57,45 @@ describe('Model lifecycle and serialization', () => {
 
         await expect(user.delete()).rejects.toThrow('Cannot delete a model without an id.')
         await expect(user.forceDelete()).rejects.toThrow('Cannot force delete a model without an id.')
+    })
+
+    it('supports global scopes', async () => {
+        User.addGlobalScope('active', query => query.whereKey('isActive', 1))
+
+        const activeUsers = await User.query().get()
+        expect(activeUsers.all().length).toBe(1)
+        expect(activeUsers.all()[0]?.getAttribute('email')).toBe('jane@example.com')
+
+        User.removeGlobalScope('active')
+        const allUsers = await User.query().get()
+        expect(allUsers.all().length).toBe(2)
+    })
+
+    it('dispatches lifecycle events', async () => {
+        const events: string[] = []
+        User.on('saving', () => void events.push('saving'))
+        User.on('creating', () => void events.push('creating'))
+        User.on('created', () => void events.push('created'))
+        User.on('saved', () => void events.push('saved'))
+        User.on('updating', () => void events.push('updating'))
+        User.on('updated', () => void events.push('updated'))
+        User.on('deleting', () => void events.push('deleting'))
+        User.on('deleted', () => void events.push('deleted'))
+
+        const newUser = new User({ name: 'Mia', email: 'mia@example.com', isActive: 1 })
+        await newUser.save()
+
+        const existing = await User.query().find(1)
+        expect(existing).not.toBeNull()
+        const existingUser = existing as User
+        existingUser.setAttribute('name', 'Jane Updated')
+        await existingUser.save()
+        await existingUser.delete()
+
+        expect(events).toEqual([
+            'saving', 'creating', 'created', 'saved',
+            'saving', 'updating', 'updated', 'saved',
+            'deleting', 'deleted',
+        ])
     })
 })
