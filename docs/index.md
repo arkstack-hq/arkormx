@@ -24,7 +24,7 @@ features:
     details: Arkorm is built on top of Prisma, providing a familiar and powerful API for database interactions.
   - icon:
       src: /flashlight-fill.svg
-      title: TypeScript
+      title: Strongly
     title: Performance
     details: Arkorm is optimized for performance, leveraging Prisma's efficient query generation and execution.
   - icon:
@@ -32,6 +32,11 @@ features:
       title: Documentation
     title: Documentation
     details: Comprehensive documentation to help you get started and make the most of Arkorm.
+  - icon:
+      src: /typescript.svg
+      title: Strongly Typed
+    title: Strongly Typed
+    details: Arkorm is designed for full TypeScript support, providing strong typing and improved developer experience.
   - icon:
       src: /shield-check-fill.svg
       title: Security
@@ -47,4 +52,9 @@ features:
       title: Open Source
     title: Open Source
     details: Arkorm is open source and welcomes contributions from developers around the world.
+  - icon:
+      src: /brain-fill.svg
+      title: Familiar API
+    title: Familiar API
+    details: Arkorm provides an intuitive API that feels familiar to users transitioning from Eloquent or other ORMs, making it easy to learn and adopt.
 ---

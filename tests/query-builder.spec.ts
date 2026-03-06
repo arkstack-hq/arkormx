@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
 import { ArkormCollection, LengthAwarePaginator, Paginator } from '../src'
-import { User } from './helpers/core-fixtures'
+import { Article, User } from './helpers/core-fixtures'
 import { setupCoreRuntime } from './helpers/core-fixtures'
 
 describe('QueryBuilder', () => {
@@ -54,6 +54,60 @@ describe('QueryBuilder', () => {
         await expect(User.query().whereKey('id', 1).exists()).resolves.toBe(true)
         await expect(User.query().whereKey('id', 999).exists()).resolves.toBe(false)
         await expect(User.query().whereKey('id', 999).doesntExist()).resolves.toBe(true)
+    })
+
+    it('supports phase 2 filtering parity helpers', async () => {
+        const orWhere = await User.query()
+            .whereKey('id', 999)
+            .orWhere({ id: 2 } as Record<string, unknown>)
+            .get()
+        expect(orWhere.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const whereNot = await User.query().whereNot({ isActive: 1 } as Record<string, unknown>).get()
+        expect(whereNot.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const orWhereNot = await User.query()
+            .whereKey('id', 1)
+            .orWhereNot({ isActive: 1 })
+            .orderBy({ id: 'asc' })
+            .get()
+        expect(orWhereNot.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const whereNull = await Article.query().withTrashed().whereNull('deletedAt').get()
+        expect(whereNull.all().map(article => article.getAttribute('title'))).toEqual(['Live'])
+
+        const whereNotNull = await Article.query().withTrashed().whereNotNull('deletedAt').get()
+        expect(whereNotNull.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
+
+        const whereBetween = await User.query().whereBetween('id', [1, 1]).get()
+        expect(whereBetween.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const whereKeyNot = await User.query().whereKeyNot('id', 1).get()
+        expect(whereKeyNot.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const firstWhereEquals = await User.query().firstWhere('email', 'jane@example.com')
+        expect(firstWhereEquals?.getAttribute('id')).toBe(1)
+
+        const firstWhereComparison = await User.query().orderBy({ id: 'asc' }).firstWhere('id', '>', 1)
+        expect(firstWhereComparison?.getAttribute('id')).toBe(2)
+
+        const orWhereIn = await User.query().whereKey('id', 999).orWhereIn('id', [2]).get()
+        expect(orWhereIn.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const whereNotIn = await User.query().whereNotIn('id', [1]).get()
+        expect(whereNotIn.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const orWhereNotIn = await User.query().whereKey('id', 1).orWhereNotIn('id', [1]).orderBy({ id: 'asc' }).get()
+        expect(orWhereNotIn.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const whereDate = await User.query().whereDate('createdAt', '2026-03-04').get()
+        expect(whereDate.all().length).toBe(2)
+
+        const whereMonth = await User.query().whereMonth('createdAt', 3, 2026).get()
+        expect(whereMonth.all().length).toBe(2)
+
+        const whereYear = await User.query().whereYear('createdAt', 2026).get()
+        expect(whereYear.all().length).toBe(2)
     })
 
     it('supports key-based find and local scopes', async () => {

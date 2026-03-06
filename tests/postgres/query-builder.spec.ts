@@ -1,4 +1,4 @@
-import { DbUser, acquirePostgresTestLock, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
+import { DbArticle, DbUser, acquirePostgresTestLock, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { ArkormCollection, LengthAwarePaginator, Paginator } from '../../src'
@@ -63,6 +63,60 @@ describe('PostgreSQL QueryBuilder', () => {
         await expect(DbUser.query().whereKey('id', 1).exists()).resolves.toBe(true)
         await expect(DbUser.query().whereKey('id', 99999).exists()).resolves.toBe(false)
         await expect(DbUser.query().whereKey('id', 99999).doesntExist()).resolves.toBe(true)
+    })
+
+    it('supports phase 2 filtering parity helpers', async () => {
+        const orWhere = await DbUser.query()
+            .whereKey('id', 99999)
+            .orWhere({ id: 2 })
+            .get()
+        expect(orWhere.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const whereNot = await DbUser.query().whereNot({ isActive: 1 } as Record<string, unknown>).get()
+        expect(whereNot.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const orWhereNot = await DbUser.query()
+            .whereKey('id', 1)
+            .orWhereNot({ isActive: 1 } as Record<string, unknown>)
+            .orderBy({ id: 'asc' })
+            .get()
+        expect(orWhereNot.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const whereNull = await DbArticle.query().withTrashed().whereNull('deletedAt').get()
+        expect(whereNull.all().map(article => article.getAttribute('title'))).toEqual(['Live'])
+
+        const whereNotNull = await DbArticle.query().withTrashed().whereNotNull('deletedAt').get()
+        expect(whereNotNull.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
+
+        const whereBetween = await DbUser.query().whereBetween('id', [1, 1]).get()
+        expect(whereBetween.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const whereKeyNot = await DbUser.query().whereKeyNot('id', 1).get()
+        expect(whereKeyNot.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const firstWhereEquals = await DbUser.query().firstWhere('email', 'jane@example.com')
+        expect(firstWhereEquals?.getAttribute('id')).toBe(1)
+
+        const firstWhereComparison = await DbUser.query().orderBy({ id: 'asc' }).firstWhere('id', '>', 1)
+        expect(firstWhereComparison?.getAttribute('id')).toBe(2)
+
+        const orWhereIn = await DbUser.query().whereKey('id', 99999).orWhereIn('id', [2]).get()
+        expect(orWhereIn.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const whereNotIn = await DbUser.query().whereNotIn('id', [1]).get()
+        expect(whereNotIn.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const orWhereNotIn = await DbUser.query().whereKey('id', 1).orWhereNotIn('id', [1]).orderBy({ id: 'asc' }).get()
+        expect(orWhereNotIn.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const whereDate = await DbArticle.query().withTrashed().whereDate('deletedAt', '2026-03-04').get()
+        expect(whereDate.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
+
+        const whereMonth = await DbArticle.query().withTrashed().whereMonth('deletedAt', 3, 2026).get()
+        expect(whereMonth.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
+
+        const whereYear = await DbArticle.query().withTrashed().whereYear('deletedAt', 2026).get()
+        expect(whereYear.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
     })
 
     it('throws firstOrFail when no records match', async () => {

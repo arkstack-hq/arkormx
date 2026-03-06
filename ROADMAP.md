@@ -73,14 +73,14 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 
 ### Phase 2 — Core filtering parity for day-to-day usage
 
-- [ ] `orWhere(...)`
-- [ ] `whereNot(...)` / `orWhereNot(...)`
-- [ ] `whereNull(column)` / `whereNotNull(column)`
-- [ ] `whereBetween(column, [min, max])`
-- [ ] `whereDate/whereMonth/whereYear` (initial date helpers)
-- [ ] `whereKeyNot(key, value)`
-- [ ] `firstWhere(column, operator?, value?)`
-- [ ] `orWhereIn(...)` / `whereNotIn(...)` / `orWhereNotIn(...)`
+- [x] `orWhere(...)`
+- [x] `whereNot(...)` / `orWhereNot(...)`
+- [x] `whereNull(column)` / `whereNotNull(column)`
+- [x] `whereBetween(column, [min, max])`
+- [x] `whereDate/whereMonth/whereYear` (initial date helpers)
+- [x] `whereKeyNot(key, value)`
+- [x] `firstWhere(column, operator?, value?)`
+- [x] `orWhereIn(...)` / `whereNotIn(...)` / `orWhereNotIn(...)`
 
 ### Phase 3 — Read helpers and utility shortcuts
 
@@ -112,9 +112,9 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [ ] `withExists(...)`
 - [ ] `withSum(...)` / `withAvg(...)` / `withMin(...)` / `withMax(...)`
 
-### Out of scope (for now)
+### Out of scope
 
-These are lower priority until global scopes, events, and transactions are stable:
+Lower priority until global scopes, events, and transactions are stable:
 
 - Chunking/lazy/cursor APIs (`chunk`, `lazy`, `cursorPaginate`, etc.)
 - SQL-specific join family (`join*`, `crossJoin*`, lateral joins)

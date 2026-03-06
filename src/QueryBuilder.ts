@@ -55,6 +55,225 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public where (where: DelegateWhere<TDelegate>): this {
+        return this.addLogicalWhere('AND', where)
+    }
+
+    /**
+     * Adds an OR where clause to the query.
+     *
+     * @param where
+     * @returns
+     */
+    public orWhere (where: DelegateWhere<TDelegate>): this {
+        return this.addLogicalWhere('OR', where)
+    }
+
+    /**
+     * Adds a NOT where clause to the query.
+     *
+     * @param where
+     * @returns
+     */
+    public whereNot (where: DelegateWhere<TDelegate>): this {
+        return this.where({ NOT: where } as unknown as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds an OR NOT where clause to the query.
+     *
+     * @param where
+     * @returns
+     */
+    public orWhereNot (where: DelegateWhere<TDelegate>): this {
+        return this.orWhere({ NOT: where } as unknown as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a null check for a key.
+     *
+     * @param key
+     * @returns
+     */
+    public whereNull<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.where({ [key]: null } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a not-null check for a key.
+     *
+     * @param key
+     * @returns
+     */
+    public whereNotNull<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.where({ [key]: { not: null } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a between range clause for a key.
+     *
+     * @param key
+     * @param range
+     * @returns
+     */
+    public whereBetween<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        range: [ModelAttributes<TModel>[TKey], ModelAttributes<TModel>[TKey]]
+    ): this {
+        const [min, max] = range
+
+        return this.where({ [key]: { gte: min, lte: max } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a date-only equality clause for a date-like key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereDate<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Date | string
+    ): this {
+        const target = this.coerceDate(value)
+        const start = new Date(Date.UTC(target.getUTCFullYear(), target.getUTCMonth(), target.getUTCDate()))
+        const end = new Date(start)
+        end.setUTCDate(end.getUTCDate() + 1)
+
+        return this.where({ [key]: { gte: start, lt: end } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a month clause for a date-like key.
+     *
+     * @param key
+     * @param month
+     * @param year
+     * @returns
+     */
+    public whereMonth<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        month: number,
+        year = new Date().getUTCFullYear()
+    ): this {
+        const normalizedMonth = Math.min(12, Math.max(1, month))
+        const start = new Date(Date.UTC(year, normalizedMonth - 1, 1))
+        const end = new Date(Date.UTC(year, normalizedMonth, 1))
+
+        return this.where({ [key]: { gte: start, lt: end } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a year clause for a date-like key.
+     *
+     * @param key
+     * @param year
+     * @returns
+     */
+    public whereYear<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        year: number
+    ): this {
+        const start = new Date(Date.UTC(year, 0, 1))
+        const end = new Date(Date.UTC(year + 1, 0, 1))
+
+        return this.where({ [key]: { gte: start, lt: end } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a strongly-typed inequality where clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereKeyNot<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: ModelAttributes<TModel>[TKey]
+    ): this {
+        return this.where({ [key]: { not: value } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a strongly-typed OR IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public orWhereIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.orWhere({ [key]: { in: values } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a strongly-typed NOT IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public whereNotIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.where({ [key]: { notIn: values } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a strongly-typed OR NOT IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public orWhereNotIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.orWhere({ [key]: { notIn: values } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a where clause and returns the first result.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public async firstWhere<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: ModelAttributes<TModel>[TKey]
+    ): Promise<TModel | null>
+
+    /**
+     * Adds a comparison where clause and returns the first result.
+     *
+     * @param key
+     * @param operator
+     * @param value
+     * @returns
+     */
+    public async firstWhere<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operator: '=' | '!=' | '>' | '>=' | '<' | '<=',
+        value: ModelAttributes<TModel>[TKey]
+    ): Promise<TModel | null>
+    public async firstWhere (
+        key: string,
+        operatorOrValue: unknown,
+        maybeValue?: unknown
+    ): Promise<TModel | null> {
+        const hasOperator = maybeValue !== undefined
+        const operator = (hasOperator ? operatorOrValue : '=') as '=' | '!=' | '>' | '>=' | '<' | '<='
+        const value = hasOperator ? maybeValue : operatorOrValue
+
+        return this.clone().where(this.buildComparisonWhere(key, operator, value)).first()
+    }
+
+    private addLogicalWhere (operator: 'AND' | 'OR', where: DelegateWhere<TDelegate>): this {
         if (!this.args.where) {
             this.args.where = where
 
@@ -62,10 +281,41 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         this.args.where = {
-            AND: [this.args.where as Record<string, unknown>, where as Record<string, unknown>],
+            [operator]: [this.args.where as Record<string, unknown>, where as Record<string, unknown>],
         } as DelegateWhere<TDelegate>
 
         return this
+    }
+
+    private buildComparisonWhere (
+        key: string,
+        operator: '=' | '!=' | '>' | '>=' | '<' | '<=',
+        value: unknown
+    ): DelegateWhere<TDelegate> {
+        if (operator === '=')
+            return { [key]: value } as DelegateWhere<TDelegate>
+
+        if (operator === '!=')
+            return { [key]: { not: value } } as DelegateWhere<TDelegate>
+
+        if (operator === '>')
+            return { [key]: { gt: value } } as DelegateWhere<TDelegate>
+
+        if (operator === '>=')
+            return { [key]: { gte: value } } as DelegateWhere<TDelegate>
+
+        if (operator === '<')
+            return { [key]: { lt: value } } as DelegateWhere<TDelegate>
+
+        return { [key]: { lte: value } } as DelegateWhere<TDelegate>
+    }
+
+    private coerceDate (value: Date | string): Date {
+        const parsed = value instanceof Date ? new Date(value.getTime()) : new Date(value)
+        if (Number.isNaN(parsed.getTime()))
+            throw new ArkormException('Invalid date value for date-based query helper.')
+
+        return parsed
     }
 
     /**
@@ -564,7 +814,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         return {
             AND: [this.args.where as Record<string, unknown>, softDeleteClause],
-        } as DelegateWhere<TDelegate>
+        } as unknown as DelegateWhere<TDelegate>
     }
 
     /**
@@ -589,7 +839,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         where: DelegateWhere<TDelegate>
     ): Promise<DelegateUniqueWhere<TDelegate>> {
         if (this.isUniqueWhere(where as Record<string, unknown>))
-            return where as DelegateUniqueWhere<TDelegate>
+            return where as unknown as DelegateUniqueWhere<TDelegate>
 
         const row = await this.delegate.findFirst({ where } as DelegateFindManyArgs<TDelegate>) as DelegateRow<TDelegate> | null
         if (!row)
@@ -599,7 +849,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (!Object.prototype.hasOwnProperty.call(record, 'id'))
             throw new ArkormException('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.')
 
-        return { id: record.id } as DelegateUniqueWhere<TDelegate>
+        return { id: record.id } as unknown as DelegateUniqueWhere<TDelegate>
     }
 
     /**

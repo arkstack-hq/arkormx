@@ -67,27 +67,34 @@ export interface PrismaDelegateLike {
     count: (args?: any) => Promise<number>
 }
 
+type FallbackIfUnknownOrNever<TValue, TFallback> =
+    [TValue] extends [never]
+    ? TFallback
+    : unknown extends TValue
+    ? TFallback
+    : TValue
+
 export type DelegateFindManyArgs<TDelegate extends PrismaDelegateLike> =
-    NonNullable<Parameters<TDelegate['findMany']>[0]>
+    FallbackIfUnknownOrNever<NonNullable<Parameters<TDelegate['findMany']>[0]>, PrismaFindManyArgsLike>
 
 export type DelegateWhere<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { where?: infer TWhere }
-    ? TWhere
+    ? FallbackIfUnknownOrNever<TWhere, Record<string, unknown>>
     : Record<string, unknown>
 
 export type DelegateInclude<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { include?: infer TInclude }
-    ? TInclude
+    ? FallbackIfUnknownOrNever<TInclude, Record<string, unknown>>
     : Record<string, unknown>
 
 export type DelegateOrderBy<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { orderBy?: infer TOrderBy }
-    ? TOrderBy
+    ? FallbackIfUnknownOrNever<TOrderBy, Record<string, unknown> | Record<string, unknown>[]>
     : Record<string, unknown> | Record<string, unknown>[]
 
 export type DelegateSelect<TDelegate extends PrismaDelegateLike> =
     DelegateFindManyArgs<TDelegate> extends { select?: infer TSelect }
-    ? TSelect
+    ? FallbackIfUnknownOrNever<TSelect, Record<string, unknown>>
     : Record<string, unknown>
 
 export type DelegateCreateData<TDelegate extends PrismaDelegateLike> =
@@ -99,12 +106,12 @@ export type DelegateUpdateArgs<TDelegate extends PrismaDelegateLike> = Parameter
 
 export type DelegateUpdateData<TDelegate extends PrismaDelegateLike> =
     DelegateUpdateArgs<TDelegate> extends { data: infer TData }
-    ? TData
+    ? FallbackIfUnknownOrNever<TData, Record<string, unknown>>
     : Record<string, unknown>
 
 export type DelegateUniqueWhere<TDelegate extends PrismaDelegateLike> =
     DelegateUpdateArgs<TDelegate> extends { where: infer TWhere }
-    ? TWhere
+    ? FallbackIfUnknownOrNever<TWhere, Record<string, unknown>>
     : Record<string, unknown>
 
 export type DelegateRow<TDelegate extends PrismaDelegateLike> = Exclude<Awaited<ReturnType<TDelegate['findFirst']>>, null>

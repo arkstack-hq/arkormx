@@ -3,6 +3,21 @@ import { configureArkormRuntime, Model, QueryBuilder } from '../../src'
 
 type Row = Record<string, unknown>
 
+function toComparable (value: unknown, template: unknown): unknown {
+    if (template instanceof Date) {
+        if (value instanceof Date)
+            return value
+
+        if (typeof value === 'string' || typeof value === 'number') {
+            const parsed = new Date(value)
+            if (!Number.isNaN(parsed.getTime()))
+                return parsed
+        }
+    }
+
+    return value
+}
+
 function applyOrderBy (rows: Row[], orderBy: Row | Row[] | undefined): Row[] {
     if (!orderBy)
         return rows
@@ -43,17 +58,73 @@ function matchesWhere (row: Row, where: Record<string, unknown> | undefined): bo
     if (Array.isArray(where.AND))
         return (where.AND as Record<string, unknown>[]).every(clause => matchesWhere(row, clause))
 
+    if (Array.isArray(where.OR))
+        return (where.OR as Record<string, unknown>[]).some(clause => matchesWhere(row, clause))
+
+    if (where.NOT) {
+        const notClause = where.NOT
+        if (Array.isArray(notClause))
+            return !(notClause as Record<string, unknown>[]).every(clause => matchesWhere(row, clause))
+
+        if (notClause && typeof notClause === 'object')
+            return !matchesWhere(row, notClause as Record<string, unknown>)
+    }
+
     return Object.entries(where).every(([key, value]) => {
-        if (value && typeof value === 'object' && !Array.isArray(value) && 'in' in (value as Record<string, unknown>)) {
-            const candidate = (value as { in: unknown[] }).in
+        if (key === 'AND' || key === 'OR' || key === 'NOT')
+            return true
 
-            return Array.isArray(candidate) ? candidate.includes(row[key]) : false
-        }
+        if (value && typeof value === 'object' && !Array.isArray(value)) {
+            const clause = value as Record<string, unknown>
+            const rowValue = row[key]
 
-        if (value && typeof value === 'object' && !Array.isArray(value) && 'not' in (value as Record<string, unknown>)) {
-            const disallowed = (value as { not: unknown }).not
+            if ('in' in clause) {
+                const candidate = clause.in
+                if (!Array.isArray(candidate) || !candidate.includes(rowValue))
+                    return false
+            }
 
-            return row[key] !== disallowed
+            if ('notIn' in clause) {
+                const candidate = clause.notIn
+                if (!Array.isArray(candidate) || candidate.includes(rowValue))
+                    return false
+            }
+
+            if ('not' in clause) {
+                if (rowValue === clause.not)
+                    return false
+            }
+
+            if ('gt' in clause) {
+                const compareTo = clause.gt
+                const leftValue = toComparable(rowValue, compareTo)
+                if (!((leftValue as number | string | Date) > (compareTo as number | string | Date)))
+                    return false
+            }
+
+            if ('gte' in clause) {
+                const compareTo = clause.gte
+                const leftValue = toComparable(rowValue, compareTo)
+                if (!((leftValue as number | string | Date) >= (compareTo as number | string | Date)))
+                    return false
+            }
+
+            if ('lt' in clause) {
+                const compareTo = clause.lt
+                const leftValue = toComparable(rowValue, compareTo)
+                if (!((leftValue as number | string | Date) < (compareTo as number | string | Date)))
+                    return false
+            }
+
+            if ('lte' in clause) {
+                const compareTo = clause.lte
+                const leftValue = toComparable(rowValue, compareTo)
+                if (!((leftValue as number | string | Date) <= (compareTo as number | string | Date)))
+                    return false
+            }
+
+            if (Object.keys(clause).length > 0)
+                return true
         }
 
         return row[key] === value
