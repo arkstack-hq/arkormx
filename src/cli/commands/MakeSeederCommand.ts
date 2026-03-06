@@ -26,6 +26,6 @@ export class MakeSeederCommand extends Command<CliApp> {
 
         const created = this.app.makeSeeder(name, this.options())
 
-        this.success(`Created seeder: ${created.path}`)
+        this.success(`Created seeder: ${this.app.formatPathForLog(created.path)}`)
     }
 }

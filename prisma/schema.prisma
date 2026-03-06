@@ -87,3 +87,9 @@ model Taggable {
     @@id([tagId, taggableId, taggableType])
     @@map("taggables")
 }
+
+model Place {
+  id Int @id @default(autoincrement())
+
+  @@map("places")
+}

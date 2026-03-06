@@ -16,9 +16,30 @@ const prisma = new PrismaClient({
 });
 
 export default defineConfig({
+  paths: {
+    stubs: './stubs',
+    models: './src/models',
+    factories: './database/factories',
+    seeders: './database/seeders',
+    migrations: './database/migrations',
+    devOutput: './dist',
+  },
+  outputExt: 'ts',
   prisma: () => prisma as unknown as Record<string, unknown>,
 });
 ```
+
+### Production CLI runtime for TypeScript files
+
+When running the `arkorm` CLI, Node executes JavaScript output.
+If your seeders/migrations are authored in TypeScript, keep your build output structure aligned with source paths.
+
+- Source: `database/migrations/CreateUsersMigration.ts`
+- Build: `dist/database/migrations/CreateUsersMigration.js` (or `.cjs` / `.mjs`)
+
+Arkorm uses `paths.devOutput` to resolve runtime equivalents for `.ts` files by trying matching `.js`, `.cjs`, and `.mjs` files.
+
+If you use `tsdown`, enable a non-bundled output that preserves file structure (for example with `unbundle`) so generated paths mirror your source tree.
 
 ## 2. Define models
 

@@ -180,6 +180,12 @@ function makeDelegate (rows: Row[]) {
 }
 
 export class User extends Model<'user'> {
+    declare id: number
+    declare name: string
+    declare email: string
+    declare isActive: number
+    declare createdAt: Date
+
     protected static override delegate = 'users'
     protected override casts = {
         isActive: 'boolean',

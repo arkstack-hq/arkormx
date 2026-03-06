@@ -30,6 +30,6 @@ export class MakeFactoryCommand extends Command<CliApp> {
             force: this.option('force'),
         })
 
-        this.success(`Created factory: ${created.path}`)
+        this.success(`Created factory: ${this.app.formatPathForLog(created.path)}`)
     }
 }

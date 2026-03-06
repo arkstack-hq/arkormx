@@ -360,7 +360,33 @@ export const toMigrationFileSlug = (name: string): string => {
  * @param className 
  * @returns 
  */
-export const buildMigrationSource = (className: string): string => {
+export const buildMigrationSource = (
+    className: string,
+    extension: 'ts' | 'js' = 'ts'
+): string => {
+    if (extension === 'js') {
+        return [
+            'import { Migration } from \'arkorm\'',
+            '',
+            `export default class ${className} extends Migration {`,
+            '    /**',
+            '     * @param {import(\'arkorm\').SchemaBuilder} schema',
+            '     * @returns {Promise<void>}',
+            '     */',
+            '    async up (schema) {',
+            '    }',
+            '',
+            '    /**',
+            '     * @param {import(\'arkorm\').SchemaBuilder} schema',
+            '     * @returns {Promise<void>}',
+            '     */',
+            '    async down (schema) {',
+            '    }',
+            '}',
+            '',
+        ].join('\n')
+    }
+
     return [
         'import { Migration, SchemaBuilder } from \'arkorm\'',
         '',
@@ -394,7 +420,7 @@ export const generateMigrationFile = (
     const directory = options.directory ?? join(process.cwd(), 'database', 'migrations')
     const fileName = `${timestamp}_${fileSlug}.${extension}`
     const filePath = join(directory, fileName)
-    const content = buildMigrationSource(className)
+    const content = buildMigrationSource(className, extension)
 
     if (options.write ?? true) {
         if (!existsSync(directory))

@@ -27,6 +27,6 @@ export class MakeMigrationCommand extends Command<CliApp> {
 
         const created = this.app.makeMigration(name)
 
-        this.success(`Created migration: ${created.path}`)
+        this.success(`Created migration: ${this.app.formatPathForLog(created.path)}`)
     }
 }

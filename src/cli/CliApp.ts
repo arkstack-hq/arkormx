@@ -1,11 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
-import { dirname, join, relative } from 'path'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { dirname, extname, join, relative } from 'path'
+import { createRequire } from 'module'
 
 import { Command } from '@h3ravel/musket'
 import { applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { getUserConfig } from '../helpers/runtime-config'
 import { ArkormConfig, GetUserConfig } from 'src/types'
 import { str } from '@h3ravel/support'
+import { Logger } from '@h3ravel/shared'
 
 /**
  * Main application class for the Arkorm CLI.
@@ -42,6 +44,129 @@ export class CliApp {
     }
 
     /**
+     * Convert absolute paths under current working directory into relative display paths.
+     *
+     * @param filePath
+     * @returns
+     */
+    formatPathForLog (filePath: string): string {
+        const relPath = relative(process.cwd(), filePath)
+        if (!relPath)
+            return '.'
+
+        if (relPath.startsWith('..'))
+            return filePath
+
+        return relPath
+    }
+
+    /**
+     * Utility to format a value for logging, converting absolute paths under current 
+     * working directory into relative display paths.
+     * 
+     * @param name 
+     * @param value 
+     * @returns 
+     */
+    splitLogger (name: string, value: string) {
+        value = value.includes(process.cwd()) ? this.formatPathForLog(value) : value
+
+        return Logger.twoColumnDetail(name + ' ', ' ' + value, false).join('')
+    }
+
+    private hasTypeScriptInstalled (): boolean {
+        try {
+            const require = createRequire(import.meta.url)
+            require.resolve('typescript', { paths: [process.cwd()] })
+
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    private resolveOutputExt (): 'ts' | 'js' {
+        const configured = this.getConfig('outputExt')
+        const preferred: 'ts' | 'js' = configured === 'js' ? 'js' : 'ts'
+
+        if (preferred === 'ts' && !this.hasTypeScriptInstalled())
+            return 'js'
+
+        return preferred
+    }
+
+    private stripKnownSourceExtension (value: string): string {
+        return value.replace(/\.(ts|tsx|mts|cts|js|mjs|cjs)$/i, '')
+    }
+
+    /**
+     * Resolve a directory path to runtime output when the source path is unavailable.
+     *
+     * @param directoryPath
+     * @returns
+     */
+    resolveRuntimeDirectoryPath (directoryPath: string): string {
+        if (existsSync(directoryPath))
+            return directoryPath
+
+        const { devOutput } = this.getConfig('paths') || {}
+        if (typeof devOutput !== 'string' || devOutput.trim().length === 0)
+            return directoryPath
+
+        const relativeSource = relative(process.cwd(), directoryPath)
+        if (!relativeSource || relativeSource.startsWith('..'))
+            return directoryPath
+
+        const mappedDirectory = join(devOutput, relativeSource)
+
+        return existsSync(mappedDirectory)
+            ? mappedDirectory
+            : directoryPath
+    }
+
+    /**
+     * Resolve a script file path for runtime execution.
+     * If a .ts file is provided, tries equivalent .js/.cjs/.mjs files first.
+     * Also attempts mapped paths inside paths.devOutput preserving structure.
+     *
+     * @param filePath
+     * @returns
+     */
+    resolveRuntimeScriptPath (filePath: string): string {
+        const extension = extname(filePath).toLowerCase()
+        const isTsFile = extension === '.ts' || extension === '.mts' || extension === '.cts'
+        const candidates: string[] = []
+
+        if (isTsFile) {
+            const base = filePath.slice(0, -extension.length)
+            candidates.push(`${base}.js`, `${base}.cjs`, `${base}.mjs`)
+        }
+
+        const { devOutput } = this.getConfig('paths') ?? {}
+        if (typeof devOutput === 'string' && devOutput.trim().length > 0) {
+            const relativeSource = relative(process.cwd(), filePath)
+            if (relativeSource && !relativeSource.startsWith('..')) {
+                const mappedFile = join(devOutput, relativeSource)
+                const mappedExtension = extname(mappedFile).toLowerCase()
+                const mappedIsTs = mappedExtension === '.ts' || mappedExtension === '.mts' || mappedExtension === '.cts'
+
+                if (mappedIsTs) {
+                    const mappedBase = mappedFile.slice(0, -mappedExtension.length)
+                    candidates.push(`${mappedBase}.js`, `${mappedBase}.cjs`, `${mappedBase}.mjs`)
+                } else {
+                    candidates.push(mappedFile)
+                }
+            }
+        }
+
+        const runtimeMatch = candidates.find(path => existsSync(path))
+        if (runtimeMatch)
+            return runtimeMatch
+
+        return filePath
+    }
+
+    /**
      * Utility to generate file from stub
      *
      * @param stubPath
@@ -55,7 +180,7 @@ export class CliApp {
         options?: any
     ): string {
         if (existsSync(outputPath) && !options?.force) {
-            this.command.error(`Error: ${outputPath} already exists.`)
+            this.command.error(`Error: ${this.formatPathForLog(outputPath)} already exists.`)
             process.exit(1)
         } else if (existsSync(outputPath) && options?.force) {
             rmSync(outputPath)
@@ -80,10 +205,10 @@ export class CliApp {
      * @returns The resolved configuration path
      */
     private resolveConfigPath (
-        key: keyof Omit<ArkormConfig, 'prisma' | 'pagination'>,
+        key: keyof NonNullable<ArkormConfig['paths']>,
         fallback: string
     ): string {
-        const configured = this.getConfig(key)
+        const { [key]: configured } = this.getConfig('paths') ?? {}
         if (typeof configured === 'string' && configured.trim().length > 0)
             return configured
 
@@ -97,7 +222,7 @@ export class CliApp {
      * @returns 
      */
     private resolveStubPath (stubName: string): string {
-        const stubsDir = this.resolveConfigPath('stubsDir', join(process.cwd(), 'stubs'))
+        const stubsDir = this.resolveConfigPath('stubs', join(process.cwd(), 'stubs'))
 
         return join(stubsDir, stubName)
     }
@@ -120,12 +245,13 @@ export class CliApp {
         const baseName = str(name.replace(/Factory$/, '')).pascal()
         const factoryName = `${baseName}Factory`
         const modelName = options.modelName ? str(options.modelName).pascal() : baseName
-        const factoriesDir = this.resolveConfigPath('factoriesDir', join(process.cwd(), 'database', 'factories'))
-        const outputPath = join(factoriesDir, `${factoryName}.ts`)
-        const modelPath = join(this.resolveConfigPath('modelsDir', join(process.cwd(), 'src', 'models')), `${modelName}.ts`)
+        const outputExt = this.resolveOutputExt()
+        const factoriesDir = this.resolveConfigPath('factories', join(process.cwd(), 'database', 'factories'))
+        const outputPath = join(factoriesDir, `${factoryName}.${outputExt}`)
+        const modelPath = join(this.resolveConfigPath('models', join(process.cwd(), 'src', 'models')), `${modelName}.${outputExt}`)
         const relativeImport = options.modelImportPath
-            ?? `./${relative(dirname(outputPath), modelPath).replace(/\\/g, '/').replace(/\.ts$/, '')}`
-        const stubPath = this.resolveStubPath('factory.stub')
+            ?? `./${this.stripKnownSourceExtension(relative(dirname(outputPath), modelPath).replace(/\\/g, '/'))}${outputExt === 'js' ? '.js' : ''}`
+        const stubPath = this.resolveStubPath(outputExt === 'js' ? 'factory.js.stub' : 'factory.stub')
 
         const path = this.generateFile(stubPath, outputPath, {
             FactoryName: factoryName,
@@ -149,9 +275,10 @@ export class CliApp {
     ): { name: string, path: string } {
         const baseName = str(name.replace(/Seeder$/, '')).pascal()
         const seederName = `${baseName}Seeder`
-        const seedersDir = this.resolveConfigPath('seedersDir', join(process.cwd(), 'database', 'seeders'))
-        const outputPath = join(seedersDir, `${seederName}.ts`)
-        const stubPath = this.resolveStubPath('seeder.stub')
+        const outputExt = this.resolveOutputExt()
+        const seedersDir = this.resolveConfigPath('seeders', join(process.cwd(), 'database', 'seeders'))
+        const outputPath = join(seedersDir, `${seederName}.${outputExt}`)
+        const stubPath = this.resolveStubPath(outputExt === 'js' ? 'seeder.js.stub' : 'seeder.stub')
 
         const path = this.generateFile(stubPath, outputPath, {
             SeederName: seederName,
@@ -167,9 +294,10 @@ export class CliApp {
      * @returns An object containing the name and path of the generated migration file.
      */
     public makeMigration (name: string): { name: string, path: string } {
-        const migrationsDir = this.resolveConfigPath('migrationsDir', join(process.cwd(), 'database', 'migrations'))
+        const migrationsDir = this.resolveConfigPath('migrations', join(process.cwd(), 'database', 'migrations'))
         const generated = generateMigrationFile(name, {
             directory: migrationsDir,
+            extension: this.resolveOutputExt(),
         })
 
         return {
@@ -204,20 +332,21 @@ export class CliApp {
         const baseName = str(name.replace(/Model$/, '')).pascal().toString()
         const modelName = `${baseName}`
         const delegateName = str(baseName).camel().plural().toString()
-        const modelsDir = this.resolveConfigPath('modelsDir', join(process.cwd(), 'src', 'models'))
+        const outputExt = this.resolveOutputExt()
+        const modelsDir = this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
 
-        const outputPath = join(modelsDir, `${modelName}.ts`)
+        const outputPath = join(modelsDir, `${modelName}.${outputExt}`)
         const shouldBuildFactory = options.all || options.factory
         const shouldBuildSeeder = options.all || options.seeder
         const shouldBuildMigration = options.all || options.migration
         const factoryName = `${baseName}Factory`
-        const factoryPath = join(this.resolveConfigPath('factoriesDir', join(process.cwd(), 'database', 'factories')), `${factoryName}.ts`)
+        const factoryPath = join(this.resolveConfigPath('factories', join(process.cwd(), 'database', 'factories')), `${factoryName}.${outputExt}`)
 
         const factoryImportPath = `./${relative(dirname(outputPath), factoryPath)
             .replace(/\\/g, '/')
-            .replace(/\.ts$/, '')}`
+            .replace(/\.(ts|tsx|mts|cts|js|mjs|cjs)$/i, '')}${outputExt === 'js' ? '.js' : ''}`
 
-        const stubPath = this.resolveStubPath('model.stub')
+        const stubPath = this.resolveStubPath(outputExt === 'js' ? 'model.js.stub' : 'model.stub')
 
         const modelPath = this.generateFile(stubPath, outputPath, {
             ModelName: modelName,
@@ -226,7 +355,9 @@ export class CliApp {
                 ? `import { ${factoryName} } from '${factoryImportPath}'\n`
                 : '',
             FactoryLink: shouldBuildFactory
-                ? `\n    protected static override factoryClass = ${factoryName}`
+                ? outputExt === 'js'
+                    ? `\n    static factoryClass = ${factoryName}`
+                    : `\n    protected static override factoryClass = ${factoryName}`
                 : '',
         }, options)
 
@@ -246,7 +377,7 @@ export class CliApp {
                 modelName,
                 modelImportPath: `./${relative(dirname(factoryPath), outputPath)
                     .replace(/\\/g, '/')
-                    .replace(/\.ts$/, '')}`,
+                    .replace(/\.(ts|tsx|mts|cts|js|mjs|cjs)$/i, '')}${outputExt === 'js' ? '.js' : ''}`,
             })
         }
 
@@ -259,6 +390,14 @@ export class CliApp {
         return created
     }
 
+    /**
+     * Ensure that the Prisma schema has a model entry for the given model 
+     * and delegate names.
+     * If the entry does not exist, it will be created with a default `id` field.
+     * 
+     * @param modelName The name of the model to ensure in the Prisma schema.
+     * @param delegateName The name of the delegate (table) to ensure in the Prisma schema.
+     */
     private ensurePrismaModelEntry (
         modelName: string,
         delegateName: string
@@ -288,5 +427,210 @@ export class CliApp {
         writeFileSync(schemaPath, updated)
 
         return { path: schemaPath, updated: true }
+    }
+
+    /**
+     * Convert a Prisma scalar type to its corresponding TypeScript type.
+     * 
+     * @param value The Prisma scalar type.
+     * @returns     The corresponding TypeScript type.
+     */
+    private prismaTypeToTs (value: string): string {
+        if (value === 'Int' || value === 'Float' || value === 'Decimal')
+            return 'number'
+        if (value === 'BigInt')
+            return 'bigint'
+        if (value === 'String')
+            return 'string'
+        if (value === 'Boolean')
+            return 'boolean'
+        if (value === 'DateTime')
+            return 'Date'
+        if (value === 'Json')
+            return 'Record<string, unknown>'
+        if (value === 'Bytes')
+            return 'Buffer'
+
+        return 'unknown'
+    }
+
+    /**
+     * Parse the Prisma schema to extract model definitions and their fields, focusing 
+     * on scalar types.
+     * 
+     * @param schema    The Prisma schema as a string.
+     * @returns         An array of model definitions with their fields.
+     */
+    private parsePrismaModels (schema: string): Array<{
+        name: string
+        table: string
+        fields: Array<{ name: string, type: string, optional: boolean }>
+    }> {
+        const models: Array<{
+            name: string
+            table: string
+            fields: Array<{ name: string, type: string, optional: boolean }>
+        }> = []
+
+        const modelRegex = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g
+        const scalarTypes = new Set(['Int', 'Float', 'Decimal', 'BigInt', 'String', 'Boolean', 'DateTime', 'Json', 'Bytes'])
+
+        for (const match of schema.matchAll(modelRegex)) {
+            const name = match[1]
+            const body = match[2]
+            const mapped = body.match(/@@map\("([^"]+)"\)/)
+            const table = mapped?.[1] ?? `${name.charAt(0).toLowerCase()}${name.slice(1)}s`
+            const fields: Array<{ name: string, type: string, optional: boolean }> = []
+
+            body.split('\n').forEach((rawLine) => {
+                const line = rawLine.trim()
+                if (!line || line.startsWith('@@') || line.startsWith('//'))
+                    return
+
+                const fieldMatch = line.match(/^(\w+)\s+([A-Za-z]+)(\?)?\b/)
+                if (!fieldMatch)
+                    return
+
+                const fieldType = fieldMatch[2]
+                if (!scalarTypes.has(fieldType))
+                    return
+
+                fields.push({
+                    name: fieldMatch[1],
+                    type: this.prismaTypeToTs(fieldType),
+                    optional: Boolean(fieldMatch[3]),
+                })
+            })
+
+            models.push({ name, table, fields })
+        }
+
+        return models
+    }
+
+    /**
+     * Sync model attribute declarations in a model file based on the 
+     * provided declarations.
+     * This method takes the source code of a model file and a list of 
+     * attribute declarations,
+     * 
+     * @param modelSource   The source code of the model file.
+     * @param declarations  A list of attribute declarations to sync.
+     * @returns An object containing the updated content and a flag indicating if it was updated.
+     */
+    private syncModelDeclarations (
+        modelSource: string,
+        declarations: string[]
+    ): { content: string, updated: boolean } {
+        const lines = modelSource.split('\n')
+        const classIndex = lines.findIndex(line => /export\s+class\s+\w+\s+extends\s+Model<.+>\s*\{/.test(line))
+        if (classIndex < 0)
+            return { content: modelSource, updated: false }
+
+        let classEndIndex = -1
+        let depth = 0
+        for (let index = classIndex; index < lines.length; index += 1) {
+            const line = lines[index]
+            depth += (line.match(/\{/g) || []).length
+            depth -= (line.match(/\}/g) || []).length
+
+            if (depth === 0) {
+                classEndIndex = index
+                break
+            }
+        }
+
+        if (classEndIndex < 0)
+            return { content: modelSource, updated: false }
+
+        const withinClass = lines.slice(classIndex + 1, classEndIndex)
+        const withoutDeclares = withinClass.filter(line => !/^\s*declare\s+\w+\??:\s*[^\n]+$/.test(line))
+        const declarationLines = declarations.map(declaration => `    ${declaration}`)
+        const rebuiltClass = [...declarationLines, ...withoutDeclares]
+        const content = [
+            ...lines.slice(0, classIndex + 1),
+            ...rebuiltClass,
+            ...lines.slice(classEndIndex),
+        ].join('\n')
+
+        return { content, updated: content !== modelSource }
+    }
+
+    /**
+     * Sync model attribute declarations in model files based on the Prisma schema.
+     * This method reads the Prisma schema to extract model definitions and their 
+     * scalar fields, then updates the corresponding model files to include `declare` 
+     * statements for these fields. It returns an object containing the paths of the
+     * schema and models, the total number of model files processed, and lists of 
+     * updated and skipped files.
+     * 
+     * @param options Optional parameters to specify custom paths for the Prisma schema and models directory.
+     * @returns An object with details about the synchronization process, including updated and skipped files.
+     */
+    public syncModelsFromPrisma (options: {
+        schemaPath?: string
+        modelsDir?: string
+    } = {}): {
+        schemaPath: string
+        modelsDir: string
+        total: number
+        updated: string[]
+        skipped: string[]
+    } {
+        const schemaPath = options.schemaPath ?? join(process.cwd(), 'prisma', 'schema.prisma')
+        const modelsDir = options.modelsDir ?? this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
+
+        if (!existsSync(schemaPath))
+            throw new Error(`Prisma schema file not found: ${schemaPath}`)
+        if (!existsSync(modelsDir))
+            throw new Error(`Models directory not found: ${modelsDir}`)
+
+        const schema = readFileSync(schemaPath, 'utf-8')
+        const prismaModels = this.parsePrismaModels(schema)
+
+        const modelFiles = readdirSync(modelsDir)
+            .filter((file: string) => file.endsWith('.ts'))
+
+        const updated: string[] = []
+        const skipped: string[] = []
+
+        modelFiles.forEach((file: string) => {
+            const filePath = join(modelsDir, file)
+            const source = readFileSync(filePath, 'utf-8')
+            const classMatch = source.match(/export\s+class\s+(\w+)\s+extends\s+Model<'([^']+)'>/)
+            if (!classMatch) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            const className = classMatch[1]
+            const delegate = classMatch[2]
+            const prismaModel = prismaModels.find(model => model.table === delegate) ?? prismaModels.find(model => model.name === className)
+            if (!prismaModel || prismaModel.fields.length === 0) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            const declarations = prismaModel.fields.map(field => `declare ${field.name}${field.optional ? '?' : ''}: ${field.type}`)
+            const synced = this.syncModelDeclarations(source, declarations)
+            if (!synced.updated) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            writeFileSync(filePath, synced.content)
+            updated.push(filePath)
+        })
+
+        return {
+            schemaPath,
+            modelsDir,
+            total: modelFiles.length,
+            updated,
+            skipped,
+        }
     }
 }

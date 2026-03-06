@@ -7,6 +7,7 @@ import { MakeMigrationCommand } from './commands/MakeMigrationCommand'
 import { MakeModelCommand } from './commands/MakeModelCommand'
 import { MakeSeederCommand } from './commands/MakeSeederCommand'
 import { MigrateCommand } from './commands/MigrateCommand'
+import { ModelsSyncCommand } from './commands/ModelsSyncCommand'
 import { SeedCommand } from './commands/SeedCommand'
 import { Kernel } from '@h3ravel/musket'
 import logo from './logo'
@@ -22,6 +23,7 @@ await Kernel.init(app, {
         MakeFactoryCommand,
         MakeSeederCommand,
         MakeMigrationCommand,
+        ModelsSyncCommand,
         SeedCommand,
         MigrateCommand,
     ],

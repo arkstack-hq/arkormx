@@ -39,12 +39,13 @@ export class MigrateCommand extends Command<CliApp> {
      */
     async handle () {
         this.app.command = this
-        const migrationsDir =
-            this.app.getConfig('migrationsDir') ??
+        const configuredMigrationsDir =
+            this.app.getConfig('paths')?.migrations ??
             join(process.cwd(), 'database', 'migrations')
+        const migrationsDir = this.app.resolveRuntimeDirectoryPath(configuredMigrationsDir)
 
         if (!existsSync(migrationsDir))
-            return void this.error(`Error: Migrations directory not found: ${migrationsDir}`)
+            return void this.error(`Error: Migrations directory not found: ${this.app.formatPathForLog(configuredMigrationsDir)}`)
 
         const schemaPath = this.option('schema')
             ? resolve(String(this.option('schema')))
@@ -52,12 +53,13 @@ export class MigrateCommand extends Command<CliApp> {
 
         const classes = this.option('all')
             ? await this.loadAllMigrations(migrationsDir)
-            : await this.loadNamedMigration(migrationsDir, this.argument('name'))
+            : (await this.loadNamedMigration(migrationsDir, this.argument('name')))
+                .filter(([cls]) => cls !== undefined) as [MigrationClass, string][]
 
         if (classes.length === 0)
             return void this.error('Error: No migration classes found to run.')
 
-        for (const MigrationClassItem of classes)
+        for (const [MigrationClassItem] of classes)
             await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
 
         if (!this.option('skip-generate'))
@@ -75,6 +77,7 @@ export class MigrateCommand extends Command<CliApp> {
         }
 
         this.success(`Applied ${classes.length} migration(s).`)
+        classes.forEach(([_, file]) => this.success(this.app.splitLogger('Migrated', file)))
     }
 
     /**
@@ -82,13 +85,15 @@ export class MigrateCommand extends Command<CliApp> {
      *
      * @param migrationsDir The directory to load migration classes from.
      */
-    private async loadAllMigrations (migrationsDir: string): Promise<MigrationClass[]> {
+    private async loadAllMigrations (migrationsDir: string): Promise<[MigrationClass, string][]> {
         const files = readdirSync(migrationsDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
             .sort((left, right) => left.localeCompare(right))
-            .map(file => join(migrationsDir, file))
+            .map(file => this.app.resolveRuntimeScriptPath(join(migrationsDir, file)))
 
-        const classes = await Promise.all(files.map(async file => await this.loadMigrationClassesFromFile(file)))
+        const classes = await Promise.all(files.map(
+            async file => (await this.loadMigrationClassesFromFile(file)).map(cls => [cls, file] as [MigrationClass, string])
+        ))
 
         return classes.flat()
     }
@@ -103,9 +108,9 @@ export class MigrateCommand extends Command<CliApp> {
     private async loadNamedMigration (
         migrationsDir: string,
         name?: string
-    ): Promise<MigrationClass[]> {
+    ): Promise<[MigrationClass | undefined, string][]> {
         if (!name)
-            return []
+            return [[undefined, '']]
 
         const base = name.replace(/Migration$/, '')
         const candidates = [
@@ -115,9 +120,11 @@ export class MigrateCommand extends Command<CliApp> {
 
         const target = candidates.find(file => existsSync(file))
         if (!target)
-            return []
+            return [[undefined, name]]
 
-        return await this.loadMigrationClassesFromFile(target)
+        const runtimeTarget = this.app.resolveRuntimeScriptPath(target)
+
+        return (await this.loadMigrationClassesFromFile(runtimeTarget)).map(cls => [cls, runtimeTarget])
     }
 
     /**

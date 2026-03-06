@@ -24,8 +24,8 @@ export class InitCommand extends Command<CliApp> {
     async handle () {
         this.app.command = this
         const outputDir = join(process.cwd(), 'arkorm.config.js')
-        const stubsDir = getUserConfig('stubsDir') ?? ''
-        const stubPath = join(stubsDir, 'arkorm.config.stub')
+        const { stubs } = getUserConfig('paths') ?? {}
+        const stubPath = join(stubs ?? '', 'arkorm.config.stub')
 
         if (existsSync(outputDir) && !this.option('force')) {
             this.error('Error: Arkorm has already been initialized. Use --force to reinitialize.')

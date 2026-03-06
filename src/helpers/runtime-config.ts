@@ -12,11 +12,15 @@ import path from 'path'
 import { fileURLToPath, pathToFileURL } from 'url'
 
 const baseConfig: Partial<ArkormConfig> = {
-    stubsDir: fileURLToPath(new URL('../../stubs', import.meta.url)),
-    seedersDir: path.join(process.cwd(), 'database', 'seeders'),
-    modelsDir: path.join(process.cwd(), 'src', 'models'),
-    migrationsDir: path.join(process.cwd(), 'database', 'migrations'),
-    factoriesDir: path.join(process.cwd(), 'database', 'factories'),
+    paths: {
+        stubs: fileURLToPath(new URL('../../stubs', import.meta.url)),
+        seeders: path.join(process.cwd(), 'database', 'seeders'),
+        models: path.join(process.cwd(), 'src', 'models'),
+        migrations: path.join(process.cwd(), 'database', 'migrations'),
+        factories: path.join(process.cwd(), 'database', 'factories'),
+        devOutput: path.join(process.cwd(), 'dist'),
+    },
+    outputExt: 'ts',
 }
 const userConfig: Partial<ArkormConfig> = { ...baseConfig }
 let runtimeConfigLoaded = false
@@ -58,7 +62,14 @@ export const configureArkormRuntime = (
     prisma: ClientResolver,
     options: Omit<ArkormConfig, 'prisma'> = {}
 ): void => {
-    Object.assign(userConfig, { prisma }, options)
+    Object.assign(userConfig, {
+        ...options,
+        prisma,
+        paths: {
+            ...(userConfig.paths ?? {}),
+            ...(options.paths ?? {}),
+        },
+    })
     runtimeClientResolver = prisma
     runtimePaginationURLDriverFactory = options.pagination?.urlDriver
 }
@@ -114,11 +125,8 @@ const resolveAndApplyConfig = (imported: unknown): void => {
 
     configureArkormRuntime(config.prisma, {
         pagination: config.pagination,
-        stubsDir: config.stubsDir,
-        seedersDir: config.seedersDir,
-        modelsDir: config.modelsDir,
-        migrationsDir: config.migrationsDir,
-        factoriesDir: config.factoriesDir,
+        paths: config.paths,
+        outputExt: config.outputExt,
     })
     runtimeConfigLoaded = true
 }

@@ -47,7 +47,10 @@ type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void 
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, unknown> | string = Record<string, any>> {
+export abstract class Model<
+    TSchema extends PrismaDelegateLike | Record<string, unknown> | string = Record<string, any>,
+    TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
+> {
     protected static factoryClass?: new () => ModelFactory<any, any>
     protected static client: Record<string, unknown>
     protected static delegate: string
@@ -66,6 +69,23 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
     public constructor(attributes: Record<string, unknown> = {}) {
         this.attributes = {}
         this.fill(attributes)
+
+        return new Proxy(this, {
+            get: (target, key, receiver) => {
+                if (typeof key !== 'string' || key in target)
+                    return Reflect.get(target, key, receiver)
+
+                return target.getAttribute(key)
+            },
+            set: (target, key, value, receiver) => {
+                if (typeof key !== 'string' || key in target)
+                    return Reflect.set(target, key, value, receiver)
+
+                target.setAttribute(key, value)
+
+                return true
+            },
+        }) as this
     }
 
     /**
@@ -334,7 +354,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param attributes 
      * @returns 
      */
-    public fill (attributes: Partial<ModelAttributesOf<TSchema>>): this
+    public fill (attributes: Partial<TAttributes>): this
     public fill (attributes: Record<string, unknown>): this
     public fill (attributes: Record<string, unknown>): this {
         Object.entries(attributes).forEach(([key, value]) => {
@@ -350,7 +370,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param key 
      * @returns 
      */
-    public getAttribute<TKey extends keyof ModelAttributesOf<TSchema> & string> (key: TKey): ModelAttributesOf<TSchema>[TKey]
+    public getAttribute<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey]
     public getAttribute (key: string): unknown
     public getAttribute (key: string): unknown {
         const mutator = this.resolveGetMutator(key)
@@ -373,9 +393,9 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * @param value 
      * @returns 
      */
-    public setAttribute<TKey extends keyof ModelAttributesOf<TSchema> & string> (
+    public setAttribute<TKey extends keyof TAttributes & string> (
         key: TKey,
-        value: ModelAttributesOf<TSchema>[TKey]
+        value: TAttributes[TKey]
     ): this
     public setAttribute (key: string, value: unknown): this
     public setAttribute (key: string, value: unknown): this {
@@ -411,7 +431,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
 
             const model = await constructor.query().create(payload)
-            this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+            this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
 
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'created', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
@@ -423,7 +443,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
 
         const model = await constructor.query().where({ id: identifier }).update(payload)
-        this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+        this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updated', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
@@ -451,7 +471,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
             const model = await constructor.query()
                 .where({ id: identifier })
                 .update({ [softDeleteConfig.column]: new Date() })
-            this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+            this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
 
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
 
@@ -459,7 +479,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         }
 
         const deleted = await constructor.query().where({ id: identifier }).delete()
-        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
 
         return this
@@ -481,7 +501,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
 
         const deleted = await constructor.query().withTrashed().where({ id: identifier }).delete()
-        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
@@ -509,7 +529,7 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
         const model = await constructor.query().withTrashed()
             .where({ id: identifier })
             .update({ [softDeleteConfig.column]: null })
-        this.fill((model as unknown as Model).getRawAttributes() as Partial<ModelAttributesOf<TSchema>>)
+        this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'restored', this)
 
@@ -546,8 +566,8 @@ export abstract class Model<TSchema extends PrismaDelegateLike | Record<string, 
      * 
      * @returns 
      */
-    public getRawAttributes (): Partial<ModelAttributesOf<TSchema>> {
-        return { ...this.attributes } as Partial<ModelAttributesOf<TSchema>>
+    public getRawAttributes (): Partial<TAttributes> {
+        return { ...this.attributes } as Partial<TAttributes>
     }
 
     /**

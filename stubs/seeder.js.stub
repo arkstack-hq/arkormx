@@ -1,0 +1,9 @@
+import { Seeder } from 'arkorm'
+
+export class {{SeederName}} extends Seeder {
+    /**
+     * @returns {Promise<void>}
+     */
+    async run () {
+    }
+}

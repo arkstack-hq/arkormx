@@ -18,14 +18,21 @@ describe('Model lifecycle and serialization', () => {
         expect(user).not.toBeNull()
 
         const model = user as User
+        const dynamic = model as User
+        expect(dynamic.id).toBe(1)
+        expect(dynamic.email).toBe('jane@example.com')
         expect(model.getAttribute('name')).toBe('Jane')
         expect(model.getAttribute('isActive')).toBe(true)
         expect(model.getAttribute('meta')).toEqual({ tier: 'pro' })
         expect(model.getAttribute('createdAt')).toBeInstanceOf(Date)
 
+        dynamic.name = '  Property Setter  '
+        expect(model.getAttribute('name')).toBe('Property Setter')
+        expect(dynamic.name).toBe('Property Setter')
+
         const serialized = model.toObject()
         expect(serialized.password).toBeUndefined()
-        expect(serialized.displayName).toBe('JANE')
+        expect(serialized.displayName).toBe('PROPERTY SETTER')
         expect(typeof serialized.createdAt).toBe('string')
         expect(model.toJSON()).toEqual(serialized)
     })

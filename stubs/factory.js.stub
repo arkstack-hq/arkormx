@@ -1,0 +1,14 @@
+import { ModelFactory } from 'arkorm'
+import { {{ModelName}} } from '{{ModelImportPath}}'
+
+export class {{FactoryName}} extends ModelFactory {
+    model = {{ModelName}}
+
+    /**
+     * @param {number} _sequence
+     * @returns {Record<string, unknown>}
+     */
+    definition (_sequence) {
+        return {}
+    }
+}

@@ -28,21 +28,23 @@ export class SeedCommand extends Command<CliApp> {
      */
     async handle () {
         this.app.command = this
-        const seedersDir = this.app.getConfig('seedersDir') ?? join(process.cwd(), 'database', 'seeders')
+        const configuredSeedersDir = this.app.getConfig('paths')?.seeders ?? join(process.cwd(), 'database', 'seeders')
+        const seedersDir = this.app.resolveRuntimeDirectoryPath(configuredSeedersDir)
         if (!existsSync(seedersDir))
-            return void this.error(`Error: Seeders directory not found: ${seedersDir}`)
+            return void this.error(`ERROR: Seeders directory not found: ${this.app.formatPathForLog(configuredSeedersDir)}`)
 
         const classes = this.option('all')
             ? await this.loadAllSeeders(seedersDir)
             : await this.loadNamedSeeder(seedersDir, this.argument('name') ?? 'DatabaseSeeder')
 
         if (classes.length === 0)
-            return void this.error('Error: No seeder classes found to run.')
+            return void this.error('ERROR: No seeder classes found to run.')
 
         for (const SeederClassItem of classes)
             await new SeederClassItem().run()
 
-        this.success(`Ran ${classes.length} seeder(s).`)
+        this.success('Database seeding completed')
+        classes.forEach(cls => this.success(this.app.splitLogger('Seeded', cls.name)))
     }
 
     /**
@@ -54,7 +56,7 @@ export class SeedCommand extends Command<CliApp> {
     private async loadAllSeeders (seedersDir: string): Promise<SeederClass[]> {
         const files = readdirSync(seedersDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
-            .map(file => join(seedersDir, file))
+            .map(file => this.app.resolveRuntimeScriptPath(join(seedersDir, file)))
 
         const classes = await Promise.all(files.map(async file => await this.loadSeederClassesFromFile(file)))
 
@@ -82,7 +84,9 @@ export class SeedCommand extends Command<CliApp> {
         if (!target)
             return []
 
-        return await this.loadSeederClassesFromFile(target)
+        const runtimeTarget = this.app.resolveRuntimeScriptPath(target)
+
+        return await this.loadSeederClassesFromFile(runtimeTarget)
     }
 
     /**

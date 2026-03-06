@@ -16,24 +16,48 @@ export type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
 
 export interface ArkormConfig {
     /**
-     * A Prisma client instance or a function that returns a Prisma client instance.
+     * @property prisma A Prisma client instance or a function that returns a Prisma client instance.
      */
     prisma: ClientResolver
     /**
-     * Configuration options related to pagination behavior and URL generation.
+     * @property pagination Configuration options related to pagination behavior and URL generation.
      */
     pagination?: {
         urlDriver?: PaginationURLDriverFactory
     }
     /**
-     * The directory path where stub files are located. 
-     * This is used by CLI commands that generate files based on stubs.
+     * @property paths Optional custom paths for various generated files.
      */
-    stubsDir?: string
-    seedersDir?: string
-    modelsDir?: string
-    migrationsDir?: string
-    factoriesDir?: string
+    paths?: {
+        /**
+         * @property stubs Optional custom path for stub files used in code generation.
+         */
+        stubs?: string
+        /**
+         * @property seeders Optional custom path for seeder files.
+         */
+        seeders?: string
+        /**
+         * @property models Optional custom path for model files.
+         */
+        models?: string
+        /**
+         * @property migrations Optional custom path for migration files.
+         */
+        migrations?: string
+        /**
+         * @property factories Optional custom path for factory files.
+         */
+        factories?: string
+        /**
+         * @property devOutput Optional custom path for the development output directory.
+         */
+        devOutput?: string
+    }
+    /**
+     * @property outputExt Optional file extension for generated files, either 'ts' or 'js'.
+     */
+    outputExt?: 'ts' | 'js'
 }
 
 export interface GetUserConfig {

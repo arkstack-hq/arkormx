@@ -32,13 +32,13 @@ export class MakeModelCommand extends Command<CliApp> {
 
         const created = this.app.makeModel(name, this.options())
 
-        this.success('Created files:');
-        [
-            `Model: ${created.model.path}`,
-            `Prisma schema: ${created.prisma.path}${created.prisma.updated ? ' (updated)' : ' (already up to date)'}`,
-            created.factory ? `Factory: ${created.factory.path}` : '',
-            created.seeder ? `Seeder: ${created.seeder.path}` : '',
-            created.migration ? `Migration: ${created.migration.path}` : '',
-        ].filter(Boolean).map(line => this.info(line))
+        this.success('Created files:')
+            ;[
+                ['Model', created.model.path],
+                [`Prisma schema ${created.prisma.updated ? '(updated)' : '(already up to date)'}`, created.prisma.path],
+                created.factory ? ['Factory', created.factory.path] : '',
+                created.seeder ? ['Seeder', created.seeder.path] : '',
+                created.migration ? ['Migration', created.migration.path] : '',
+            ].filter(Boolean).map(([name, path]) => this.success(this.app.splitLogger(name, path)))
     }
 }

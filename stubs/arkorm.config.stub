@@ -3,10 +3,15 @@ import { PrismaClient } from '@prisma/client'
 import { defineConfig } from 'arkorm'
 
 export default defineConfig({
-    modelsDir: './src/models',
-    factoriesDir: './database/factories',
-    seedersDir: './database/seeders',
-    migrationsDir: './database/migrations',
+    paths: {
+        stubs: './stubs',
+        models: './src/models',
+        factories: './database/factories',
+        seeders: './database/seeders',
+        migrations: './database/migrations',
+        devOutput: './dist',
+    },
+    outputExt: 'ts',
     prisma: () => {
         return new PrismaClient({
             adapter: new PrismaPg({

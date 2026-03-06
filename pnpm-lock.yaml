@@ -14,6 +14,9 @@ importers:
       '@h3ravel/musket':
         specifier: ^0.10.1
         version: 0.10.1(@types/node@20.19.35)
+      '@h3ravel/shared':
+        specifier: ^0.27.13
+        version: 0.27.13(@types/node@20.19.35)
       '@h3ravel/support':
         specifier: ^0.15.11
         version: 0.15.11
@@ -377,6 +380,9 @@ packages:
   '@h3ravel/musket@0.10.1':
     resolution: {integrity: sha512-M5pwj7tv5pWTdQnw48EGOEaecPSAZ08CPwS76IRP1QSGCj0gb8gMmrUDZkXTmmDjhJlAfAEAygzLzwQwB6XdgQ==}
     engines: {node: ^20.19.0 || >=22.12.0}
+
+  '@h3ravel/shared@0.27.13':
+    resolution: {integrity: sha512-pkduIDZA89TccPG6FX8txwpdbbUrjSj/GXxsf2ZFTSLhWR7Qh5/R2kjSO1rkbLJv/lS+WtdE/WV2Rd+cSEcPMw==}
 
   '@h3ravel/shared@0.30.3':
     resolution: {integrity: sha512-Qf2GJb5IF8LvAIHH7af2Ze0DvV4IlW+ZEPhodCQtUVq+sZI1PzdSnqYcqsJ4p5pqlVyOShw8s8UFgYz5WoUjLw==}
@@ -3132,6 +3138,19 @@ snapshots:
       radashi: 12.7.2
       resolve-from: 5.0.0
       tsx: 4.21.0
+    transitivePeerDependencies:
+      - '@types/node'
+      - crossws
+
+  '@h3ravel/shared@0.27.13(@types/node@20.19.35)':
+    dependencies:
+      '@inquirer/prompts': 7.10.1(@types/node@20.19.35)
+      chalk: 5.6.2
+      edge.js: 6.5.0
+      escalade: 3.2.0
+      h3: 2.0.1-rc.5
+      inquirer-autocomplete-standalone: 0.8.1
+      preferred-pm: 4.1.1
     transitivePeerDependencies:
       - '@types/node'
       - crossws
