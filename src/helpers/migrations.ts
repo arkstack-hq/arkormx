@@ -1,5 +1,6 @@
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { str } from '@h3ravel/support'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { ArkormException } from '../Exceptions/ArkormException'
@@ -116,7 +117,7 @@ export const buildModelBlock = (operation: SchemaTableCreateOperation): string =
     const modelName = toModelName(operation.table)
     const mapped = operation.table !== modelName.toLowerCase()
     const fields = operation.columns.map(buildFieldLine)
-    const mapping = mapped ? `\n\n  @@map("${operation.table}")` : ''
+    const mapping = mapped ? `\n\n  @@map("${str(operation.table).snake()}")` : ''
 
     return `model ${modelName} {\n${fields.join('\n')}${mapping}\n}`
 }
@@ -261,9 +262,9 @@ export const applyOperationsToPrismaSchema = (schema: string, operations: Schema
 /**
  * Run a Prisma CLI command using npx, capturing and throwing any errors that occur.
  * 
- * @param args 
- * @param cwd 
- * @returns 
+ * @param args The arguments to pass to the Prisma CLI command.
+ * @param cwd The current working directory to run the command in.
+ * @returns void
  */
 export const runPrismaCommand = (
     args: string[],
@@ -278,6 +279,7 @@ export const runPrismaCommand = (
         return
 
     const errorOutput = [command.stdout, command.stderr].filter(Boolean).join('\n').trim()
+
     throw new ArkormException(
         errorOutput
             ? `Prisma command failed: prisma ${args.join(' ')}\n${errorOutput}`

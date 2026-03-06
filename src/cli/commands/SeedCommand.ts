@@ -7,6 +7,12 @@ import { Seeder } from '../../database/Seeder'
 
 type SeederClass = new () => Seeder
 
+/**
+ * The SeedCommand class implements the CLI command for running seeder classes. 
+ *
+ * @author Legacy (3m1n3nc3)
+ * @since 0.1.0
+ */
 export class SeedCommand extends Command<CliApp> {
     protected signature = `seed
         {name? : Seeder class or file name}
@@ -15,6 +21,11 @@ export class SeedCommand extends Command<CliApp> {
 
     protected description = 'Run one or more seeders'
 
+    /**
+     * Command handler for the seed command.
+     * 
+     * @returns 
+     */
     async handle () {
         this.app.command = this
         const seedersDir = this.app.getConfig('seedersDir') ?? join(process.cwd(), 'database', 'seeders')
@@ -34,6 +45,12 @@ export class SeedCommand extends Command<CliApp> {
         this.success(`Ran ${classes.length} seeder(s).`)
     }
 
+    /**
+     * Load all seeder classes from the specified directory.
+     * 
+     * @param seedersDir 
+     * @returns 
+     */
     private async loadAllSeeders (seedersDir: string): Promise<SeederClass[]> {
         const files = readdirSync(seedersDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
@@ -44,7 +61,17 @@ export class SeedCommand extends Command<CliApp> {
         return classes.flat()
     }
 
-    private async loadNamedSeeder (seedersDir: string, name: string): Promise<SeederClass[]> {
+    /**
+     * Load seeder classes from a specific file or by class name.
+     * 
+     * @param seedersDir 
+     * @param name 
+     * @returns 
+     */
+    private async loadNamedSeeder (
+        seedersDir: string,
+        name: string
+    ): Promise<SeederClass[]> {
         const base = name.replace(/Seeder$/, '')
         const candidates = [
             `${name}.ts`, `${name}.js`, `${name}.mjs`, `${name}.cjs`,
@@ -58,6 +85,12 @@ export class SeedCommand extends Command<CliApp> {
         return await this.loadSeederClassesFromFile(target)
     }
 
+    /**
+     * Load seeder classes from a given file path.
+     * 
+     * @param filePath The path to the file containing seeder classes.
+     * @returns An array of seeder classes.
+     */
     private async loadSeederClassesFromFile (filePath: string): Promise<SeederClass[]> {
         const imported = await import(`${pathToFileURL(resolve(filePath)).href}?arkorm_seed=${Date.now()}`)
         const exports = Object.values(imported) as unknown[]

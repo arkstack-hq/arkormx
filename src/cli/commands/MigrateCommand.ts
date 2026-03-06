@@ -8,6 +8,13 @@ import { applyMigrationToPrismaSchema, runPrismaCommand } from '../../helpers/mi
 
 type MigrationClass = new () => Migration
 
+/**
+ * The MigrateCommand class implements the CLI command for applying migration 
+ * classes to the Prisma schema and running the Prisma workflow.
+ *
+ * @author Legacy (3m1n3nc3)
+ * @since 0.1.0
+ */
 export class MigrateCommand extends Command<CliApp> {
     protected signature = `migrate
         {name? : Migration class or file name}
@@ -21,9 +28,21 @@ export class MigrateCommand extends Command<CliApp> {
 
     protected description = 'Apply migration classes to schema.prisma and run Prisma workflow'
 
+    /**
+     * Command handler for the migrate command.
+     * This method is responsible for orchestrating the migration 
+     * process, including loading migration classes, applying them to 
+     * the Prisma schema, and running the appropriate Prisma commands 
+     * based on the provided options.
+     * 
+     * @returns 
+     */
     async handle () {
         this.app.command = this
-        const migrationsDir = this.app.getConfig('migrationsDir') ?? join(process.cwd(), 'database', 'migrations')
+        const migrationsDir =
+            this.app.getConfig('migrationsDir') ??
+            join(process.cwd(), 'database', 'migrations')
+
         if (!existsSync(migrationsDir))
             return void this.error(`Error: Migrations directory not found: ${migrationsDir}`)
 
@@ -58,6 +77,11 @@ export class MigrateCommand extends Command<CliApp> {
         this.success(`Applied ${classes.length} migration(s).`)
     }
 
+    /**
+     * Load all migration classes from the specified directory.
+     *
+     * @param migrationsDir The directory to load migration classes from.
+     */
     private async loadAllMigrations (migrationsDir: string): Promise<MigrationClass[]> {
         const files = readdirSync(migrationsDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
@@ -69,7 +93,17 @@ export class MigrateCommand extends Command<CliApp> {
         return classes.flat()
     }
 
-    private async loadNamedMigration (migrationsDir: string, name?: string): Promise<MigrationClass[]> {
+    /**
+     * Load migration classes from a specific file or by class name.
+     * 
+     * @param migrationsDir 
+     * @param name 
+     * @returns 
+     */
+    private async loadNamedMigration (
+        migrationsDir: string,
+        name?: string
+    ): Promise<MigrationClass[]> {
         if (!name)
             return []
 
@@ -86,7 +120,15 @@ export class MigrateCommand extends Command<CliApp> {
         return await this.loadMigrationClassesFromFile(target)
     }
 
-    private async loadMigrationClassesFromFile (filePath: string): Promise<MigrationClass[]> {
+    /**
+     * Load migration classes from a given file path.
+     * 
+     * @param filePath 
+     * @returns 
+     */
+    private async loadMigrationClassesFromFile (
+        filePath: string
+    ): Promise<MigrationClass[]> {
         const imported = await import(`${pathToFileURL(resolve(filePath)).href}?arkorm_migrate=${Date.now()}`)
         const exports = Object.values(imported) as unknown[]
 

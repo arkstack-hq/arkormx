@@ -4,6 +4,13 @@ import { Command } from '@h3ravel/musket'
 import { join } from 'node:path'
 import { getUserConfig } from '../../helpers/runtime-config'
 
+/**
+ * The InitCommand class implements the CLI command for initializing Arkorm by creating 
+ * a default config file in the current directory.
+ *
+ * @author Legacy (3m1n3nc3)
+ * @since 0.1.0
+ */
 export class InitCommand extends Command<CliApp> {
     protected signature = `init
         {--force : Force overwrite if config file already exists (existing file will be backed up) }
@@ -11,6 +18,9 @@ export class InitCommand extends Command<CliApp> {
 
     protected description = 'Initialize Arkorm by creating a default config file in the current directory'
 
+    /**
+     * Command handler for the init command.
+     */
     async handle () {
         this.app.command = this
         const outputDir = join(process.cwd(), 'arkorm.config.js')

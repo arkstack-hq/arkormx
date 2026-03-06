@@ -2,9 +2,10 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'fs'
 import { dirname, join, relative } from 'path'
 
 import { Command } from '@h3ravel/musket'
-import { generateMigrationFile } from '../helpers/migrations'
+import { applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { getUserConfig } from '../helpers/runtime-config'
 import { ArkormConfig, GetUserConfig } from 'src/types'
+import { str } from '@h3ravel/support'
 
 /**
  * Main application class for the Arkorm CLI.
@@ -74,12 +75,12 @@ export class CliApp {
     /**
      * Resolve a configuration path with a fallback default
      * 
-     * @param key 
-     * @param fallback 
-     * @returns 
+     * @param key The configuration key to resolve
+     * @param fallback The fallback value if the configuration key is not set
+     * @returns The resolved configuration path
      */
     private resolveConfigPath (
-        key: 'stubsDir' | 'seedersDir' | 'modelsDir' | 'migrationsDir' | 'factoriesDir',
+        key: keyof Omit<ArkormConfig, 'prisma' | 'pagination'>,
         fallback: string
     ): string {
         const configured = this.getConfig(key)
@@ -195,6 +196,7 @@ export class CliApp {
         } = {}
     ): {
         model: { name: string, path: string }
+        prisma: { path: string, updated: boolean }
         factory?: { name: string, path: string }
         seeder?: { name: string, path: string }
         migration?: { name: string, path: string }
@@ -228,8 +230,11 @@ export class CliApp {
                 : '',
         }, options)
 
+        const prisma = this.ensurePrismaModelEntry(modelName, delegateName)
+
         const created = {
             model: { name: modelName, path: modelPath },
+            prisma,
             factory: undefined as { name: string, path: string } | undefined,
             seeder: undefined as { name: string, path: string } | undefined,
             migration: undefined as { name: string, path: string } | undefined,
@@ -252,5 +257,36 @@ export class CliApp {
             created.migration = this.makeMigration(`create ${delegateName} table`)
 
         return created
+    }
+
+    private ensurePrismaModelEntry (
+        modelName: string,
+        delegateName: string
+    ): { path: string, updated: boolean } {
+        const schemaPath = join(process.cwd(), 'prisma', 'schema.prisma')
+        if (!existsSync(schemaPath))
+            return { path: schemaPath, updated: false }
+
+        const source = readFileSync(schemaPath, 'utf-8')
+        const existingByTable = findModelBlock(source, delegateName)
+        const existingByName = new RegExp(`model\\s+${modelName}\\s*\\{`, 'm').test(source)
+        if (existingByTable || existingByName)
+            return { path: schemaPath, updated: false }
+
+        const updated = applyCreateTableOperation(source, {
+            type: 'createTable',
+            table: delegateName,
+            columns: [
+                {
+                    name: 'id',
+                    type: 'id',
+                    primary: true,
+                },
+            ],
+        })
+
+        writeFileSync(schemaPath, updated)
+
+        return { path: schemaPath, updated: true }
     }
 }
