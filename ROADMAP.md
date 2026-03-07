@@ -24,7 +24,7 @@ This document tracks all implemented and upcoming features for Arkorm.
 
 ### Relationship Layer
 
-- [x] Eloquent-style relationships (`hasOne`, `hasMany`, `belongsTo`, `belongsToMany`, `hasOneThrough`, `hasManyThrough`, `morphOne`, `morphMany`, `morphToMany`)
+- [x] Familiar relationships (`hasOne`, `hasMany`, `belongsTo`, `belongsToMany`, `hasOneThrough`, `hasManyThrough`, `morphOne`, `morphMany`, `morphToMany`)
 - [x] Eager loading with constraints
 - [x] Fluent relationship query chaining (`relation.where(...).orderBy(...).getResults()`)
 - [x] Relationship execution helpers (`relation.get()` and `relation.first()`)
@@ -55,6 +55,10 @@ This document tracks all implemented and upcoming features for Arkorm.
 - [ ] Documentation site
 - [x] More advanced relationship constraints
 - [ ] Performance optimizations
+- [ ] Class based event listeners via `dispatchesEvents` Model property
+- [ ] Callback-based event listeners via `booted` and `boot` Model methods and `Model.event()` method
+- [ ] Quiet mode for suppressing events and global scopes via `Model.withoutEvents()` and `saveQuietly()`, `deleteQuietly()`, `restoreQuietly()`, etc. methods.
+- [ ] Model comparison operators (`is`, `isNot`) and identity checks (`isSame`, `isNotSame`)
 
 ## Eloquent Parity (Phased)
 

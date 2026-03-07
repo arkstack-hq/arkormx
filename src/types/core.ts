@@ -1,3 +1,5 @@
+import { PrismaClient } from '@prisma/client'
+
 export type CastType = 'string' | 'number' | 'boolean' | 'date' | 'json' | 'array'
 
 export interface CastHandler<T = unknown> {
@@ -10,7 +12,7 @@ export type CastDefinition = CastType | CastHandler
 export type CastMap = Record<string, CastDefinition>
 
 
-export type PrismaClientLike = Record<string, unknown>
+export type PrismaClientLike = PrismaClient | Record<string, unknown>
 
 export type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
 
@@ -50,9 +52,9 @@ export interface ArkormConfig {
          */
         factories?: string
         /**
-         * @property devOutput Optional custom path for the development output directory.
+         * @property buildOutput Optional custom path for the development output directory.
          */
-        devOutput?: string
+        buildOutput?: string
     }
     /**
      * @property outputExt Optional file extension for generated files, either 'ts' or 'js'.

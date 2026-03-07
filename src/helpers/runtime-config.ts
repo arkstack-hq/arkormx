@@ -18,7 +18,7 @@ const baseConfig: Partial<ArkormConfig> = {
         models: path.join(process.cwd(), 'src', 'models'),
         migrations: path.join(process.cwd(), 'database', 'migrations'),
         factories: path.join(process.cwd(), 'database', 'factories'),
-        devOutput: path.join(process.cwd(), 'dist'),
+        buildOutput: path.join(process.cwd(), 'dist'),
     },
     outputExt: 'ts',
 }

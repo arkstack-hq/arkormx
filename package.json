@@ -1,7 +1,7 @@
 {
   "name": "arkorm",
   "version": "0.1.0",
-  "description": "An ORM for Node.js and TypeScript designed for simplicity and flexibility and for use in Arkstack.",
+  "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",
     "database",

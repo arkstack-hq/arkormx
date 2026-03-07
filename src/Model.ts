@@ -215,7 +215,7 @@ export abstract class Model<
 
         const runtimeClient = getRuntimePrismaClient()
         const resolved = candidates
-            .map(name => this.client?.[name] ?? runtimeClient?.[name])
+            .map(name => this.client?.[name] ?? runtimeClient?.[name as never])
             .find(candidate => isDelegateLike(candidate))
 
         if (!resolved)

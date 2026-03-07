@@ -1,6 +1,6 @@
 # Setup
 
-This page contains copy-paste templates for a typical Arkorm + Prisma setup.
+This page contains a complete starter setup for Arkorm + Prisma.
 
 ## 1. Create `arkorm.config.ts`
 
@@ -16,30 +16,20 @@ const prisma = new PrismaClient({
 });
 
 export default defineConfig({
+  prisma: () => prisma as unknown as Record<string, unknown>,
   paths: {
     stubs: './stubs',
     models: './src/models',
     factories: './database/factories',
     seeders: './database/seeders',
     migrations: './database/migrations',
-    devOutput: './dist',
+    buildOutput: './dist',
   },
   outputExt: 'ts',
-  prisma: () => prisma as unknown as Record<string, unknown>,
 });
 ```
 
-### Production CLI runtime for TypeScript files
-
-When running the `arkorm` CLI, Node executes JavaScript output.
-If your seeders/migrations are authored in TypeScript, keep your build output structure aligned with source paths.
-
-- Source: `database/migrations/CreateUsersMigration.ts`
-- Build: `dist/database/migrations/CreateUsersMigration.js` (or `.cjs` / `.mjs`)
-
-Arkorm uses `paths.devOutput` to resolve runtime equivalents for `.ts` files by trying matching `.js`, `.cjs`, and `.mjs` files.
-
-If you use `tsdown`, enable a non-bundled output that preserves file structure (for example with `unbundle`) so generated paths mirror your source tree.
+You can also use the Arkorm CLI to generate this config file by running the initialize command: `npx arkorm init`.
 
 ## 2. Define models
 
@@ -59,56 +49,41 @@ export class Article extends Model<'articles'> {
 ## 3. Query usage
 
 ```ts
-const users = await User.query().whereKey('isActive', 1).get();
+const users = await User.query().whereKey('isActive', true).latest().get();
 const article = await Article.query().first();
 
 users[0]?.getAttribute('email');
 article?.getAttribute('deletedAt');
 ```
 
-## Notes
-
-- String generics map directly to Prisma delegates, so `Model<'user'>` and `Model<'users'>` are both fully typed.
-- If you skip generics entirely (`class X extends Model {}`), attributes are intentionally `any` for non-TypeScript-friendly usage.
-
-## 4. (Optional) Override pagination URL behavior per framework
-
-Arkorm pagination now supports URL options (`path`, `query`, `fragment`, `pageName`) and a pluggable URL driver.
-If your framework has custom route helpers, you can override URL generation in `arkorm.config.*`.
+## 4. Pagination URL customization (optional)
 
 ```ts
-import { defineConfig, URLDriver } from 'arkorm';
-import { PrismaClient } from '@prisma/client';
+import { URLDriver, defineConfig } from 'arkorm';
 
-const prisma = new PrismaClient();
-
-class NextURLDriver extends URLDriver {
+class AppURLDriver extends URLDriver {
   public override url(page: number): string {
-    const base = super.url(page);
-    return `/app${base}`;
+    return `/app${super.url(page)}`;
   }
 }
 
 export default defineConfig({
   prisma: () => prisma as unknown as Record<string, unknown>,
   pagination: {
-    urlDriver: (options) => new NextURLDriver(options),
+    urlDriver: (options) => new AppURLDriver(options),
   },
 });
 ```
 
-Usage examples:
+## 5. Production notes for TS seeders/migrations
 
-```ts
-const pageA = await User.query().paginate(2, 15, { path: '/users' });
+When you run the Arkorm CLI, Node executes JavaScript.
+If you source files are TypeScript, ensure that your build output structure is mirrors your source structure.
 
-const pageB = await User.query().paginate(2, 15, {
-  path: '/users',
-  pageName: 'p',
-});
+- Source: `database/migrations/CreateUsersMigration.ts`
+- Build: `dist/database/migrations/CreateUsersMigration.js` (or `.cjs`/`.mjs`)
 
-const simple = await User.query().simplePaginate(15, 2, { path: '/users' });
+Arkorm uses `paths.buildOutput` to map your source files to their runtime build equivalents in your build output directory.
+With `tsdown`, use non-bundled output (for example `unbundle`) to preserve paths.
 
-pageB.nextPageUrl();
-simple.previousPageUrl();
-```
+If you use a bundler like like `tsdown`, you can set the `unbundle` config to `true` to ensure that your build output mirrors your source structure, if you use other bundlers, check their documentation for similar options.

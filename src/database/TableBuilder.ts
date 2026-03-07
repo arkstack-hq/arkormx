@@ -111,6 +111,29 @@ export class TableBuilder {
     }
 
     /**
+     * Defines colonns for a polymorphic relationship in the table.
+     * 
+     * @param name    The base name for the polymorphic relationship columns.
+     * @returns 
+     */
+    public morphs (name: string, nullable = false): this {
+        this.string(`${name}Type`, { nullable })
+        this.integer(`${name}Id`, { nullable })
+
+        return this
+    }
+
+    /**
+     * Defines nullable columns for a polymorphic relationship in the table.
+     * 
+     * @param name  The base name for the polymorphic relationship columns.
+     * @returns 
+     */
+    public nullableMorphs (name: string): this {
+        return this.morphs(name, true)
+    }
+
+    /**
      * Defines a timestamp column in the table.
      * 
      * @param name      The name of the timestamp column.

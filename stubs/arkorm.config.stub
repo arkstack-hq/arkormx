@@ -9,7 +9,7 @@ export default defineConfig({
         factories: './database/factories',
         seeders: './database/seeders',
         migrations: './database/migrations',
-        devOutput: './dist',
+        buildOutput: './dist',
     },
     outputExt: 'ts',
     prisma: () => {

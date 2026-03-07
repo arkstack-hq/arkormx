@@ -109,15 +109,15 @@ export class CliApp {
         if (existsSync(directoryPath))
             return directoryPath
 
-        const { devOutput } = this.getConfig('paths') || {}
-        if (typeof devOutput !== 'string' || devOutput.trim().length === 0)
+        const { buildOutput } = this.getConfig('paths') || {}
+        if (typeof buildOutput !== 'string' || buildOutput.trim().length === 0)
             return directoryPath
 
         const relativeSource = relative(process.cwd(), directoryPath)
         if (!relativeSource || relativeSource.startsWith('..'))
             return directoryPath
 
-        const mappedDirectory = join(devOutput, relativeSource)
+        const mappedDirectory = join(buildOutput, relativeSource)
 
         return existsSync(mappedDirectory)
             ? mappedDirectory
@@ -127,7 +127,7 @@ export class CliApp {
     /**
      * Resolve a script file path for runtime execution.
      * If a .ts file is provided, tries equivalent .js/.cjs/.mjs files first.
-     * Also attempts mapped paths inside paths.devOutput preserving structure.
+     * Also attempts mapped paths inside paths.buildOutput preserving structure.
      *
      * @param filePath
      * @returns
@@ -142,11 +142,11 @@ export class CliApp {
             candidates.push(`${base}.js`, `${base}.cjs`, `${base}.mjs`)
         }
 
-        const { devOutput } = this.getConfig('paths') ?? {}
-        if (typeof devOutput === 'string' && devOutput.trim().length > 0) {
+        const { buildOutput } = this.getConfig('paths') ?? {}
+        if (typeof buildOutput === 'string' && buildOutput.trim().length > 0) {
             const relativeSource = relative(process.cwd(), filePath)
             if (relativeSource && !relativeSource.startsWith('..')) {
-                const mappedFile = join(devOutput, relativeSource)
+                const mappedFile = join(buildOutput, relativeSource)
                 const mappedExtension = extname(mappedFile).toLowerCase()
                 const mappedIsTs = mappedExtension === '.ts' || mappedExtension === '.mts' || mappedExtension === '.cts'
 
