@@ -4,34 +4,34 @@ Arkormˣ provides CLI helpers for generating models, factories, seeders, and mig
 
 ## Initialize config
 
-```bash
-arkormx init
+```sh
+npx arkorm init
 ```
 
 ## Generate files
 
-```bash
-arkormx make:model User
-arkormx make:model User --all
-arkormx make:factory User
-arkormx make:seeder Database
-arkormx make:migration "create users table"
+```sh
+npx arkorm make:model User
+npx arkorm make:model User --all
+npx arkorm make:factory User
+npx arkorm make:seeder Database
+npx arkorm make:migration "create users table"
 ```
 
 ## Sync model declarations from Prisma
 
-```bash
-arkormx models:sync
-arkormx models:sync --schema ./prisma/schema.prisma --models ./src/models
+```sh
+npx arkorm models:sync
+npx arkorm models:sync --schema ./prisma/schema.prisma --models ./src/models
 ```
 
 ## Run migrations
 
-```bash
-arkormx migrate --all
-arkormx migrate CreateUsersMigration
-arkormx migrate --all --skip-generate --skip-migrate
-arkormx migrate --all --deploy
+```sh
+npx arkorm migrate --all
+npx arkorm migrate CreateUsersMigration
+npx arkorm migrate --all --skip-generate --skip-migrate
+npx arkorm migrate --all --deploy
 ```
 
 ## Production runtime notes

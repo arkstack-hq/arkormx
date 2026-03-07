@@ -40,7 +40,7 @@ export default defineConfig({
 });
 ```
 
-Or run the Arkormˣ CLI command `npx arkormx init` to initialize your project along with configuration.
+Or run the Arkormˣ CLI command `npx arkorm init` to initialize your project along with configuration.
 
 ### Define a model
 
@@ -54,7 +54,7 @@ export class User extends Model<'users'> {
 
 ### Generate Prisma client
 
-```bash
+```sh
 pnpm prisma generate
 ```
 

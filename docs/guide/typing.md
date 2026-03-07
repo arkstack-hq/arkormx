@@ -41,8 +41,8 @@ await User.query().find('jane@example.com', 'email');
 Arkormˣ supports runtime property sugar (`user.email`) via proxy.
 For static TypeScript field completion on direct properties, sync declarations with:
 
-```bash
-arkormx models:sync
+```sh
+npx arkorm models:sync
 ```
 
 ## Untyped fallback

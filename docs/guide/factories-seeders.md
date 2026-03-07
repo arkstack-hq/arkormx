@@ -46,8 +46,8 @@ export class DatabaseSeeder extends Seeder {
 
 Run seeders through CLI:
 
-```bash
-arkormx seed
-arkormx seed DatabaseSeeder
-arkormx seed --all
+```sh
+npx arkorm seed
+npx arkorm seed DatabaseSeeder
+npx arkorm seed --all
 ```

@@ -62,7 +62,7 @@ const users = await User.query()
 
 ## 5. Generate Prisma client
 
-```bash
+```sh
 pnpm prisma generate
 ```
 
