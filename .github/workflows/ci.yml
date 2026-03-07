@@ -41,7 +41,7 @@ jobs:
         run: pnpm lint
 
       - name: Run tests
-        run: pnpm test:coverage
+        run: pnpm test
 
       - name: Build project
         run: pnpm build
@@ -100,7 +100,7 @@ jobs:
         run: pnpm db:migrate:test
 
       - name: Run PostgreSQL integration tests
-        run: pnpm test
+        run: pnpm test:postgres
 
   upload-coverage:
     name: Upload Coverage
