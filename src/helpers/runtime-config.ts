@@ -43,11 +43,33 @@ const baseConfig: Partial<ArkormConfig> = {
     },
     outputExt: 'ts',
 }
-const userConfig: Partial<ArkormConfig> = { ...baseConfig }
+const userConfig: Partial<ArkormConfig> = {
+    ...baseConfig,
+    paths: {
+        ...(baseConfig.paths ?? {}),
+    },
+}
 let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
+
+const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfig['paths']> => {
+    const defaults = baseConfig.paths ?? {}
+    const current = userConfig.paths ?? {}
+    const incoming = Object.entries(paths ?? {}).reduce<NonNullable<ArkormConfig['paths']>>((all, [key, value]) => {
+        if (typeof value === 'string' && value.trim().length > 0)
+            all[key as keyof NonNullable<ArkormConfig['paths']>] = value
+
+        return all
+    }, {})
+
+    return {
+        ...defaults,
+        ...current,
+        ...incoming,
+    }
+}
 
 /**
  * Define the ArkORM runtime configuration. This function can be used to provide.
@@ -83,16 +105,24 @@ export const configureArkormRuntime = (
     prisma: ClientResolver,
     options: Omit<ArkormConfig, 'prisma'> = {}
 ): void => {
-    Object.assign(userConfig, {
-        ...options,
+    const nextConfig: Partial<ArkormConfig> = {
+        ...userConfig,
         prisma,
-        paths: {
-            ...(userConfig.paths ?? {}),
-            ...(options.paths ?? {}),
-        },
+        paths: mergePathConfig(options.paths),
+    }
+
+    if (options.pagination !== undefined)
+        nextConfig.pagination = options.pagination
+
+    if (options.outputExt !== undefined)
+        nextConfig.outputExt = options.outputExt
+
+    Object.assign(userConfig, {
+        ...nextConfig,
     })
+
     runtimeClientResolver = prisma
-    runtimePaginationURLDriverFactory = options.pagination?.urlDriver
+    runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
 }
 
 /**
@@ -100,7 +130,12 @@ export const configureArkormRuntime = (
  * This is primarily intended for testing purposes.
  */
 export const resetArkormRuntimeForTests = (): void => {
-    Object.assign(userConfig, { ...baseConfig })
+    Object.assign(userConfig, {
+        ...baseConfig,
+        paths: {
+            ...(baseConfig.paths ?? {}),
+        },
+    })
     runtimeConfigLoaded = false
     runtimeConfigLoadingPromise = undefined
     runtimeClientResolver = undefined
@@ -141,8 +176,6 @@ const resolveAndApplyConfig = (imported: unknown): void => {
     const config = (candidate?.default ?? imported) as Partial<ArkormConfig>
     if (!config || typeof config !== 'object' || !config.prisma)
         return
-
-    Object.assign(userConfig, config)
 
     configureArkormRuntime(config.prisma, {
         pagination: config.pagination,
