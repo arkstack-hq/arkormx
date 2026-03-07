@@ -46,13 +46,6 @@ jobs:
       - name: Build project
         run: pnpm build
 
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: coverage-${{ matrix.node-version }}
-          path: coverage
-          retention-days: 1
-
   postgres-integration:
     name: PostgreSQL Integration Tests
     runs-on: ubuntu-latest
@@ -148,8 +141,15 @@ jobs:
       - name: Apply test migrations
         run: pnpm db:migrate:test
 
-      - name: Run PostgreSQL integration tests
+      - name: Run Coverage Tests
         run: pnpm test:coverage
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage
+          retention-days: 1
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5
