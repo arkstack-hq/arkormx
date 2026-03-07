@@ -5,8 +5,8 @@ import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { ArkormException } from '../Exceptions/ArkormException'
 import { GeneratedMigrationFile, GenerateMigrationOptions, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
-import { SchemaBuilder } from 'src/database/SchemaBuilder'
-import { Migration } from 'src/database/Migration'
+import { SchemaBuilder } from '../database/SchemaBuilder'
+import { Migration } from '../database/Migration'
 
 export const PRISMA_MODEL_REGEX = /model\s+(\w+)\s*\{[\s\S]*?\n\}/g
 

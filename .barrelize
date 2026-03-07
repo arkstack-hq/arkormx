@@ -20,7 +20,7 @@
         "**/*.ts"
       ],
       "exclude": [
-        "database/**",
+        "../database/**",
         "relationship/**",
         "src/models/**",
         "types/**",
