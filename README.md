@@ -2,9 +2,9 @@
 
 [![NPM Downloads](https://img.shields.io/npm/dt/arkormx.svg)](https://www.npmjs.com/package/arkormx)
 [![npm version](https://img.shields.io/npm/v/arkormx.svg)](https://www.npmjs.com/package/arkormx)
-[![License](https://img.shields.io/npm/l/arkormx.svg)](https://github.com/arcstack-hq/arkormx/blob/main/LICENSE)
-[![CI](https://github.com/arcstack-hq/arkormx/actions/workflows/ci.yml/badge.svg)](https://github.com/arcstack-hq/arkormx/actions/workflows/ci.yml)
-[![Deploy Docs](https://github.com/arcstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arcstack-hq/arkormx/actions/workflows/deploy-docs.yml)
+[![License](https://img.shields.io/npm/l/arkormx.svg)](https://github.com/arkstack-hq/arkormx/blob/main/LICENSE)
+[![CI](https://github.com/arkstack-hq/arkormx/actions/workflows/ci.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/ci.yml)
+[![Deploy Documentation](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml)
 
 Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
 

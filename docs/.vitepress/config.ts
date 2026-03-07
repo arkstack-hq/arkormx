@@ -12,7 +12,7 @@ export default defineConfig({
         ['meta', { property: 'og:title', content: 'Arkormˣ' }],
         ['meta', { property: 'og:description', content: 'Modern TypeScript-first ORM for Node.js' }],
         ['meta', { property: 'og:image', content: '/logo.jpg' }],
-        ['meta', { property: 'og:url', content: 'https://arcstack-hq.github.io/arkormx/' }],
+        ['meta', { property: 'og:url', content: 'https://arkormx.toneflix.net/' }],
         ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
         ['meta', { name: 'twitter:title', content: 'Arkormˣ' }],
         ['meta', { name: 'twitter:description', content: 'Modern TypeScript-first ORM for Node.js' }],
