@@ -1,4 +1,4 @@
-import { ArkormCollection, createPrismaAdapter } from '../src'
+import { ArkormCollection, createPrismaAdapter } from '../../src'
 import { User, createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it } from 'vitest'
 

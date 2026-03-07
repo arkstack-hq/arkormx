@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 
-import { ArkormCollection, LengthAwarePaginator, Paginator } from '../src'
+import { ArkormCollection, LengthAwarePaginator, Paginator } from '../../src'
 import { Article, User } from './helpers/core-fixtures'
 import { setupCoreRuntime } from './helpers/core-fixtures'
 

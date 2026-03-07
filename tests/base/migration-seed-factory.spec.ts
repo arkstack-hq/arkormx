@@ -12,7 +12,7 @@ import {
     getMigrationPlan,
     runMigrationWithPrisma,
     Seeder,
-} from '../src'
+} from '../../src'
 import { User, setupCoreRuntime } from './helpers/core-fixtures'
 
 describe('Database migration, seeding and factory helpers', () => {

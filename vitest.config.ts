@@ -11,7 +11,7 @@ export default defineConfig({
         projects: [
             {
                 test: {
-                    setupFiles: ['tests/setup.ts', 'tests/postgres/setup.ts'],
+                    setupFiles: ['tests/base/setup.ts', 'tests/postgres/setup.ts'],
                     include: ['**/tests/postgres/**/*.spec.{ts,tsx}'],
                     fileParallelism: false,
                     name: { label: 'postgres', color: 'green' },
@@ -19,20 +19,15 @@ export default defineConfig({
             },
             {
                 test: {
-                    setupFiles: 'tests/setup.ts',
+                    setupFiles: 'tests/base/setup.ts',
                     include: [
-                        '**/*.{test,spec}.?(c|m)[jt]s?(x)',
+                        '**/*.{test,spec}.{ts,tsx,js,jsx}',
                         '!**/tests/postgres/**/*.spec.{ts,tsx}'
                     ],
-                    name: { label: 'vitest', color: 'blue' },
+                    name: { label: 'base', color: 'blue' },
                 }
             }
         ],
-        coverage: {
-            reporter: ['text', 'json', 'html', 'lcov'],
-            reportsDirectory: 'coverage',
-            exclude: ['**/node_modules/**', '**/dist/**', '**/cypress/**', '**/.{idea,git,cache,output,temp}/**', '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,prettier}.config.*', '**/.h3ravel/**'],
-        },
         env: {
             NODE_ENV: 'test',
         },

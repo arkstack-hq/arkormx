@@ -48,11 +48,11 @@
   "scripts": {
     "cmd": "tsx src/cli/index.ts",
     "lint": "eslint",
-    "test": "vitest run --project=vitest",
+    "test": "vitest run --project=base",
     "test:all": "vitest run",
     "test:postgres": "vitest run --project=postgres",
     "test:watch": "vitest --project=!postgres",
-    "test:coverage": "vitest run --coverage --project=postgres --project=vitest",
+    "test:coverage": "vitest run --coverage --config vitest.config.ci.ts",
     "prisma:generate": "prisma generate",
     "db:migrate:test": "prisma migrate deploy",
     "build": "tsdown",

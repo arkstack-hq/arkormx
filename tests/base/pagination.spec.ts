@@ -4,7 +4,7 @@ import {
     LengthAwarePaginator,
     Paginator,
     configureArkormRuntime
-} from '../src'
+} from '../../src'
 import {
     User,
     createCoreClient,

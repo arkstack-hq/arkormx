@@ -1,4 +1,4 @@
-import { ArkormCollection, QueryBuilder } from '../src'
+import { ArkormCollection, QueryBuilder } from '../../src'
 import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest'
 
