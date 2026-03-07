@@ -44,7 +44,6 @@ export default defineConfig({
 
 - `prisma` (required): Prisma client instance or resolver function.
 - `pagination.urlDriver`: custom URL driver factory for paginator links.
-- `paths.stubs`: directory containing CLI stub templates.
 - `paths.models`: generated model directory.
 - `paths.factories`: generated factory directory.
 - `paths.seeders`: generated seeder directory.
