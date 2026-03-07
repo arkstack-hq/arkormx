@@ -6,14 +6,35 @@ import type {
     PrismaClientLike,
     PrismaDelegateLike
 } from '../types/core'
+import { fileURLToPath, pathToFileURL } from 'url'
+
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import path from 'path'
-import { fileURLToPath, pathToFileURL } from 'url'
+
+const resolveDefaultStubsPath = (): string => {
+    let current = path.dirname(fileURLToPath(import.meta.url))
+
+    while (true) {
+        const packageJsonPath = path.join(current, 'package.json')
+        const stubsPath = path.join(current, 'stubs')
+
+        if (existsSync(packageJsonPath) && existsSync(stubsPath))
+            return stubsPath
+
+        const parent = path.dirname(current)
+        if (parent === current)
+            break
+
+        current = parent
+    }
+
+    return path.join(process.cwd(), 'stubs')
+}
 
 const baseConfig: Partial<ArkormConfig> = {
     paths: {
-        stubs: fileURLToPath(new URL('../../stubs', import.meta.url)),
+        stubs: resolveDefaultStubsPath(),
         seeders: path.join(process.cwd(), 'database', 'seeders'),
         models: path.join(process.cwd(), 'src', 'models'),
         migrations: path.join(process.cwd(), 'database', 'migrations'),
@@ -221,6 +242,10 @@ export const ensureArkormConfigLoading = (): void => {
 
     if (!runtimeConfigLoadingPromise)
         void loadArkormConfig()
+}
+
+export const getDefaultStubsPath = (): string => {
+    return resolveDefaultStubsPath()
 }
 
 /**

@@ -1,6 +1,6 @@
 {
   "name": "arkormx",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",
@@ -43,7 +43,7 @@
     "LICENSE"
   ],
   "bin": {
-    "arkormx": "bin/index.mjs"
+    "arkorm": "./dist/cli.mjs"
   },
   "scripts": {
     "cmd": "tsx src/cli/index.ts",

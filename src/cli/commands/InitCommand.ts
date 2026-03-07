@@ -1,8 +1,9 @@
 import { copyFileSync, existsSync, readFileSync, writeFileSync } from 'fs'
+import { getDefaultStubsPath, getUserConfig } from '../../helpers/runtime-config'
+
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { join } from 'node:path'
-import { getUserConfig } from '../../helpers/runtime-config'
 
 /**
  * The InitCommand class implements the CLI command for initializing Arkormˣ by creating 
@@ -25,7 +26,14 @@ export class InitCommand extends Command<CliApp> {
         this.app.command = this
         const outputDir = join(process.cwd(), 'arkormx.config.js')
         const { stubs } = getUserConfig('paths') ?? {}
-        const stubPath = join(stubs ?? '', 'arkormx.config.stub')
+        const stubsDir = typeof stubs === 'string' && stubs.trim().length > 0
+            ? stubs
+            : getDefaultStubsPath()
+        const preferredStubPath = join(stubsDir, 'arkormx.config.stub')
+        const legacyStubPath = join(stubsDir, 'arkorm.config.stub')
+        const stubPath = existsSync(preferredStubPath)
+            ? preferredStubPath
+            : legacyStubPath
 
         if (existsSync(outputDir) && !this.option('force')) {
             this.error('Error: Arkormˣ has already been initialized. Use --force to reinitialize.')
@@ -36,6 +44,12 @@ export class InitCommand extends Command<CliApp> {
 
         if (existsSync(outputDir) && this.option('force')) {
             copyFileSync(outputDir, outputDir.replace(/\.js$/, `.backup.${Date.now()}.js`))
+        }
+
+        if (!existsSync(stubPath)) {
+            this.error(`Error: Missing config stub at ${preferredStubPath} (or ${legacyStubPath})`)
+
+            process.exit(1)
         }
 
         writeFileSync(outputDir, readFileSync(stubPath, 'utf-8'))
