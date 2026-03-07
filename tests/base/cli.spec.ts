@@ -57,7 +57,7 @@ afterEach(() => {
 
 describe('CLI application', () => {
     it('generates model, factory, seeder and migration files with TS output by default', () => {
-        const tempWorkspace = makeTempDir('arkorm-cli-ts-')
+        const tempWorkspace = makeTempDir('arkormx-cli-ts-')
         writePrismaSchema(tempWorkspace)
         process.chdir(tempWorkspace)
         const workspace = process.cwd()
@@ -92,7 +92,7 @@ describe('CLI application', () => {
     })
 
     it('falls back to JS file generation when TypeScript is not installed in current cwd', () => {
-        const tempWorkspace = makeTempDir('arkorm-cli-js-fallback-')
+        const tempWorkspace = makeTempDir('arkormx-cli-js-fallback-')
         process.chdir(tempWorkspace)
         const workspace = process.cwd()
 
@@ -121,12 +121,12 @@ describe('CLI application', () => {
 
         expect(factorySource).toContain('@returns {Record<string, unknown>}')
         expect(seederSource).toContain('@returns {Promise<void>}')
-        expect(migrationSource).toContain('import { Migration } from \'arkorm\'')
-        expect(migrationSource).toContain('@param {import(\'arkorm\').SchemaBuilder} schema')
+        expect(migrationSource).toContain('import { Migration } from \'arkormx\'')
+        expect(migrationSource).toContain('@param {import(\'arkormx\').SchemaBuilder} schema')
     })
 
     it('resolves TS runtime script path to built JS output path', () => {
-        const tempWorkspace = makeTempDir('arkorm-cli-runtime-path-')
+        const tempWorkspace = makeTempDir('arkormx-cli-runtime-path-')
         process.chdir(tempWorkspace)
         const workspace = process.cwd()
 
@@ -151,7 +151,7 @@ describe('CLI application', () => {
     })
 
     it('syncs model declarations from prisma schema', () => {
-        const tempWorkspace = makeTempDir('arkorm-cli-model-sync-')
+        const tempWorkspace = makeTempDir('arkormx-cli-model-sync-')
         process.chdir(tempWorkspace)
         const workspace = process.cwd()
         const schemaPath = writePrismaSchema(workspace)
@@ -170,7 +170,7 @@ describe('CLI application', () => {
 
         const modelPath = join(modelsDir, 'User.ts')
         writeFileSync(modelPath, [
-            'import { Model } from \'arkorm\'',
+            'import { Model } from \'arkormx\'',
             '',
             'export class User extends Model<\'users\'> {',
             '    protected static override delegate = \'users\'',

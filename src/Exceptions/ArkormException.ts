@@ -1,6 +1,6 @@
 /**
  * The ArkormException class is a custom error type for handling 
- * exceptions specific to the Arkorm.    
+ * exceptions specific to the Arkormˣ.    
  * 
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0

@@ -1,6 +1,6 @@
 # Query Builder
 
-Arkorm query builder is fluent, typed, and delegate-backed.
+Arkormˣ query builder is fluent, typed, and delegate-backed.
 
 ## Common reads
 

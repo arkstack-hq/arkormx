@@ -85,7 +85,7 @@ afterEach(() => {
 
 describe('CLI command classes', () => {
     it('MakeFactoryCommand creates a factory file', async () => {
-        const workspace = makeTempDir('arkorm-cmd-make-factory-')
+        const workspace = makeTempDir('arkormx-cmd-make-factory-')
         process.chdir(workspace)
 
         configureArkormRuntime(() => ({}), {
@@ -113,7 +113,7 @@ describe('CLI command classes', () => {
     })
 
     it('MakeSeederCommand creates a seeder file', async () => {
-        const workspace = makeTempDir('arkorm-cmd-make-seeder-')
+        const workspace = makeTempDir('arkormx-cmd-make-seeder-')
         process.chdir(workspace)
 
         configureArkormRuntime(() => ({}), {
@@ -140,7 +140,7 @@ describe('CLI command classes', () => {
     })
 
     it('MakeMigrationCommand creates a migration file', async () => {
-        const workspace = makeTempDir('arkorm-cmd-make-migration-')
+        const workspace = makeTempDir('arkormx-cmd-make-migration-')
         process.chdir(workspace)
 
         configureArkormRuntime(() => ({}), {
@@ -170,7 +170,7 @@ describe('CLI command classes', () => {
     })
 
     it('MakeModelCommand creates model and optional linked files', async () => {
-        const workspace = makeTempDir('arkorm-cmd-make-model-')
+        const workspace = makeTempDir('arkormx-cmd-make-model-')
         process.chdir(workspace)
 
         writeBaseSchema(workspace)
@@ -208,13 +208,13 @@ describe('CLI command classes', () => {
         expect(successLines.some(line => line.includes('Model'))).toBe(true)
     })
 
-    it('InitCommand creates arkorm.config.js from configured stub path', async () => {
-        const workspace = makeTempDir('arkorm-cmd-init-')
+    it('InitCommand creates arkormx.config.js from configured stub path', async () => {
+        const workspace = makeTempDir('arkormx-cmd-init-')
         process.chdir(workspace)
 
         const stubsDir = join(workspace, 'stubs')
         mkdirSync(stubsDir, { recursive: true })
-        writeFileSync(join(stubsDir, 'arkorm.config.stub'), 'export default {}\n')
+        writeFileSync(join(stubsDir, 'arkormx.config.stub'), 'export default {}\n')
 
         configureArkormRuntime(() => ({}), {
             paths: {
@@ -229,15 +229,15 @@ describe('CLI command classes', () => {
 
         await command.handle()
 
-        const generatedConfig = join(workspace, 'arkorm.config.js')
+        const generatedConfig = join(workspace, 'arkormx.config.js')
         expect(existsSync(generatedConfig)).toBe(true)
         expect(readFileSync(generatedConfig, 'utf-8')).toBe('export default {}\n')
         expect(errorLines).toHaveLength(0)
-        expect(successLines.some(line => line.includes('Arkorm initialized successfully'))).toBe(true)
+        expect(successLines.some(line => line.includes('Arkormˣ initialized successfully'))).toBe(true)
     })
 
     it('ModelsSyncCommand reports sync summary and updates model declarations', async () => {
-        const workspace = makeTempDir('arkorm-cmd-models-sync-')
+        const workspace = makeTempDir('arkormx-cmd-models-sync-')
         process.chdir(workspace)
 
         const schemaPath = writeBaseSchema(workspace)
@@ -256,7 +256,7 @@ describe('CLI command classes', () => {
 
         const userModelPath = join(modelsDir, 'User.ts')
         writeFileSync(userModelPath, [
-            'import { Model } from \'arkorm\'',
+            'import { Model } from \'arkormx\'',
             '',
             'export class User extends Model<\'users\'> {',
             '    protected static override delegate = \'users\'',
@@ -284,7 +284,7 @@ describe('CLI command classes', () => {
     })
 
     it('SeedCommand loads and runs all seeder classes from configured directory', async () => {
-        const workspace = makeTempDir('arkorm-cmd-seed-')
+        const workspace = makeTempDir('arkormx-cmd-seed-')
         process.chdir(workspace)
 
         const seedersDir = join(workspace, 'database', 'seeders')
@@ -324,7 +324,7 @@ describe('CLI command classes', () => {
     })
 
     it('MigrateCommand loads migrations and applies schema updates when prisma steps are skipped', async () => {
-        const workspace = makeTempDir('arkorm-cmd-migrate-')
+        const workspace = makeTempDir('arkormx-cmd-migrate-')
         process.chdir(workspace)
 
         const schemaPath = writeBaseSchema(workspace)

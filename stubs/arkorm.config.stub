@@ -1,6 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
-import { defineConfig } from 'arkorm'
+import { defineConfig } from 'arkormx'
 
 export default defineConfig({
     paths: {

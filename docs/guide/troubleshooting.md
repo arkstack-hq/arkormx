@@ -3,7 +3,7 @@
 ## `Database delegate [...] is not configured`
 
 - Ensure your model `delegate` matches your Prisma client delegate.
-- Ensure `arkorm.config.*` is loaded and `prisma` returns a valid client.
+- Ensure `arkormx.config.*` is loaded and `prisma` returns a valid client.
 
 ## No seeder or migration classes found
 
@@ -19,8 +19,8 @@
 ## Generated files are JS unexpectedly
 
 - `outputExt: 'ts'` requires TypeScript to be installed in the project.
-- If TypeScript is not resolvable, Arkorm safely falls back to JS generation.
+- If TypeScript is not resolvable, Arkormˣ safely falls back to JS generation.
 
 ## Model fields not typed (`user.id`)
 
-- Run `arkorm models:sync` to inject `declare` fields from `schema.prisma` into model classes.
+- Run `arkormx models:sync` to inject `declare` fields from `schema.prisma` into model classes.

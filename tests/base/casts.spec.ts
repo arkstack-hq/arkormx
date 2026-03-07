@@ -45,7 +45,7 @@ describe('Casts', () => {
     it('resolves json cast get/set with graceful parse fallback', () => {
         const cast = resolveCast('json')
 
-        expect(cast.get('{"name":"arkorm"}')).toEqual({ name: 'arkorm' })
+        expect(cast.get('{"name":"arkormx"}')).toEqual({ name: 'arkormx' })
         expect(cast.get('not-json')).toBe('not-json')
 
         expect(cast.set({ enabled: true })).toBe('{"enabled":true}')

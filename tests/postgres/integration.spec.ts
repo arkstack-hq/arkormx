@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { ArkormCollection } from '../../src'
 
-describe('Arkorm PostgreSQL integration smoke', () => {
+describe('Arkormˣ PostgreSQL integration smoke', () => {
     beforeEach(async () => {
         await acquirePostgresTestLock()
         await seedPostgresFixtures()

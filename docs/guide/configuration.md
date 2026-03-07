@@ -1,24 +1,22 @@
 # Configuration
 
-Arkorm loads config from `arkorm.config.cjs`, `arkorm.config.js`, or `arkorm.config.ts` in your project root.
+Arkormˣ loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
 
 ## defineConfig
 
 ```ts
-import { defineConfig } from 'arkorm';
+import { defineConfig } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 
-const prisma = new PrismaClient();
-
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  prisma: new PrismaClient(),
 });
 ```
 
 ## Full configuration shape
 
 ```ts
-import { defineConfig, URLDriver } from 'arkorm';
+import { defineConfig, URLDriver } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -26,7 +24,7 @@ const prisma = new PrismaClient();
 class AppURLDriver extends URLDriver {}
 
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  prisma: new PrismaClient(),
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
@@ -59,7 +57,7 @@ export default defineConfig({
 For frameworks that bootstrap Prisma elsewhere, use runtime configuration:
 
 ```ts
-import { configureArkormRuntime } from 'arkorm';
+import { configureArkormRuntime } from 'arkormx';
 
 configureArkormRuntime(() => prisma, {
   outputExt: 'js',

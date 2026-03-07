@@ -16,7 +16,7 @@ const app = new CliApp()
 
 await Kernel.init(app, {
     logo,
-    name: 'Arkorm CLI',
+    name: 'Arkormˣ CLI',
     baseCommands: [
         InitCommand,
         MakeModelCommand,

@@ -1,13 +1,13 @@
 # Typing
 
-Arkorm uses your model generic and Prisma delegate shape to infer strongly typed query and attribute APIs.
+Arkormˣ uses your model generic and Prisma delegate shape to infer strongly typed query and attribute APIs.
 
 ## Recommended pattern
 
 Use the delegate key as the model generic and set static `delegate`:
 
 ```ts
-import { Model } from 'arkorm';
+import { Model } from 'arkormx';
 
 export class User extends Model<'users'> {
   protected static override delegate = 'users';
@@ -38,16 +38,16 @@ await User.query().find('jane@example.com', 'email');
 
 ## Direct property access
 
-Arkorm supports runtime property sugar (`user.email`) via proxy.
+Arkormˣ supports runtime property sugar (`user.email`) via proxy.
 For static TypeScript field completion on direct properties, sync declarations with:
 
 ```bash
-arkorm models:sync
+arkormx models:sync
 ```
 
 ## Untyped fallback
 
-If you omit generics, Arkorm still works but values become loosely typed:
+If you omit generics, Arkormˣ still works but values become loosely typed:
 
 ```ts
 class AnyModel extends Model {}

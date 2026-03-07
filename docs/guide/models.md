@@ -1,11 +1,11 @@
 # Models
 
-Models are the core abstraction in Arkorm. They represent a Prisma delegate and provide attribute APIs, casts, mutators/accessors, scopes, events, and relationship definitions.
+Models are the core abstraction in Arkormˣ. They represent a Prisma delegate and provide attribute APIs, casts, mutators/accessors, scopes, events, and relationship definitions.
 
 ## Basic model
 
 ```ts
-import { Model } from 'arkorm';
+import { Model } from 'arkormx';
 
 export class User extends Model<'users'> {
   protected static override delegate = 'users';
@@ -22,7 +22,7 @@ user.setAttribute('name', 'Jane');
 await user.save();
 ```
 
-Arkorm also supports runtime property sugar:
+Arkormˣ also supports runtime property sugar:
 
 ```ts
 user.name = 'Jane';

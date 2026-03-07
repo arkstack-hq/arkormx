@@ -10,7 +10,7 @@ import { str } from '@h3ravel/support'
 import { Logger } from '@h3ravel/shared'
 
 /**
- * Main application class for the Arkorm CLI.
+ * Main application class for the Arkormˣ CLI.
  *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0

@@ -1,6 +1,6 @@
 # Pagination
 
-Arkorm provides both length-aware and simple pagination.
+Arkormˣ provides both length-aware and simple pagination.
 
 ## Length-aware pagination
 
@@ -34,7 +34,7 @@ page.nextPageUrl();
 ## URL driver customization
 
 ```ts
-import { URLDriver, defineConfig } from 'arkorm';
+import { URLDriver, defineConfig } from 'arkormx';
 
 class AppURLDriver extends URLDriver {
   override url(page: number): string {

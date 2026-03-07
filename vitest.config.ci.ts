@@ -21,7 +21,7 @@ export default defineConfig({
                 lines: 80,
             },
             reportsDirectory: 'coverage',
-            exclude: ['**/node_modules/**', '**/dist/**', '**/cypress/**', '**/.{idea,git,cache,output,temp}/**', '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,arkorm,prettier}.config.*', '**/.h3ravel/**'],
+            exclude: ['**/node_modules/**', '**/dist/**', '**/cypress/**', '**/.{idea,git,cache,output,temp}/**', '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,arkormx,prettier}.config.*', '**/.h3ravel/**'],
         },
         env: {
             NODE_ENV: 'test',

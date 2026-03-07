@@ -366,18 +366,18 @@ export const buildMigrationSource = (
 ): string => {
     if (extension === 'js') {
         return [
-            'import { Migration } from \'arkorm\'',
+            'import { Migration } from \'arkormx\'',
             '',
             `export default class ${className} extends Migration {`,
             '    /**',
-            '     * @param {import(\'arkorm\').SchemaBuilder} schema',
+            '     * @param {import(\'arkormx\').SchemaBuilder} schema',
             '     * @returns {Promise<void>}',
             '     */',
             '    async up (schema) {',
             '    }',
             '',
             '    /**',
-            '     * @param {import(\'arkorm\').SchemaBuilder} schema',
+            '     * @param {import(\'arkormx\').SchemaBuilder} schema',
             '     * @returns {Promise<void>}',
             '     */',
             '    async down (schema) {',
@@ -388,7 +388,7 @@ export const buildMigrationSource = (
     }
 
     return [
-        'import { Migration, SchemaBuilder } from \'arkorm\'',
+        'import { Migration, SchemaBuilder } from \'arkormx\'',
         '',
         `export default class ${className} extends Migration {`,
         '    public async up (schema: SchemaBuilder): Promise<void> {',

@@ -1,34 +1,34 @@
 # Getting Started
 
-Arkorm is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
+Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
 
 ## 1. Install dependencies
 
 ::: code-group
 
 ```bash [pnpm]
-pnpm add arkorm @prisma/client
+pnpm add arkormx @prisma/client
 pnpm add -D prisma
 ```
 
 ```bash [npm]
-npm install arkorm @prisma/client
+npm install arkormx @prisma/client
 npm install -D prisma
 ```
 
 ```bash [yarn]
-yarn add arkorm @prisma/client
+yarn add arkormx @prisma/client
 yarn add -D prisma
 ```
 
 :::
 
-## 2. Configure Arkorm
+## 2. Configure Arkormˣ
 
-Create `arkorm.config.ts` in your project root:
+Create `arkormx.config.ts` in your project root:
 
 ```ts
-import { defineConfig } from 'arkorm';
+import { defineConfig } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
@@ -38,12 +38,12 @@ export default defineConfig({
 });
 ```
 
-Or run the Arkorm CLI command `npx arkorm init` to initialize your project along with the configuration.
+Or run the Arkormˣ CLI command `npx arkormx init` to initialize your project along with the configuration.
 
 ## 3. Define a model
 
 ```ts
-import { Model } from 'arkorm';
+import { Model } from 'arkormx';
 
 export class User extends Model<'users'> {
   protected static override delegate = 'users';

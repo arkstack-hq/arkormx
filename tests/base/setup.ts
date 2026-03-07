@@ -2,7 +2,7 @@ import type { PrismaClient } from '@prisma/client'
 import dotenv from 'dotenv'
 
 declare global {
-    var __ARKORM_PRISMA__: PrismaClient | undefined
+    var __ARKORMX_PRISMA__: PrismaClient | undefined
 }
 
 dotenv.config({ path: '.env.test', quiet: true })

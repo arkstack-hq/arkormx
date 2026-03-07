@@ -1,6 +1,6 @@
 # Production Deployment
 
-This guide covers running Arkorm safely in production environments.
+This guide covers running Arkormˣ safely in production environments.
 
 ## 1. Build strategy
 
@@ -39,7 +39,7 @@ export default defineConfig({
 
 ## 4. Runtime resolution behavior
 
-For TS source references, Arkorm will try to resolve equivalent runtime scripts in your build output directory in this order:
+For TS source references, Arkormˣ will try to resolve equivalent runtime scripts in your build output directory in this order:
 
 1. Same path with `.js`
 2. Same path with `.cjs`

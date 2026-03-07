@@ -3,11 +3,11 @@
 layout: home
 
 hero:
-  name: 'Arkorm'
-  tagline: odern TypeScript-first ORM for Node.js.
+  name: 'Arkormˣ'
+  tagline: Modern TypeScript-first ORM for Node.js.
   image:
     src: /logo.jpg
-    alt: Arkorm Logo
+    alt: Arkormˣ Logo
   actions:
     - theme: brand
       text: Get Started
@@ -21,7 +21,7 @@ features:
       alt: Prisma Icon
       width: 20
     title: Prisma's Power
-    details: Arkorm is built on top of Prisma, providing a familiar and powerful API for database interactions.
+    details: Arkormˣ is built on top of Prisma, providing a familiar and powerful API for database interactions.
   - icon:
       src: /flashlight-fill.svg
     title: Performance
@@ -33,11 +33,11 @@ features:
   - icon:
       src: /typescript.svg
     title: Strongly Typed
-    details: Arkorm is designed for full TypeScript support, providing strong typing and improved developer experience.
+    details: Arkormˣ is designed for full TypeScript support, providing strong typing and improved developer experience.
   - icon:
       src: /shield-check-fill.svg
     title: Security
-    details: Arkorm follows best practices for security, ensuring your data is protected.
+    details: Arkormˣ follows best practices for security, ensuring your data is protected.
   - icon:
       src: /service-fill.svg
     title: Community
@@ -45,9 +45,9 @@ features:
   - icon:
       src: /code-box-fill.svg
     title: Open Source
-    details: Arkorm is open source and welcomes contributions from developers around the world.
+    details: Arkormˣ is open source and welcomes contributions from developers around the world.
   - icon:
       src: /brain-fill.svg
     title: Familiar API
-    details: Arkorm provides an intuitive API that feels familiar to users transitioning from Eloquent or other ORMs, making it easy to learn and adopt.
+    details: Arkormˣ provides an intuitive API that feels familiar to users transitioning from Eloquent or other ORMs, making it easy to learn and adopt.
 ---

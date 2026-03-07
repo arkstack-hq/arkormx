@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress'
 
 export default defineConfig({
-    title: 'Arkorm',
+    title: 'Arkormˣ',
     description: 'Modern TypeScript-first ORM for Node.js',
     head: [
         ['link', { rel: 'icon', href: '/logo.png' }],
@@ -9,12 +9,12 @@ export default defineConfig({
         ['meta', { name: 'description', content: 'Modern TypeScript-first ORM for Node.js' }],
         ['meta', { name: 'keywords', content: 'API, Node.js, TypeScript, JSON responses, collections, pagination' }],
         ['meta', { name: 'author', content: 'Toneflix' }],
-        ['meta', { property: 'og:title', content: 'Arkorm' }],
+        ['meta', { property: 'og:title', content: 'Arkormˣ' }],
         ['meta', { property: 'og:description', content: 'Modern TypeScript-first ORM for Node.js' }],
         ['meta', { property: 'og:image', content: '/logo.jpg' }],
-        ['meta', { property: 'og:url', content: 'https://arcstack-hq.github.io/arkorm/' }],
+        ['meta', { property: 'og:url', content: 'https://arcstack-hq.github.io/arkormx/' }],
         ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-        ['meta', { name: 'twitter:title', content: 'Arkorm' }],
+        ['meta', { name: 'twitter:title', content: 'Arkormˣ' }],
         ['meta', { name: 'twitter:description', content: 'Modern TypeScript-first ORM for Node.js' }],
         ['meta', { name: 'twitter:image', content: '/logo.jpg' }]
     ],
@@ -65,8 +65,8 @@ export default defineConfig({
             },
         ],
         socialLinks: [
-            { icon: 'github', link: 'https://github.com/arkstack/arkorm' },
-            { icon: 'npm', link: 'https://www.npmjs.com/package/arkorm' },
+            { icon: 'github', link: 'https://github.com/arkstack/arkormx' },
+            { icon: 'npm', link: 'https://www.npmjs.com/package/arkormx' },
         ]
     },
 })

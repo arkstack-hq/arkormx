@@ -2,9 +2,9 @@ import type { PrismaClient } from '@prisma/client'
 import { defineConfig } from './src'
 
 declare global {
-    var __ARKORM_PRISMA__: PrismaClient | undefined
+    var __ARKORMX_PRISMA__: PrismaClient | undefined
 }
 
 export default defineConfig({
-    prisma: () => globalThis.__ARKORM_PRISMA__ || {},
+    prisma: () => globalThis.__ARKORMX_PRISMA__ || {},
 })

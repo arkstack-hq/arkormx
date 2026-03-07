@@ -34,8 +34,8 @@ export function createPrismaAdapter (
  * Create a delegate mapping record for Model.setClient() from a Prisma client.
  *
  * @param prisma The Prisma client instance.
- * @param mapping Optional mapping of Arkorm delegate names to Prisma delegate names.
- * @returns A delegate map keyed by Arkorm delegate names.
+ * @param mapping Optional mapping of Arkormˣ delegate names to Prisma delegate names.
+ * @returns A delegate map keyed by Arkormˣ delegate names.
  */
 export function createPrismaDelegateMap (
     prisma: PrismaClientLike

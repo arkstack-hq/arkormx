@@ -1,13 +1,13 @@
 # Factories and Seeders
 
-Arkorm includes class-based factories and seeders for test data and local bootstrap flows.
+Arkormˣ includes class-based factories and seeders for test data and local bootstrap flows.
 
 ## Factories
 
 ### Create a factory
 
 ```ts
-import { ModelFactory } from 'arkorm';
+import { ModelFactory } from 'arkormx';
 import { User } from '../../src/models/User';
 
 export class UserFactory extends ModelFactory<User> {
@@ -34,7 +34,7 @@ await User.factory(10).createMany();
 ## Seeders
 
 ```ts
-import { Seeder } from 'arkorm';
+import { Seeder } from 'arkormx';
 
 export class DatabaseSeeder extends Seeder {
   async run(): Promise<void> {
@@ -47,7 +47,7 @@ export class DatabaseSeeder extends Seeder {
 Run seeders through CLI:
 
 ```bash
-arkorm seed
-arkorm seed DatabaseSeeder
-arkorm seed --all
+arkormx seed
+arkormx seed DatabaseSeeder
+arkormx seed --all
 ```

@@ -1,6 +1,6 @@
-# Arkorm Roadmap & Implementation Status
+# Arkormˣ Roadmap & Implementation Status
 
-This document tracks all implemented and upcoming features for Arkorm.
+This document tracks all implemented and upcoming features for Arkormˣ.
 
 ## Implemented Features
 
@@ -14,7 +14,7 @@ This document tracks all implemented and upcoming features for Arkorm.
 - [x] `LengthAwarePaginator` support via `paginate(page, perPage)`
 - [x] `Paginator` support via `simplePaginate(perPage, page)`
 - [x] Pagination URL options (`path`, `query`, `fragment`, `pageName`) via `URLDriver`
-- [x] Framework-specific URL driver override via `arkorm.config.*`
+- [x] Framework-specific URL driver override via `arkormx.config.*`
 - [x] Collection integration (collect.js)
 - [x] Attribute visibility (`hidden` / `visible` / `appends`)
 - [x] Local scopes
@@ -62,7 +62,7 @@ This document tracks all implemented and upcoming features for Arkorm.
 
 ## Eloquent Parity (Phased)
 
-Eloquent features a broad list of methods that make it a powerful ORM. For Arkorm, the most relevant methods are those that map cleanly to our current `Model -> QueryBuilder -> delegate` architecture and keep adapter portability, we have prioritized these for implementation.
+Eloquent features a broad list of methods that make it a powerful ORM. For Arkormˣ, the most relevant methods are those that map cleanly to our current `Model -> QueryBuilder -> delegate` architecture and keep adapter portability, we have prioritized these for implementation.
 
 ### Phase 1 — High-impact, low-risk query ergonomics
 

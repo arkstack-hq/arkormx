@@ -19,9 +19,9 @@
     "src/**/*",
     "types/**/*",
     "tests/**/*",
-    "arkorm.config.ts",
-    "arkorm.config.js",
-    "arkorm.config.cjs",
+    "arkormx.config.ts",
+    "arkormx.config.js",
+    "arkormx.config.cjs",
     "vitest.config.ts",
     "tsdown.config.ts"
   ],

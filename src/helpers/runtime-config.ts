@@ -147,7 +147,7 @@ const importConfigFile = (configPath: string): Promise<unknown> => {
 const loadRuntimeConfigSync = (): boolean => {
     const require = createRequire(import.meta.url)
     const syncConfigPaths = [
-        path.join(process.cwd(), 'arkorm.config.cjs'),
+        path.join(process.cwd(), 'arkormx.config.cjs'),
     ]
 
     for (const configPath of syncConfigPaths) {
@@ -184,8 +184,8 @@ export const loadArkormConfig = async (): Promise<void> => {
 
     runtimeConfigLoadingPromise = (async () => {
         const configPaths = [
-            path.join(process.cwd(), 'arkorm.config.js'),
-            path.join(process.cwd(), 'arkorm.config.ts'),
+            path.join(process.cwd(), 'arkormx.config.js'),
+            path.join(process.cwd(), 'arkormx.config.ts'),
         ]
 
         for (const configPath of configPaths) {

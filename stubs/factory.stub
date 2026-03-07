@@ -1,4 +1,4 @@
-import { ModelFactory } from 'arkorm'
+import { ModelFactory } from 'arkormx'
 import { {{ModelName}} } from '{{ModelImportPath}}'
 
 export class {{FactoryName}} extends ModelFactory<{{ModelName}}> {

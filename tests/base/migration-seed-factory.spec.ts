@@ -126,7 +126,7 @@ describe('Database migration, seeding and factory helpers', () => {
             },
         ])
 
-        const directory = mkdtempSync(join(tmpdir(), 'arkorm-migration-'))
+        const directory = mkdtempSync(join(tmpdir(), 'arkormx-migration-'))
         const generated = generateMigrationFile('create users table', {
             directory,
         })
@@ -136,7 +136,7 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(generated.className).toBe('CreateUsersTableMigration')
         expect(fileContent).toContain('extends Migration')
 
-        const prismaDirectory = mkdtempSync(join(tmpdir(), 'arkorm-prisma-schema-'))
+        const prismaDirectory = mkdtempSync(join(tmpdir(), 'arkormx-prisma-schema-'))
         const schemaPath = join(prismaDirectory, 'schema.prisma')
         const schemaSource = [
             'generator client {',

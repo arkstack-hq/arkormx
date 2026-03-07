@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { getUserConfig } from '../../helpers/runtime-config'
 
 /**
- * The InitCommand class implements the CLI command for initializing Arkorm by creating 
+ * The InitCommand class implements the CLI command for initializing Arkormˣ by creating 
  * a default config file in the current directory.
  *
  * @author Legacy (3m1n3nc3)
@@ -16,19 +16,19 @@ export class InitCommand extends Command<CliApp> {
         {--force : Force overwrite if config file already exists (existing file will be backed up) }
     `
 
-    protected description = 'Initialize Arkorm by creating a default config file in the current directory'
+    protected description = 'Initialize Arkormˣ by creating a default config file in the current directory'
 
     /**
      * Command handler for the init command.
      */
     async handle () {
         this.app.command = this
-        const outputDir = join(process.cwd(), 'arkorm.config.js')
+        const outputDir = join(process.cwd(), 'arkormx.config.js')
         const { stubs } = getUserConfig('paths') ?? {}
-        const stubPath = join(stubs ?? '', 'arkorm.config.stub')
+        const stubPath = join(stubs ?? '', 'arkormx.config.stub')
 
         if (existsSync(outputDir) && !this.option('force')) {
-            this.error('Error: Arkorm has already been initialized. Use --force to reinitialize.')
+            this.error('Error: Arkormˣ has already been initialized. Use --force to reinitialize.')
             process.exit(1)
         }
 
@@ -40,6 +40,6 @@ export class InitCommand extends Command<CliApp> {
 
         writeFileSync(outputDir, readFileSync(stubPath, 'utf-8'))
 
-        this.success('Arkorm initialized successfully!')
+        this.success('Arkormˣ initialized successfully!')
     }
 }

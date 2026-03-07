@@ -1,11 +1,11 @@
 # Setup
 
-This page contains a complete starter setup for Arkorm + Prisma.
+This page contains a complete starter setup for Arkormˣ + Prisma.
 
-## 1. Create `arkorm.config.ts`
+## 1. Create `arkormx.config.ts`
 
 ```ts
-import { defineConfig } from 'arkorm';
+import { defineConfig } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 
@@ -29,12 +29,12 @@ export default defineConfig({
 });
 ```
 
-You can also use the Arkorm CLI to generate this config file by running the initialize command: `npx arkorm init`.
+You can also use the Arkormˣ CLI to generate this config file by running the initialize command: `npx arkormx init`.
 
 ## 2. Define models
 
 ```ts
-import { Model } from 'arkorm';
+import { Model } from 'arkormx';
 
 export class User extends Model<'users'> {
   protected static override delegate = 'users';
@@ -59,7 +59,7 @@ article?.getAttribute('deletedAt');
 ## 4. Pagination URL customization (optional)
 
 ```ts
-import { URLDriver, defineConfig } from 'arkorm';
+import { URLDriver, defineConfig } from 'arkormx';
 
 class AppURLDriver extends URLDriver {
   public override url(page: number): string {
@@ -77,13 +77,13 @@ export default defineConfig({
 
 ## 5. Production notes for TS seeders/migrations
 
-When you run the Arkorm CLI, Node executes JavaScript.
+When you run the Arkormˣ CLI, Node executes JavaScript.
 If you source files are TypeScript, ensure that your build output structure is mirrors your source structure.
 
 - Source: `database/migrations/CreateUsersMigration.ts`
 - Build: `dist/database/migrations/CreateUsersMigration.js` (or `.cjs`/`.mjs`)
 
-Arkorm uses `paths.buildOutput` to map your source files to their runtime build equivalents in your build output directory.
+Arkormˣ uses `paths.buildOutput` to map your source files to their runtime build equivalents in your build output directory.
 With `tsdown`, use non-bundled output (for example `unbundle`) to preserve paths.
 
 If you use a bundler like like `tsdown`, you can set the `unbundle` config to `true` to ensure that your build output mirrors your source structure, if you use other bundlers, check their documentation for similar options.

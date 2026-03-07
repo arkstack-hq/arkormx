@@ -1,4 +1,4 @@
-import { Seeder } from 'arkorm'
+import { Seeder } from 'arkormx'
 
 export class {{SeederName}} extends Seeder {
     public async run (): Promise<void> {

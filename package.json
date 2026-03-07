@@ -1,5 +1,5 @@
 {
-  "name": "arkorm",
+  "name": "arkormx",
   "version": "0.1.0",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
@@ -14,13 +14,13 @@
     "model",
     "repository"
   ],
-  "homepage": "https://arcstack-hq.github.io/arkorm",
+  "homepage": "https://arcstack-hq.github.io/arkormx",
   "bugs": {
-    "url": "https://github.com/arcstack-hq/arkorm/issues"
+    "url": "https://github.com/arcstack-hq/arkormx/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arcstack-hq/arkorm.git"
+    "url": "git+https://github.com/arcstack-hq/arkormx.git"
   },
   "license": "MIT",
   "author": "3m1n1nce <3m1n1nce@toneflix.net>",
@@ -43,7 +43,7 @@
     "LICENSE"
   ],
   "bin": {
-    "arkorm": "bin/index.mjs"
+    "arkormx": "bin/index.mjs"
   },
   "scripts": {
     "cmd": "tsx src/cli/index.ts",
