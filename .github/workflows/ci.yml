@@ -100,12 +100,29 @@ jobs:
         run: pnpm db:migrate:test
 
       - name: Run PostgreSQL integration tests
-        run: pnpm test:postgres
+        run: pnpm test
 
-  build-docs:
-    name: Build Documentation
+  upload-coverage:
+    name: Upload Coverage
     runs-on: ubuntu-latest
-    needs: [test, postgres-integration]
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: arkorm_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d arkorm_test"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+
+    env:
+      DATABASE_URL: postgres://postgres:postgres@localhost:5432/arkorm_test?schema=public
 
     steps:
       - name: Checkout code
@@ -119,14 +136,20 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20.x
+          node-version: 22.x
           cache: 'pnpm'
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
-      - name: Build documentation
-        run: pnpm docs:build
+      - name: Generate Prisma client
+        run: pnpm prisma:generate
+
+      - name: Apply test migrations
+        run: pnpm db:migrate:test
+
+      - name: Run PostgreSQL integration tests
+        run: pnpm test:coverage
 
       - name: Upload coverage reports to Codecov
         uses: codecov/codecov-action@v5

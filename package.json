@@ -52,7 +52,7 @@
     "test:all": "vitest run",
     "test:postgres": "vitest run --project=postgres",
     "test:watch": "vitest --project=!postgres",
-    "test:coverage": "vitest run --coverage",
+    "test:coverage": "vitest run --coverage --project=postgres --project=vitest",
     "prisma:generate": "prisma generate",
     "db:migrate:test": "prisma migrate deploy",
     "build": "tsdown",
