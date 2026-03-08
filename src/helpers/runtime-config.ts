@@ -58,8 +58,13 @@ const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfi
     const defaults = baseConfig.paths ?? {}
     const current = userConfig.paths ?? {}
     const incoming = Object.entries(paths ?? {}).reduce<NonNullable<ArkormConfig['paths']>>((all, [key, value]) => {
-        if (typeof value === 'string' && value.trim().length > 0)
-            all[key as keyof NonNullable<ArkormConfig['paths']>] = value
+        if (typeof value === 'string' && value.trim().length > 0) {
+            const normalized = path.isAbsolute(value)
+                ? value
+                : path.resolve(process.cwd(), value)
+
+            all[key as keyof NonNullable<ArkormConfig['paths']>] = normalized
+        }
 
         return all
     }, {})

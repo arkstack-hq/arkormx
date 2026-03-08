@@ -4,7 +4,7 @@ export default defineConfig([
     {
         clean: true,
         exports: true,
-        minify: true,
+        minify: false,
         tsconfig: 'tsconfig.json',
         entry: ['src/index.ts'],
         platform: 'node',
@@ -14,7 +14,7 @@ export default defineConfig([
     },
     {
         dts: false,
-        minify: true,
+        minify: false,
         tsconfig: 'tsconfig.json',
         entry: ['src/cli/index.ts'],
         platform: 'node',

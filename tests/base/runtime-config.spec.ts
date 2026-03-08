@@ -9,6 +9,7 @@ import {
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 
 import { join } from 'node:path'
+import { resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const originalCwd = process.cwd()
@@ -68,7 +69,23 @@ describe('runtime config defaults', () => {
         await loadArkormConfig()
 
         const paths = getUserConfig('paths') ?? {}
-        expect(paths.migrations).toBe('database/custom-migrations')
+        expect(paths.migrations).toBe(resolve(process.cwd(), 'database', 'custom-migrations'))
         expect(paths.stubs).toBe(getDefaultStubsPath())
+    })
+
+    it('rewrites relative runtime path overrides to absolute paths', () => {
+        const workspace = makeTempDir('arkormx-runtime-config-abs-')
+        process.chdir(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: './database/migrations',
+                buildOutput: './dist',
+            },
+        })
+
+        const paths = getUserConfig('paths') ?? {}
+        expect(paths.migrations).toBe(resolve(process.cwd(), 'database', 'migrations'))
+        expect(paths.buildOutput).toBe(resolve(process.cwd(), 'dist'))
     })
 })
