@@ -513,9 +513,9 @@ export const getMigrationPlan = async (
     migration: Migration | (new () => Migration),
     direction: 'up' | 'down' = 'up'
 ): Promise<SchemaOperation[]> => {
-    const instance = migration instanceof Migration
-        ? migration
-        : new migration()
+    const instance = typeof migration === 'function'
+        ? new migration()
+        : migration
 
     const schema = new SchemaBuilder()
     if (direction === 'up')

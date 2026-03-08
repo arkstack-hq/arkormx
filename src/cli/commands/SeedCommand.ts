@@ -3,9 +3,15 @@ import { join, resolve } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
-import { Seeder } from '../../database/Seeder'
+import { SEEDER_BRAND } from '../../database/Seeder'
 
-type SeederClass = new () => Seeder
+type SeederInstanceLike = {
+    run: (...args: any[]) => Promise<void> | void
+}
+
+type SeederClass = (new () => SeederInstanceLike) & {
+    [SEEDER_BRAND]?: boolean
+}
 
 /**
  * The SeedCommand class implements the CLI command for running seeder classes. 
@@ -105,8 +111,10 @@ export class SeedCommand extends Command<CliApp> {
                     return false
 
                 const candidate = value as SeederClass
+                const prototype = candidate.prototype as Partial<SeederInstanceLike> | undefined
 
-                return candidate.prototype instanceof Seeder
+                return candidate[SEEDER_BRAND] === true
+                    || typeof prototype?.run === 'function'
             })
     }
 }

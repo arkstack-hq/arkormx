@@ -1,12 +1,12 @@
+import { MigrationClass, MigrationInstanceLike } from 'src/types'
+import { applyMigrationToPrismaSchema, runPrismaCommand } from '../../helpers/migrations'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
-import { Migration } from '../../database/Migration'
-import { applyMigrationToPrismaSchema, runPrismaCommand } from '../../helpers/migrations'
-
-type MigrationClass = new () => Migration
+import { MIGRATION_BRAND } from '../../database/Migration'
+import { pathToFileURL } from 'node:url'
 
 /**
  * The MigrateCommand class implements the CLI command for applying migration 
@@ -144,9 +144,12 @@ export class MigrateCommand extends Command<CliApp> {
                 if (typeof value !== 'function')
                     return false
 
-                const candidate = value as MigrationClass
+                const candidate = value as MigrationClass & { [MIGRATION_BRAND]?: boolean }
+                const prototype = candidate.prototype as Partial<MigrationInstanceLike> | undefined
 
-                return candidate.prototype instanceof Migration
+                return candidate[MIGRATION_BRAND] === true
+                    || typeof prototype?.up === 'function'
+                    && typeof prototype?.down === 'function'
             })
     }
 }

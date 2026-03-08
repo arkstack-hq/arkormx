@@ -79,3 +79,10 @@ export interface PrismaMigrationWorkflowOptions extends PrismaSchemaSyncOptions 
     migrateMode?: 'dev' | 'deploy'
     migrationName?: string
 }
+
+export type MigrationInstanceLike = {
+    up: (...args: any[]) => Promise<void> | void
+    down: (...args: any[]) => Promise<void> | void
+}
+
+export type MigrationClass = new () => MigrationInstanceLike
