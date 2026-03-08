@@ -221,6 +221,20 @@ export class TableBuilder {
     }
 
     /**
+     * Maps the column to a custom database column name.
+     * 
+     * @param name       The custom database column name.
+     * @param columnName Optional explicit target column name. When omitted, applies to the latest defined column.
+     * @returns          The current TableBuilder instance for chaining.
+     */
+    public map (name: string, columnName?: string): this {
+        const column = this.resolveColumn(columnName)
+        column.map = name
+
+        return this
+    }
+
+    /**
      * Defines an index on one or more columns.
      * 
      * @param columns Optional target columns. When omitted, applies to the latest defined column.
@@ -288,6 +302,7 @@ export class TableBuilder {
         this.columns.push({
             name,
             type,
+            map: options.map,
             nullable: options.nullable,
             unique: options.unique,
             primary: options.primary,

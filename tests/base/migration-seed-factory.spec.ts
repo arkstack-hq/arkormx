@@ -100,9 +100,10 @@ describe('Database migration, seeding and factory helpers', () => {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.createTable('users', table => {
                     table.uuid('id', { primary: true })
-                    table.string('email').nullable().index()
+                    table.string('email').nullable()
+                    table.timestamp('deletedAt').nullable().map('deleted_at')
+                    table.index(['email', 'deletedAt'], 'users_email_deleted_at_idx')
                     table.timestamps()
-                    table.softDeletes()
                 })
             }
 
@@ -158,13 +159,13 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(applied.schema).toContain('model User')
         expect(applied.schema).toContain('id String @id @default(uuid())')
         expect(applied.schema).toContain('email String?')
-        expect(applied.schema).toContain('@@index([email])')
-        expect(applied.schema).toContain('deletedAt DateTime?')
+        expect(applied.schema).toContain('deletedAt DateTime? @map("deleted_at")')
+        expect(applied.schema).toContain('@@index([email, deletedAt], name: "users_email_deleted_at_idx")')
 
         class AddNicknameMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.alterTable('users', table => {
-                    table.string('nickname').nullable().before('email').index()
+                    table.string('nickname').nullable().map('nick_name').before('email').index(['nickname', 'email'], 'users_nickname_email_idx')
                 })
             }
 
@@ -180,8 +181,8 @@ describe('Database migration, seeding and factory helpers', () => {
         })).resolves.toMatchObject({ schemaPath })
 
         const finalSchema = readFileSync(schemaPath, 'utf-8')
-        expect(finalSchema).toContain('nickname String?')
-        expect(finalSchema).toContain('@@index([nickname])')
+        expect(finalSchema).toContain('nickname String? @map("nick_name")')
+        expect(finalSchema).toContain('@@index([nickname, email], name: "users_nickname_email_idx")')
 
         const nicknameLinePosition = finalSchema.indexOf('nickname String?')
         const emailLinePosition = finalSchema.indexOf('email String?')

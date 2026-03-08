@@ -15,6 +15,7 @@ export type SchemaColumnType =
 export interface SchemaColumn {
     name: string
     type: SchemaColumnType
+    map?: string
     nullable?: boolean
     unique?: boolean
     primary?: boolean
