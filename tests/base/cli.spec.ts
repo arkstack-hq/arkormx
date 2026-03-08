@@ -1,10 +1,10 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
-import { CliApp } from '../../src'
 import type { ArkormConfig } from '../../src/types'
+import { CliApp } from '../../src'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 const originalCwd = process.cwd()
 const tempDirectories: string[] = []
@@ -123,6 +123,26 @@ describe('CLI application', () => {
         expect(seederSource).toContain('@returns {Promise<void>}')
         expect(migrationSource).toContain('import { Migration } from \'arkormx\'')
         expect(migrationSource).toContain('@param {import(\'arkormx\').SchemaBuilder} schema')
+    })
+
+    it('uses package default stubs when paths are partially configured without stubs', () => {
+        const tempWorkspace = makeTempDir('arkormx-cli-partial-paths-')
+        process.chdir(tempWorkspace)
+        const workspace = process.cwd()
+
+        const app = createCliApp({
+            outputExt: 'ts',
+            paths: {
+                models: join(workspace, 'src', 'models'),
+                factories: join(workspace, 'database', 'factories'),
+            },
+        })
+            ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
+
+        const created = app.makeFactory('User')
+
+        expect(existsSync(created.path)).toBe(true)
+        expect(created.path.endsWith('.ts')).toBe(true)
     })
 
     it('resolves TS runtime script path to built JS output path', () => {

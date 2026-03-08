@@ -4,7 +4,7 @@ import { createRequire } from 'module'
 
 import { Command } from '@h3ravel/musket'
 import { applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
-import { getUserConfig } from '../helpers/runtime-config'
+import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
 import { ArkormConfig, GetUserConfig } from 'src/types'
 import { str } from '@h3ravel/support'
 import { Logger } from '@h3ravel/shared'
@@ -222,7 +222,7 @@ export class CliApp {
      * @returns 
      */
     private resolveStubPath (stubName: string): string {
-        const stubsDir = this.resolveConfigPath('stubs', join(process.cwd(), 'stubs'))
+        const stubsDir = this.resolveConfigPath('stubs', getDefaultStubsPath())
 
         return join(stubsDir, stubName)
     }
