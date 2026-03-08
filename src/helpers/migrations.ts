@@ -97,8 +97,21 @@ export const formatDefaultValue = (value: unknown): string | undefined => {
  * @returns 
  */
 export const buildFieldLine = (column: SchemaColumn): string => {
-    if (column.type === 'id')
-        return `  ${column.name} Int @id @default(autoincrement())`
+    if (column.type === 'id') {
+        const primary = column.primary === false ? '' : ' @id'
+        const mapped = typeof column.map === 'string' && column.map.trim().length > 0
+            ? ` @map("${column.map.replace(/"/g, '\\"')}")`
+            : ''
+        const configuredDefault = formatDefaultValue(column.default)
+        const shouldAutoIncrement = column.autoIncrement ?? column.primary !== false
+        const defaultSuffix = configuredDefault
+            ? ` ${configuredDefault}`
+            : shouldAutoIncrement && primary
+            ? ' @default(autoincrement())'
+            : ''
+
+        return `  ${column.name} Int${primary}${defaultSuffix}${mapped}`
+    }
 
     const scalar = resolvePrismaType(column)
     const nullable = column.nullable ? '?' : ''
@@ -245,10 +258,12 @@ export const applyAlterTableOperation = (
             return
 
         const defaultInsertIndex = Math.max(1, bodyLines.length - 1)
-        const beforeInsertIndex = typeof column.before === 'string' && column.before.length > 0
-            ? bodyLines.findIndex(line => new RegExp(`^\\s*${escapeRegex(column.before as string)}\\s+`).test(line))
+        const afterInsertIndex = typeof column.after === 'string' && column.after.length > 0
+            ? bodyLines.findIndex(line => new RegExp(`^\\s*${escapeRegex(column.after as string)}\\s+`).test(line))
             : -1
-        const insertIndex = beforeInsertIndex > 0 ? beforeInsertIndex : defaultInsertIndex
+        const insertIndex = afterInsertIndex > 0
+            ? Math.min(afterInsertIndex + 1, defaultInsertIndex)
+            : defaultInsertIndex
         bodyLines.splice(insertIndex, 0, fieldLine)
     });
 

@@ -14,14 +14,53 @@ export class TableBuilder {
     private latestColumnName: string | undefined
 
     /**
+     * Defines a primary key column in the table.
+     * 
+     * @param columnNameOrOptions 
+     * @param options 
+     * @returns 
+     */
+    public primary (
+        columnNameOrOptions?: string | {
+            columnName?: string
+            autoIncrement?: boolean
+            default?: unknown
+        },
+        options?: {
+            autoIncrement?: boolean
+            default?: unknown
+        }
+    ): this {
+        const config = typeof columnNameOrOptions === 'string'
+            ? {
+                columnName: columnNameOrOptions,
+                ...(options ?? {}),
+            }
+            : (columnNameOrOptions ?? {})
+        const column = this.resolveColumn(config.columnName)
+        column.primary = true
+
+        if (typeof config.autoIncrement === 'boolean')
+            column.autoIncrement = config.autoIncrement
+
+        if (Object.prototype.hasOwnProperty.call(config, 'default'))
+            column.default = config.default
+
+        return this
+    }
+
+    /**
      * Defines an auto-incrementing primary key column.
      * 
      * @param name  The name of the primary key column.
      * @default 'id'
      * @returns     The current TableBuilder instance for chaining.
      */
-    public id (name = 'id'): this {
-        return this.column(name, 'id', { primary: true })
+    public id (
+        name = 'id',
+        type: Exclude<SchemaColumnType, 'boolean' | 'timestamp' | 'date' | 'json'> = 'id'
+    ): this {
+        return this.column(name, type, { primary: true })
     }
 
     /**
@@ -207,15 +246,15 @@ export class TableBuilder {
     }
 
     /**
-     * Sets the column position to appear before another column when possible.
+     * Sets the column position to appear after another column when possible.
      * 
-     * @param referenceColumn The column that the target column should be placed before.
+     * @param referenceColumn The column that the target column should be placed after.
      * @param columnName      Optional explicit target column name. When omitted, applies to the latest defined column.
      * @returns               The current TableBuilder instance for chaining.
      */
-    public before (referenceColumn: string, columnName?: string): this {
+    public after (referenceColumn: string, columnName?: string): this {
         const column = this.resolveColumn(columnName)
-        column.before = referenceColumn
+        column.after = referenceColumn
 
         return this
     }
@@ -306,7 +345,8 @@ export class TableBuilder {
             nullable: options.nullable,
             unique: options.unique,
             primary: options.primary,
-            before: options.before,
+            autoIncrement: options.autoIncrement,
+            after: options.after,
             default: options.default,
         })
         this.latestColumnName = name

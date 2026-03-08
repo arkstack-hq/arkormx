@@ -19,7 +19,8 @@ export interface SchemaColumn {
     nullable?: boolean
     unique?: boolean
     primary?: boolean
-    before?: string
+    autoIncrement?: boolean
+    after?: string
     default?: unknown
 }
 

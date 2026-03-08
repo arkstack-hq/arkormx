@@ -99,7 +99,7 @@ describe('Database migration, seeding and factory helpers', () => {
         class CreateUsersMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.createTable('users', table => {
-                    table.uuid('id', { primary: true })
+                    table.uuid('id').primary()
                     table.string('email').nullable()
                     table.timestamp('deletedAt').nullable().map('deleted_at')
                     table.index(['email', 'deletedAt'], 'users_email_deleted_at_idx')
@@ -165,7 +165,7 @@ describe('Database migration, seeding and factory helpers', () => {
         class AddNicknameMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.alterTable('users', table => {
-                    table.string('nickname').nullable().map('nick_name').before('email').index(['nickname', 'email'], 'users_nickname_email_idx')
+                    table.string('nickname').nullable().map('nick_name').after('email').index(['nickname', 'email'], 'users_nickname_email_idx')
                 })
             }
 
@@ -188,7 +188,47 @@ describe('Database migration, seeding and factory helpers', () => {
         const emailLinePosition = finalSchema.indexOf('email String?')
         expect(nicknameLinePosition).toBeGreaterThan(-1)
         expect(emailLinePosition).toBeGreaterThan(-1)
-        expect(nicknameLinePosition).toBeLessThan(emailLinePosition)
+        expect(nicknameLinePosition).toBeGreaterThan(emailLinePosition)
+
+        class CreateApiKeysMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('api_keys', table => {
+                    table.string('key').primary()
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('api_keys')
+            }
+        }
+
+        const apiKeysApplied = await applyMigrationToPrismaSchema(CreateApiKeysMigration, {
+            schemaPath,
+        })
+        expect(apiKeysApplied.schema).toContain('key String @id')
+
+        class CreateManualPrimaryMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('manual_ids', table => {
+                    table.integer('id').primary({ autoIncrement: false, default: 42 })
+                })
+                schema.createTable('slugs', table => {
+                    table.string('slug')
+                    table.primary('slug')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('manual_ids')
+                schema.dropTable('slugs')
+            }
+        }
+
+        const manualPrimaryApplied = await applyMigrationToPrismaSchema(CreateManualPrimaryMigration, {
+            schemaPath,
+        })
+        expect(manualPrimaryApplied.schema).toContain('id Int @id @default(42)')
+        expect(manualPrimaryApplied.schema).toContain('slug String @id')
 
         rmSync(directory, { recursive: true, force: true })
         rmSync(prismaDirectory, { recursive: true, force: true })
