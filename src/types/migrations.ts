@@ -1,6 +1,7 @@
 
 export type SchemaColumnType =
     | 'id'
+    | 'uuid'
     | 'string'
     | 'text'
     | 'integer'
@@ -17,13 +18,20 @@ export interface SchemaColumn {
     nullable?: boolean
     unique?: boolean
     primary?: boolean
+    before?: string
     default?: unknown
+}
+
+export interface SchemaIndex {
+    columns: string[]
+    name?: string
 }
 
 export interface SchemaTableCreateOperation {
     type: 'createTable'
     table: string
     columns: SchemaColumn[]
+    indexes: SchemaIndex[]
 }
 
 export interface SchemaTableAlterOperation {
@@ -31,6 +39,7 @@ export interface SchemaTableAlterOperation {
     table: string
     addColumns: SchemaColumn[]
     dropColumns: string[]
+    addIndexes: SchemaIndex[]
 }
 
 export interface SchemaTableDropOperation {

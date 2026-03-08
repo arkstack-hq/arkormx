@@ -1,19 +1,19 @@
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { beforeEach, describe, expect, it } from 'vitest'
-
 import {
-    applyMigrationToPrismaSchema,
     Migration,
     ModelFactory,
     SchemaBuilder,
+    Seeder,
+    applyMigrationToPrismaSchema,
     generateMigrationFile,
     getMigrationPlan,
     runMigrationWithPrisma,
-    Seeder,
 } from '../../src'
 import { User, setupCoreRuntime } from './helpers/core-fixtures'
+import { beforeEach, describe, expect, it } from 'vitest'
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 describe('Database migration, seeding and factory helpers', () => {
     beforeEach(() => {
@@ -99,8 +99,8 @@ describe('Database migration, seeding and factory helpers', () => {
         class CreateUsersMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.createTable('users', table => {
-                    table.id()
-                    table.string('email', { unique: true })
+                    table.uuid('id', { primary: true })
+                    table.string('email').nullable().index()
                     table.timestamps()
                     table.softDeletes()
                 })
@@ -156,12 +156,15 @@ describe('Database migration, seeding and factory helpers', () => {
         })
         expect(applied.operations).toHaveLength(1)
         expect(applied.schema).toContain('model User')
+        expect(applied.schema).toContain('id String @id @default(uuid())')
+        expect(applied.schema).toContain('email String?')
+        expect(applied.schema).toContain('@@index([email])')
         expect(applied.schema).toContain('deletedAt DateTime?')
 
         class AddNicknameMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.alterTable('users', table => {
-                    table.string('nickname', { nullable: true })
+                    table.string('nickname').nullable().before('email').index()
                 })
             }
 
@@ -178,6 +181,13 @@ describe('Database migration, seeding and factory helpers', () => {
 
         const finalSchema = readFileSync(schemaPath, 'utf-8')
         expect(finalSchema).toContain('nickname String?')
+        expect(finalSchema).toContain('@@index([nickname])')
+
+        const nicknameLinePosition = finalSchema.indexOf('nickname String?')
+        const emailLinePosition = finalSchema.indexOf('email String?')
+        expect(nicknameLinePosition).toBeGreaterThan(-1)
+        expect(emailLinePosition).toBeGreaterThan(-1)
+        expect(nicknameLinePosition).toBeLessThan(emailLinePosition)
 
         rmSync(directory, { recursive: true, force: true })
         rmSync(prismaDirectory, { recursive: true, force: true })

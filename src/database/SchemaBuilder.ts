@@ -25,6 +25,7 @@ export class SchemaBuilder {
             type: 'createTable',
             table,
             columns: builder.getColumns(),
+            indexes: builder.getIndexes(),
         })
 
         return this
@@ -45,6 +46,7 @@ export class SchemaBuilder {
             table,
             addColumns: builder.getColumns(),
             dropColumns: builder.getDropColumns(),
+            addIndexes: builder.getIndexes(),
         })
 
         return this
@@ -76,6 +78,10 @@ export class SchemaBuilder {
                 return {
                     ...operation,
                     columns: operation.columns.map(column => ({ ...column })),
+                    indexes: operation.indexes.map(index => ({
+                        ...index,
+                        columns: [...index.columns],
+                    })),
                 }
             }
 
@@ -84,6 +90,10 @@ export class SchemaBuilder {
                     ...operation,
                     addColumns: operation.addColumns.map(column => ({ ...column })),
                     dropColumns: [...operation.dropColumns],
+                    addIndexes: operation.addIndexes.map(index => ({
+                        ...index,
+                        columns: [...index.columns],
+                    })),
                 }
             }
 

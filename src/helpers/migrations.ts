@@ -1,12 +1,13 @@
+import { GenerateMigrationOptions, GeneratedMigrationFile, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaIndex, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
+
+import { ArkormException } from '../Exceptions/ArkormException'
+import { Migration } from '../database/Migration'
+import { SchemaBuilder } from '../database/SchemaBuilder'
 import { join } from 'node:path'
-import { str } from '@h3ravel/support'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
-import { ArkormException } from '../Exceptions/ArkormException'
-import { GeneratedMigrationFile, GenerateMigrationOptions, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
-import { SchemaBuilder } from '../database/SchemaBuilder'
-import { Migration } from '../database/Migration'
+import { str } from '@h3ravel/support'
 
 export const PRISMA_MODEL_REGEX = /model\s+(\w+)\s*\{[\s\S]*?\n\}/g
 
@@ -51,6 +52,8 @@ export const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()
 export const resolvePrismaType = (column: SchemaColumn): string => {
     if (column.type === 'id')
         return 'Int'
+    if (column.type === 'uuid')
+        return 'String'
     if (column.type === 'string' || column.type === 'text')
         return 'String'
     if (column.type === 'integer')
@@ -102,9 +105,25 @@ export const buildFieldLine = (column: SchemaColumn): string => {
     const unique = column.unique ? ' @unique' : ''
     const primary = column.primary ? ' @id' : ''
     const defaultValue = formatDefaultValue(column.default)
+        ?? (column.type === 'uuid' && column.primary ? '@default(uuid())' : undefined)
     const defaultSuffix = defaultValue ? ` ${defaultValue}` : ''
 
     return `  ${column.name} ${scalar}${nullable}${primary}${unique}${defaultSuffix}`
+}
+
+/**
+ * Build a Prisma model-level @@index definition line.
+ * 
+ * @param index 
+ * @returns 
+ */
+export const buildIndexLine = (index: SchemaIndex): string => {
+    const columns = index.columns.join(', ')
+    const named = typeof index.name === 'string' && index.name.trim().length > 0
+        ? `, name: "${index.name.replace(/"/g, '\\"')}"`
+        : ''
+
+    return `  @@index([${columns}]${named})`
 }
 
 /**
@@ -118,9 +137,17 @@ export const buildModelBlock = (operation: SchemaTableCreateOperation): string =
     const modelName = toModelName(operation.table)
     const mapped = operation.table !== modelName.toLowerCase()
     const fields = operation.columns.map(buildFieldLine)
-    const mapping = mapped ? `\n\n  @@map("${str(operation.table).snake()}")` : ''
+    const indexes = (operation.indexes ?? []).map(buildIndexLine)
+    const metadata = [
+        ...indexes,
+        ...(mapped ? [`  @@map("${str(operation.table).snake()}")`] : []),
+    ]
 
-    return `model ${modelName} {\n${fields.join('\n')}${mapping}\n}`
+    const lines = metadata.length > 0
+        ? [...fields, '', ...metadata]
+        : fields
+
+    return `model ${modelName} {\n${lines.join('\n')}\n}`
 }
 
 /**
@@ -207,13 +234,29 @@ export const applyAlterTableOperation = (
         }
     })
 
-    const insertIndex = Math.max(1, bodyLines.length - 1)
     operation.addColumns.forEach((column) => {
         const fieldLine = buildFieldLine(column)
         const columnRegex = new RegExp(`^\\s*${escapeRegex(column.name)}\\s+`)
         const exists = bodyLines.some(line => columnRegex.test(line))
-        if (!exists)
-            bodyLines.splice(insertIndex, 0, fieldLine)
+        if (exists)
+            return
+
+        const defaultInsertIndex = Math.max(1, bodyLines.length - 1)
+        const beforeInsertIndex = typeof column.before === 'string' && column.before.length > 0
+            ? bodyLines.findIndex(line => new RegExp(`^\\s*${escapeRegex(column.before as string)}\\s+`).test(line))
+            : -1
+        const insertIndex = beforeInsertIndex > 0 ? beforeInsertIndex : defaultInsertIndex
+        bodyLines.splice(insertIndex, 0, fieldLine)
+    });
+
+    (operation.addIndexes ?? []).forEach((index) => {
+        const indexLine = buildIndexLine(index)
+        const exists = bodyLines.some(line => line.trim() === indexLine.trim())
+        if (exists)
+            return
+
+        const insertIndex = Math.max(1, bodyLines.length - 1)
+        bodyLines.splice(insertIndex, 0, indexLine)
     })
 
     block = bodyLines.join('\n')

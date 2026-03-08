@@ -1,4 +1,4 @@
-import { SchemaColumn, SchemaColumnType } from 'src/types'
+import { SchemaColumn, SchemaColumnType, SchemaIndex } from 'src/types'
 
 /**
  * The TableBuilder class provides a fluent interface for defining 
@@ -10,6 +10,8 @@ import { SchemaColumn, SchemaColumnType } from 'src/types'
 export class TableBuilder {
     private readonly columns: SchemaColumn[] = []
     private readonly dropColumnNames: string[] = []
+    private readonly indexes: SchemaIndex[] = []
+    private latestColumnName: string | undefined
 
     /**
      * Defines an auto-incrementing primary key column.
@@ -20,6 +22,17 @@ export class TableBuilder {
      */
     public id (name = 'id'): this {
         return this.column(name, 'id', { primary: true })
+    }
+
+    /**
+     * Defines a UUID column in the table.
+     * 
+     * @param name      The name of the UUID column.
+     * @param options   Additional options for the UUID column.
+     * @returns         The current TableBuilder instance for chaining.
+     */
+    public uuid (name: string, options: Partial<SchemaColumn> = {}): this {
+        return this.column(name, 'uuid', options)
     }
 
     /**
@@ -181,6 +194,55 @@ export class TableBuilder {
     }
 
     /**
+     * Marks a column as nullable.
+     * 
+     * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
+     * @returns          The current TableBuilder instance for chaining.
+     */
+    public nullable (columnName?: string): this {
+        const column = this.resolveColumn(columnName)
+        column.nullable = true
+
+        return this
+    }
+
+    /**
+     * Sets the column position to appear before another column when possible.
+     * 
+     * @param referenceColumn The column that the target column should be placed before.
+     * @param columnName      Optional explicit target column name. When omitted, applies to the latest defined column.
+     * @returns               The current TableBuilder instance for chaining.
+     */
+    public before (referenceColumn: string, columnName?: string): this {
+        const column = this.resolveColumn(columnName)
+        column.before = referenceColumn
+
+        return this
+    }
+
+    /**
+     * Defines an index on one or more columns.
+     * 
+     * @param columns Optional target columns. When omitted, applies to the latest defined column.
+     * @param name    Optional index name.
+     * @returns       The current TableBuilder instance for chaining.
+     */
+    public index (columns?: string | string[], name?: string): this {
+        const columnList = Array.isArray(columns)
+            ? columns
+            : typeof columns === 'string'
+                ? [columns]
+                : [this.resolveColumn().name]
+
+        this.indexes.push({
+            columns: [...columnList],
+            name,
+        })
+
+        return this
+    }
+
+    /**
      * Returns a deep copy of the defined columns for the table.
      * 
      * @returns 
@@ -196,6 +258,18 @@ export class TableBuilder {
      */
     public getDropColumns (): string[] {
         return [...this.dropColumnNames]
+    }
+
+    /**
+     * Returns a deep copy of the defined indexes for the table.
+     * 
+     * @returns
+     */
+    public getIndexes (): SchemaIndex[] {
+        return this.indexes.map(index => ({
+            ...index,
+            columns: [...index.columns],
+        }))
     }
 
     /**
@@ -217,9 +291,29 @@ export class TableBuilder {
             nullable: options.nullable,
             unique: options.unique,
             primary: options.primary,
+            before: options.before,
             default: options.default,
         })
+        this.latestColumnName = name
 
         return this
+    }
+
+    /**
+     * Resolve a target column by name or fallback to the latest defined column.
+     * 
+     * @param columnName 
+     * @returns 
+     */
+    private resolveColumn (columnName?: string): SchemaColumn {
+        const targetName = columnName ?? this.latestColumnName
+        if (!targetName)
+            throw new Error('No column available for this operation.')
+
+        const column = this.columns.find(item => item.name === targetName)
+        if (!column)
+            throw new Error(`Column [${targetName}] was not found in the table definition.`)
+
+        return column
     }
 }
