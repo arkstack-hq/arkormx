@@ -16,11 +16,11 @@ import type {
     PrismaDelegateLike,
     PrismaFindManyArgsLike
 } from './types'
+import { LengthAwarePaginator, Paginator } from './Paginator'
 
 import { ArkormCollection } from './Collection'
-import { LengthAwarePaginator, Paginator } from './Paginator'
-import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
 import { ArkormException } from './Exceptions/ArkormException'
+import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
 
 type RelationResult = unknown[] | unknown | null
 type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<RelationResult>>>>
@@ -1095,6 +1095,147 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
+     * Creates multiple records and returns hydrated model instances.
+     *
+     * @param values
+     * @returns
+     */
+    public async createMany (values: DelegateCreateData<TDelegate>[]): Promise<TModel[]> {
+        if (values.length === 0)
+            return []
+
+        const created = await Promise.all(values.map(async value => await this.create(value)))
+
+        return created
+    }
+
+    /**
+     * Insert one or more records.
+     *
+     * @param values
+     * @returns
+     */
+    public async insert (
+        values: DelegateCreateData<TDelegate> | DelegateCreateData<TDelegate>[]
+    ): Promise<boolean> {
+        const payloads = this.normalizeInsertPayloads(values)
+        if (payloads.length === 0)
+            return true
+
+        const delegate = this.delegate as unknown as {
+            createMany?: (args: { data: DelegateCreateData<TDelegate>[] }) => Promise<unknown>
+        }
+
+        if (typeof delegate.createMany === 'function') {
+            await delegate.createMany({ data: payloads })
+
+            return true
+        }
+
+        await Promise.all(payloads.map(async payload => {
+            await this.delegate.create({ data: payload } as Parameters<TDelegate['create']>[0])
+        }))
+
+        return true
+    }
+
+    /**
+     * Insert one or more records while ignoring insertion errors.
+     *
+     * @param values
+     * @returns
+     */
+    public async insertOrIgnore (
+        values: DelegateCreateData<TDelegate> | DelegateCreateData<TDelegate>[]
+    ): Promise<number> {
+        const payloads = this.normalizeInsertPayloads(values)
+        if (payloads.length === 0)
+            return 0
+
+        const delegate = this.delegate as unknown as {
+            createMany?: (args: { data: DelegateCreateData<TDelegate>[], skipDuplicates?: boolean }) => Promise<unknown>
+        }
+
+        if (typeof delegate.createMany === 'function') {
+            const result = await delegate.createMany({
+                data: payloads,
+                skipDuplicates: true,
+            })
+
+            return this.resolveAffectedCount(result, payloads.length)
+        }
+
+        let inserted = 0
+        for (const payload of payloads) {
+            try {
+                await this.delegate.create({ data: payload } as Parameters<TDelegate['create']>[0])
+                inserted += 1
+            } catch {
+                continue
+            }
+        }
+
+        return inserted
+    }
+
+    /**
+     * Insert a record and return its primary key value.
+     *
+     * @param values
+     * @param sequence
+     * @returns
+     */
+    public async insertGetId (
+        values: DelegateCreateData<TDelegate>,
+        sequence?: string | null
+    ): Promise<unknown> {
+        const created = await this.delegate.create({ data: values } as Parameters<TDelegate['create']>[0]) as Record<string, unknown>
+        const key = sequence ?? 'id'
+        if (!(key in created))
+            throw new ArkormException(`Inserted record does not contain key [${key}].`)
+
+        return created[key]
+    }
+
+    /**
+     * Insert records using values produced by another query/source.
+     *
+     * @param columns
+     * @param query
+     * @returns
+     */
+    public async insertUsing (
+        columns: string[],
+        query: unknown
+    ): Promise<number> {
+        const rows = await this.resolveInsertUsingRows(columns, query)
+        if (rows.length === 0)
+            return 0
+
+        await this.insert(rows as DelegateCreateData<TDelegate>[])
+
+        return rows.length
+    }
+
+    /**
+     * Insert records using values produced by another query/source while ignoring insertion errors.
+     *
+     * @param columns
+     * @param query
+     * @returns
+     */
+    public async insertOrIgnoreUsing (
+        columns: string[],
+        query: unknown
+    ): Promise<number> {
+        const rows = await this.resolveInsertUsingRows(columns, query)
+        if (rows.length === 0)
+            return 0
+
+        return this.insertOrIgnore(rows as DelegateCreateData<TDelegate>[])
+    }
+
+    /**
      * Updates records matching the current query constraints with the 
      * specified data and returns the updated record(s) as model instance(s).
      * 
@@ -1110,6 +1251,105 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const updated = await this.delegate.update({ where: uniqueWhere, data } as Parameters<TDelegate['update']>[0])
 
         return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+    }
+
+    /**
+     * Update records using update-many semantics when available.
+     *
+     * @param data
+     * @returns
+     */
+    public async updateFrom (data: DelegateUpdateData<TDelegate>): Promise<number> {
+        const where = this.buildWhere()
+        if (!where)
+            throw new ArkormException('Update requires a where clause.')
+
+        const delegate = this.delegate as unknown as {
+            updateMany?: (args: { where: DelegateWhere<TDelegate>, data: DelegateUpdateData<TDelegate> }) => Promise<unknown>
+        }
+
+        if (typeof delegate.updateMany === 'function') {
+            const result = await delegate.updateMany({ where, data })
+
+            return this.resolveAffectedCount(result, 0)
+        }
+
+        await this.update(data)
+
+        return 1
+    }
+
+    /**
+     * Insert a record when no match exists, otherwise update the matching record.
+     *
+     * @param attributes
+     * @param values
+     * @returns
+     */
+    public async updateOrInsert (
+        attributes: Record<string, unknown>,
+        values: Record<string, unknown> | ((exists: boolean) => Record<string, unknown> | Promise<Record<string, unknown>>) = {}
+    ): Promise<boolean> {
+        const existing = await this.delegate.findFirst({ where: attributes } as Parameters<TDelegate['findFirst']>[0])
+        const exists = existing != null
+        const resolvedValues = typeof values === 'function'
+            ? await values(exists)
+            : values
+
+        if (!exists) {
+            await this.delegate.create({
+                data: {
+                    ...attributes,
+                    ...resolvedValues,
+                },
+            } as Parameters<TDelegate['create']>[0])
+
+            return true
+        }
+
+        const updated = await this.clone().where(attributes as DelegateWhere<TDelegate>).update(resolvedValues as DelegateUpdateData<TDelegate>)
+
+        return updated != null
+    }
+
+    /**
+     * Insert new records or update existing records by one or more unique keys.
+     *
+     * @param values
+     * @param uniqueBy
+     * @param update
+     * @returns
+     */
+    public async upsert (
+        values: Array<Record<string, unknown>>,
+        uniqueBy: string | string[],
+        update: string[] | null = null
+    ): Promise<number> {
+        if (values.length === 0)
+            return 0
+
+        const uniqueKeys = Array.isArray(uniqueBy) ? uniqueBy : [uniqueBy]
+        let affected = 0
+
+        for (const row of values) {
+            const attributes = uniqueKeys.reduce<Record<string, unknown>>((all, key) => {
+                all[key] = row[key]
+
+                return all
+            }, {})
+            const updatePayload = (update ?? Object.keys(row).filter(key => !uniqueKeys.includes(key)))
+                .reduce<Record<string, unknown>>((all, key) => {
+                    if (key in row)
+                        all[key] = row[key]
+
+                    return all
+                }, {})
+
+            await this.updateOrInsert(attributes, updatePayload)
+            affected += 1
+        }
+
+        return affected
     }
 
     /**
@@ -1162,6 +1402,74 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public async doesntExist (): Promise<boolean> {
         return !(await this.exists())
+    }
+
+    private normalizeInsertPayloads (
+        values: DelegateCreateData<TDelegate> | DelegateCreateData<TDelegate>[]
+    ): DelegateCreateData<TDelegate>[] {
+        if (Array.isArray(values))
+            return values
+
+        return [values]
+    }
+
+    private resolveAffectedCount (result: unknown, fallback: number): number {
+        if (typeof result === 'number')
+            return result
+
+        if (result && typeof result === 'object' && 'count' in result) {
+            const candidate = (result as { count?: unknown }).count
+            if (typeof candidate === 'number')
+                return candidate
+        }
+
+        return fallback
+    }
+
+    private async resolveInsertUsingRows (
+        columns: string[],
+        query: unknown
+    ): Promise<Record<string, unknown>[]> {
+        const resolvedQuery = typeof query === 'function'
+            ? await (query as () => unknown | Promise<unknown>)()
+            : query
+
+        const source = await this.resolveInsertUsingSource(resolvedQuery)
+
+        return source.map((row) => {
+            return columns.reduce<Record<string, unknown>>((record, column) => {
+                record[column] = row[column]
+
+                return record
+            }, {})
+        })
+    }
+
+    private async resolveInsertUsingSource (source: unknown): Promise<Record<string, unknown>[]> {
+        if (source && typeof source === 'object') {
+            const asBuilder = source as { get?: () => Promise<unknown> }
+            if (typeof asBuilder.get === 'function') {
+                const result = await asBuilder.get()
+                const collection = result as { all?: () => unknown[] }
+                if (typeof collection.all === 'function') {
+                    return collection.all().map((item) => {
+                        const asModel = item as { getRawAttributes?: () => Record<string, unknown> }
+                        if (typeof asModel.getRawAttributes === 'function')
+                            return asModel.getRawAttributes()
+
+                        return item as Record<string, unknown>
+                    })
+                }
+            }
+
+            if (Array.isArray(source))
+                return source as Record<string, unknown>[]
+        }
+
+        if (Array.isArray(source))
+            return source as Record<string, unknown>[]
+
+        throw new ArkormException('insertUsing expects a query builder, array of records, or async resolver.')
     }
 
     /**

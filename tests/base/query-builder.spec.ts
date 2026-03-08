@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-
 import { ArkormCollection, LengthAwarePaginator, Paginator } from '../../src'
 import { Article, User } from './helpers/core-fixtures'
+import { beforeEach, describe, expect, it } from 'vitest'
+
 import { setupCoreRuntime } from './helpers/core-fixtures'
 
 describe('QueryBuilder', () => {
@@ -211,6 +211,101 @@ describe('QueryBuilder', () => {
         const activeUsers = await User.scope('active').get()
         expect(activeUsers.all().length).toBe(1)
         expect(activeUsers.all()[0]?.getAttribute('email')).toBe('jane@example.com')
+    })
+
+    it('supports insert and upsert family write helpers', async () => {
+        await expect(User.query().insert({
+            id: 3,
+            name: 'Alice',
+            email: 'alice@example.com',
+            isActive: 1,
+            createdAt: new Date('2026-03-04T03:00:00.000Z'),
+            updatedAt: new Date('2026-03-04T03:00:00.000Z'),
+        })).resolves.toBe(true)
+
+        await expect(User.query().insertOrIgnore([
+            {
+                id: 4,
+                name: 'Bob',
+                email: 'bob@example.com',
+                isActive: 1,
+                createdAt: new Date('2026-03-04T04:00:00.000Z'),
+                updatedAt: new Date('2026-03-04T04:00:00.000Z'),
+            },
+            {
+                id: 5,
+                name: 'Carol',
+                email: 'carol@example.com',
+                isActive: 0,
+                createdAt: new Date('2026-03-04T05:00:00.000Z'),
+                updatedAt: new Date('2026-03-04T05:00:00.000Z'),
+            },
+        ])).resolves.toBe(2)
+
+        const insertedId = await User.query().insertGetId({
+            id: 6,
+            name: 'Dylan',
+            email: 'dylan@example.com',
+            isActive: 1,
+            createdAt: new Date('2026-03-04T06:00:00.000Z'),
+            updatedAt: new Date('2026-03-04T06:00:00.000Z'),
+        })
+        expect(insertedId).toBe(6)
+
+        const insertedUsing = await User.query().insertUsing(
+            ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
+            [
+                {
+                    id: 7,
+                    name: 'Eve',
+                    email: 'eve@example.com',
+                    isActive: 1,
+                    createdAt: new Date('2026-03-04T07:00:00.000Z'),
+                    updatedAt: new Date('2026-03-04T07:00:00.000Z'),
+                },
+            ]
+        )
+        expect(insertedUsing).toBe(1)
+
+        const insertedOrIgnoreUsing = await User.query().insertOrIgnoreUsing(
+            ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
+            async () => ([
+                {
+                    id: 8,
+                    name: 'Frank',
+                    email: 'frank@example.com',
+                    isActive: 0,
+                    createdAt: new Date('2026-03-04T08:00:00.000Z'),
+                    updatedAt: new Date('2026-03-04T08:00:00.000Z'),
+                },
+            ])
+        )
+        expect(insertedOrIgnoreUsing).toBe(1)
+
+        const updatedCount = await User.query().where({ email: 'jane@example.com' }).updateFrom({ name: 'Jane Updated' })
+        expect(updatedCount).toBe(1)
+
+        await expect(User.query().updateOrInsert(
+            { email: 'new-user@example.com' },
+            { id: 9, name: 'New User', isActive: 1, createdAt: new Date('2026-03-04T09:00:00.000Z'), updatedAt: new Date('2026-03-04T09:00:00.000Z') }
+        )).resolves.toBe(true)
+
+        await expect(User.query().upsert(
+            [{
+                id: 10,
+                name: 'Jane Upserted',
+                email: 'jane@example.com',
+                isActive: 1,
+                createdAt: new Date('2026-03-04T10:00:00.000Z'),
+                updatedAt: new Date('2026-03-04T10:00:00.000Z'),
+            }],
+            'email',
+            ['name']
+        )).resolves.toBe(1)
+
+        const total = await User.query().count()
+        expect(total).toBe(9)
+        await expect(User.query().where({ email: 'jane@example.com' }).value('name')).resolves.toBe('Jane Upserted')
     })
 
     it('throws for firstOrFail when no record matches', async () => {

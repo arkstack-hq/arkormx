@@ -105,6 +105,17 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] `whereRaw(...)` / `orWhereRaw(...)` (adapter-gated)
 - [x] `existsOr(callback)` / `doesntExistOr(callback)`
 
+### Phase 4.5 — Insert and upsert write parity
+
+- [x] `insert(values)`
+- [x] `insertOrIgnore(values)`
+- [x] `insertGetId(values, sequence?)`
+- [x] `insertUsing(columns, query)`
+- [x] `insertOrIgnoreUsing(columns, query)`
+- [x] `updateFrom(values)`
+- [x] `updateOrInsert(attributes, values)`
+- [x] `upsert(values, uniqueBy, update?)`
+
 ### Phase 5 — Relationship existence/query parity
 
 - [x] `has(...)` / `orHas(...)`

@@ -57,6 +57,74 @@ await User.query().value('email');
 await User.query().valueOrFail('email');
 ```
 
+## Write helpers (insert/update/upsert)
+
+```ts
+await User.query().insert({
+  id: 3,
+  name: 'Alice',
+  email: 'alice@example.com',
+  isActive: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
+await User.query().insert([
+  { id: 4, name: 'Bob', email: 'bob@example.com', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  { id: 5, name: 'Carol', email: 'carol@example.com', isActive: false, createdAt: new Date(), updatedAt: new Date() },
+]);
+
+await User.query().insertOrIgnore([
+  { id: 6, name: 'Dylan', email: 'dylan@example.com', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+]);
+
+const id = await User.query().insertGetId({
+  id: 7,
+  name: 'Eve',
+  email: 'eve@example.com',
+  isActive: true,
+  createdAt: new Date(),
+  updatedAt: new Date(),
+});
+
+await User.query().insertUsing(
+  ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
+  async () => [
+    { id: 8, name: 'Frank', email: 'frank@example.com', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  ]
+);
+
+await User.query().insertOrIgnoreUsing(
+  ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
+  [
+    { id: 9, name: 'Grace', email: 'grace@example.com', isActive: false, createdAt: new Date(), updatedAt: new Date() },
+  ]
+);
+
+await User.query().where({ email: 'jane@example.com' }).updateFrom({ name: 'Jane Updated' });
+
+await User.query().updateOrInsert(
+  { email: 'new-user@example.com' },
+  { id: 10, name: 'New User', isActive: true, createdAt: new Date(), updatedAt: new Date() }
+);
+
+await User.query().upsert(
+  [
+    { id: 11, email: 'jane@example.com', name: 'Jane Upserted', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  ],
+  'email',
+  ['name']
+);
+```
+
+- `insert(values)` inserts one or many rows.
+- `insertOrIgnore(values)` inserts and ignores duplicate/conflict errors when supported.
+- `insertGetId(values, sequence?)` inserts one row and returns the generated key field (defaults to `id`).
+- `insertUsing(columns, query)` and `insertOrIgnoreUsing(columns, query)` accept arrays, async resolvers, or query-builder sources.
+- `updateFrom(values)` performs constrained updates and returns affected count when supported by the adapter.
+- `updateOrInsert(attributes, values)` updates the matching record or inserts a new one.
+- `upsert(values, uniqueBy, update?)` processes batch upserts keyed by one or many unique columns.
+
 ## Conditional composition
 
 ```ts
