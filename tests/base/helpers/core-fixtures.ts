@@ -158,7 +158,7 @@ function makeDelegate (rows: Row[]) {
         update: async ({ where, data: payload }: { where: Row, data: Row }) => {
             const index = data.findIndex(row => matchesWhere(row, where))
             if (index < 0)
-                throw new ModelNotFoundException('Record not found')
+                throw new ModelNotFoundException('TestModel', 'Record not found')
 
             data[index] = { ...data[index], ...payload }
 
@@ -167,7 +167,7 @@ function makeDelegate (rows: Row[]) {
         delete: async ({ where }: { where: Row }) => {
             const index = data.findIndex(row => matchesWhere(row, where))
             if (index < 0)
-                throw new ModelNotFoundException('Record not found')
+                throw new ModelNotFoundException('TestModel', 'Record not found')
 
             const [removed] = data.splice(index, 1)
 

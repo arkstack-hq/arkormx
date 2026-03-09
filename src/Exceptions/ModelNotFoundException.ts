@@ -8,8 +8,15 @@ import { ArkormException } from './ArkormException'
  * @since 0.1.0
  */
 export class ModelNotFoundException extends ArkormException {
-    constructor(message: string = 'No query results for the given model.') {
+    private modelName: string
+
+    constructor(modelName: string, message: string = 'No query results for the given model.') {
         super(message)
         this.name = 'ModelNotFoundException'
+        this.modelName = modelName
+    }
+
+    public getModelName (): string {
+        return this.modelName
     }
 }

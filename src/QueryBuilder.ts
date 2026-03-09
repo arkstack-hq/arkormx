@@ -974,7 +974,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async firstOrFail (): Promise<TModel> {
         const model = await this.first()
         if (!model)
-            throw new ModelNotFoundException('Record not found.')
+            throw new ModelNotFoundException(this.model.name, 'Record not found.')
 
         return model
     }
@@ -1054,7 +1054,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     ): Promise<ModelAttributes<TModel>[TKey]> {
         const result = await this.value(column)
         if (result == null)
-            throw new ModelNotFoundException('Record not found.')
+            throw new ModelNotFoundException(this.model.name, 'Record not found.')
 
         return result
     }
