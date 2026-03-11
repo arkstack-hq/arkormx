@@ -101,7 +101,7 @@ export class TableBuilder {
      * 
      * @param name      The name of the integer column.
      * @param options   Additional options for the integer column.
-     * @returns 
+     * @returns         The current TableBuilder instance for chaining.
      */
     public integer (name: string, options: Partial<SchemaColumn> = {}): this {
         return this.column(name, 'integer', options)
@@ -112,7 +112,7 @@ export class TableBuilder {
      * 
      * @param name      The name of the big integer column.
      * @param options   Additional options for the big integer column.
-     * @returns 
+     * @returns         The current TableBuilder instance for chaining.
      */
     public bigInteger (name: string, options: Partial<SchemaColumn> = {}): this {
         return this.column(name, 'bigInteger', options)
@@ -123,10 +123,24 @@ export class TableBuilder {
      * 
      * @param name      The name of the float column.
      * @param options   Additional options for the float column.
-     * @returns 
+     * @returns         The current TableBuilder instance for chaining.
      */
     public float (name: string, options: Partial<SchemaColumn> = {}): this {
         return this.column(name, 'float', options)
+    }
+
+    /**
+     * Marks a column as unique in the table.
+     * 
+     * @param name Optional explicit column name. 
+     * When omitted, applies to the latest defined column.
+     * @returns The current TableBuilder instance for chaining.
+     */
+    public unique (name?: string): this {
+        const column = this.resolveColumn(name)
+        column.unique = true
+
+        return this
     }
 
     /**
@@ -134,7 +148,7 @@ export class TableBuilder {
      * 
      * @param name      The name of the boolean column. 
      * @param options   Additional options for the boolean column.
-     * @returns 
+     * @returns         The current TableBuilder instance for chaining.
      */
     public boolean (name: string, options: Partial<SchemaColumn> = {}): this {
         return this.column(name, 'boolean', options)
