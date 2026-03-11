@@ -29,11 +29,29 @@ export interface SchemaIndex {
     name?: string
 }
 
+export type SchemaForeignKeyAction =
+    | 'cascade'
+    | 'restrict'
+    | 'setNull'
+    | 'noAction'
+    | 'setDefault'
+
+export interface SchemaForeignKey {
+    column: string
+    referencesTable: string
+    referencesColumn: string
+    onDelete?: SchemaForeignKeyAction
+    relationAlias?: string
+    inverseRelationAlias?: string
+    fieldAlias?: string
+}
+
 export interface SchemaTableCreateOperation {
     type: 'createTable'
     table: string
     columns: SchemaColumn[]
     indexes: SchemaIndex[]
+    foreignKeys: SchemaForeignKey[]
 }
 
 export interface SchemaTableAlterOperation {
@@ -42,6 +60,7 @@ export interface SchemaTableAlterOperation {
     addColumns: SchemaColumn[]
     dropColumns: string[]
     addIndexes: SchemaIndex[]
+    addForeignKeys: SchemaForeignKey[]
 }
 
 export interface SchemaTableDropOperation {

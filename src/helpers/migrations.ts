@@ -1,4 +1,4 @@
-import { GenerateMigrationOptions, GeneratedMigrationFile, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaIndex, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
+import { GenerateMigrationOptions, GeneratedMigrationFile, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaForeignKey, SchemaForeignKeyAction, SchemaIndex, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
 import { ArkormException } from '../Exceptions/ArkormException'
@@ -107,8 +107,8 @@ export const buildFieldLine = (column: SchemaColumn): string => {
         const defaultSuffix = configuredDefault
             ? ` ${configuredDefault}`
             : shouldAutoIncrement && primary
-            ? ' @default(autoincrement())'
-            : ''
+                ? ' @default(autoincrement())'
+                : ''
 
         return `  ${column.name} Int${primary}${defaultSuffix}${mapped}`
     }
@@ -142,6 +142,139 @@ export const buildIndexLine = (index: SchemaIndex): string => {
     return `  @@index([${columns}]${named})`
 }
 
+export const deriveRelationFieldName = (columnName: string): string => {
+    const trimmed = columnName.trim()
+    if (!trimmed)
+        return 'relation'
+
+    if (trimmed.endsWith('Id') && trimmed.length > 2) {
+        const root = trimmed.slice(0, -2)
+
+        return `${root.charAt(0).toLowerCase()}${root.slice(1)}`
+    }
+
+    if (trimmed.endsWith('_id') && trimmed.length > 3) {
+        const root = trimmed.slice(0, -3)
+
+        return root.replace(/_([a-zA-Z0-9])/g, (_, letter: string) => letter.toUpperCase())
+    }
+
+    return `${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`
+}
+
+const pascalWords = (value: string): string[] => {
+    return value.match(/[A-Z][a-z0-9]*/g) ?? [value]
+}
+
+export const deriveInverseRelationAlias = (
+    sourceModelName: string,
+    targetModelName: string,
+    explicitAlias?: string
+): string => {
+    if (explicitAlias && explicitAlias.trim().length > 0)
+        return explicitAlias.trim()
+
+    const sourceWords = pascalWords(sourceModelName)
+    const sourceSegment = sourceWords[sourceWords.length - 1] ?? sourceModelName
+
+    return `${sourceSegment}${targetModelName}`
+}
+
+export const deriveCollectionFieldName = (modelName: string): string => {
+    if (!modelName)
+        return 'items'
+
+    const camel = `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}`
+    if (camel.endsWith('s'))
+        return `${camel}es`
+
+    return `${camel}s`
+}
+
+export const formatRelationAction = (action: SchemaForeignKeyAction): string => {
+    if (action === 'cascade')
+        return 'Cascade'
+    if (action === 'restrict')
+        return 'Restrict'
+    if (action === 'setNull')
+        return 'SetNull'
+    if (action === 'setDefault')
+        return 'SetDefault'
+
+    return 'NoAction'
+}
+
+export const buildRelationLine = (foreignKey: SchemaForeignKey): string => {
+    if (!foreignKey.referencesTable.trim())
+        throw new ArkormException(`Foreign key [${foreignKey.column}] must define a referenced table.`)
+    if (!foreignKey.referencesColumn.trim())
+        throw new ArkormException(`Foreign key [${foreignKey.column}] must define a referenced column.`)
+
+    const fieldName = foreignKey.fieldAlias?.trim() || deriveRelationFieldName(foreignKey.column)
+    const targetModel = toModelName(foreignKey.referencesTable)
+    const relationName = foreignKey.relationAlias?.trim()
+    const relationPrefix = relationName
+        ? `@relation("${relationName.replace(/"/g, '\\"')}", `
+        : '@relation('
+    const onDelete = foreignKey.onDelete
+        ? `, onDelete: ${formatRelationAction(foreignKey.onDelete)}`
+        : ''
+
+    return `  ${fieldName} ${targetModel} ${relationPrefix}fields: [${foreignKey.column}], references: [${foreignKey.referencesColumn}]${onDelete})`
+}
+
+export const buildInverseRelationLine = (
+    sourceModelName: string,
+    targetModelName: string,
+    foreignKey: SchemaForeignKey
+): string => {
+    const fieldName = deriveCollectionFieldName(sourceModelName)
+    const relationName = deriveInverseRelationAlias(sourceModelName, targetModelName, foreignKey.inverseRelationAlias)
+
+    return `  ${fieldName} ${sourceModelName}[] @relation("${relationName.replace(/"/g, '\\"')}")`
+}
+
+const injectLineIntoModelBody = (
+    bodyLines: string[],
+    line: string,
+    exists: (line: string) => boolean
+): string[] => {
+    const alreadyExists = bodyLines.some(exists)
+    if (alreadyExists)
+        return bodyLines
+
+    const insertIndex = Math.max(1, bodyLines.length - 1)
+    bodyLines.splice(insertIndex, 0, line)
+
+    return bodyLines
+}
+
+const applyInverseRelations = (
+    schema: string,
+    sourceModelName: string,
+    foreignKeys: SchemaForeignKey[]
+): string => {
+    let nextSchema = schema
+
+    for (const foreignKey of foreignKeys) {
+        const targetModel = findModelBlock(nextSchema, foreignKey.referencesTable)
+        if (!targetModel)
+            continue
+
+        const inverseLine = buildInverseRelationLine(sourceModelName, targetModel.modelName, foreignKey)
+        const targetBodyLines = targetModel.block.split('\n')
+        const fieldName = deriveCollectionFieldName(sourceModelName)
+        const fieldRegex = new RegExp(`^\\s*${escapeRegex(fieldName)}\\s+`)
+
+        injectLineIntoModelBody(targetBodyLines, inverseLine, line => fieldRegex.test(line))
+
+        const updatedTarget = targetBodyLines.join('\n')
+        nextSchema = `${nextSchema.slice(0, targetModel.start)}${updatedTarget}${nextSchema.slice(targetModel.end)}`
+    }
+
+    return nextSchema
+}
+
 /**
  * Build a Prisma model block string based on a SchemaTableCreateOperation, including 
  * all fields and any necessary mapping.
@@ -153,6 +286,7 @@ export const buildModelBlock = (operation: SchemaTableCreateOperation): string =
     const modelName = toModelName(operation.table)
     const mapped = operation.table !== modelName.toLowerCase()
     const fields = operation.columns.map(buildFieldLine)
+    const relations = (operation.foreignKeys ?? []).map(buildRelationLine)
     const indexes = (operation.indexes ?? []).map(buildIndexLine)
     const metadata = [
         ...indexes,
@@ -160,8 +294,8 @@ export const buildModelBlock = (operation: SchemaTableCreateOperation): string =
     ]
 
     const lines = metadata.length > 0
-        ? [...fields, '', ...metadata]
-        : fields
+        ? [...fields, ...relations, '', ...metadata]
+        : [...fields, ...relations]
 
     return `model ${modelName} {\n${lines.join('\n')}\n}`
 }
@@ -216,8 +350,9 @@ export const applyCreateTableOperation = (schema: string, operation: SchemaTable
 
     const block = buildModelBlock(operation)
     const prefix = schema.trimEnd()
+    const nextSchema = `${prefix}\n\n${block}\n`
 
-    return `${prefix}\n\n${block}\n`
+    return applyInverseRelations(nextSchema, toModelName(operation.table), operation.foreignKeys ?? [])
 }
 
 /**
@@ -277,9 +412,16 @@ export const applyAlterTableOperation = (
         bodyLines.splice(insertIndex, 0, indexLine)
     })
 
-    block = bodyLines.join('\n')
+    for (const foreignKey of (operation.addForeignKeys ?? [])) {
+        const relationLine = buildRelationLine(foreignKey)
+        const relationRegex = new RegExp(`^\\s*${escapeRegex(foreignKey.fieldAlias?.trim() || deriveRelationFieldName(foreignKey.column))}\\s+`)
+        injectLineIntoModelBody(bodyLines, relationLine, line => relationRegex.test(line))
+    }
 
-    return `${schema.slice(0, model.start)}${block}${schema.slice(model.end)}`
+    block = bodyLines.join('\n')
+    const nextSchema = `${schema.slice(0, model.start)}${block}${schema.slice(model.end)}`
+
+    return applyInverseRelations(nextSchema, model.modelName, operation.addForeignKeys ?? [])
 }
 
 /**

@@ -1,4 +1,6 @@
-import { SchemaColumn, SchemaColumnType, SchemaIndex } from 'src/types'
+import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex } from 'src/types'
+
+import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 
 /**
  * The TableBuilder class provides a fluent interface for defining 
@@ -11,6 +13,7 @@ export class TableBuilder {
     private readonly columns: SchemaColumn[] = []
     private readonly dropColumnNames: string[] = []
     private readonly indexes: SchemaIndex[] = []
+    private readonly foreignKeys: SchemaForeignKey[] = []
     private latestColumnName: string | undefined
 
     /**
@@ -310,6 +313,36 @@ export class TableBuilder {
     }
 
     /**
+     * Defines a foreign key relation for an existing column.
+     *
+     * @param column The local foreign key column name.
+     * @returns A fluent foreign key builder.
+     */
+    public foreignKey (column: string): ForeignKeyBuilder {
+        const entry: SchemaForeignKey = {
+            column,
+            referencesTable: '',
+            referencesColumn: 'id',
+        }
+        this.foreignKeys.push(entry)
+
+        return new ForeignKeyBuilder(entry)
+    }
+
+    /**
+     * Defines a foreign key relation for a column, using a 
+     * conventional naming pattern.
+     * 
+     * @param column 
+     * @returns 
+     */
+    public foreign (column?: string): ForeignKeyBuilder {
+        const columnName = this.resolveColumn(column).name
+
+        return this.foreignKey(columnName + (column ? '' : 'Id'))
+    }
+
+    /**
      * Returns a deep copy of the defined columns for the table.
      * 
      * @returns 
@@ -337,6 +370,15 @@ export class TableBuilder {
             ...index,
             columns: [...index.columns],
         }))
+    }
+
+    /**
+     * Returns a deep copy of the defined foreign keys for the table.
+     *
+     * @returns
+     */
+    public getForeignKeys (): SchemaForeignKey[] {
+        return this.foreignKeys.map(foreignKey => ({ ...foreignKey }))
     }
 
     /**

@@ -8,6 +8,7 @@ import {
     getMigrationPlan,
     runMigrationWithPrisma,
 } from '../../src'
+import { deriveCollectionFieldName, deriveInverseRelationAlias } from '../../src/helpers/migrations'
 import { User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -230,7 +231,74 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(manualPrimaryApplied.schema).toContain('id Int @id @default(42)')
         expect(manualPrimaryApplied.schema).toContain('slug String @id')
 
+        class CreateTokensMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('tokens', table => {
+                    table.id()
+                    table.integer('userId')
+                    table.string('value')
+                    table.foreignKey('userId').references('users', 'id').onDelete('cascade').alias('TokenUser')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('tokens')
+            }
+        }
+
+        const tokensApplied = await applyMigrationToPrismaSchema(CreateTokensMigration, {
+            schemaPath,
+        })
+        expect(tokensApplied.schema).toContain('user User @relation("TokenUser", fields: [userId], references: [id], onDelete: Cascade)')
+        expect(tokensApplied.schema).toContain('tokens Token[] @relation("TokenUser")')
+
+        class AddOwnerTokenRelationAliasMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('tokens', table => {
+                    table.foreignKey('userId').references('users', 'id').onDelete('cascade').alias('TokenOwner').as('owner')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        const aliasedApplied = await applyMigrationToPrismaSchema(AddOwnerTokenRelationAliasMigration, {
+            schemaPath,
+        })
+        expect(aliasedApplied.schema).toContain('owner User @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)')
+
+        class CreatePersonalAccessTokensMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('personal_access_tokens', table => {
+                    table.id()
+                    table.integer('userId')
+                    table.string('token')
+                    table.foreignKey('userId').references('users', 'id').onDelete('cascade').alias('TokenOwner').as('owner')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('personal_access_tokens')
+            }
+        }
+
+        const personalTokensApplied = await applyMigrationToPrismaSchema(CreatePersonalAccessTokensMigration, {
+            schemaPath,
+        })
+        expect(personalTokensApplied.schema).toContain('owner User @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)')
+        expect(personalTokensApplied.schema).toContain('personalAccessTokens PersonalAccessToken[] @relation("TokenUser")')
+
         rmSync(directory, { recursive: true, force: true })
         rmSync(prismaDirectory, { recursive: true, force: true })
+    })
+
+    it('derives inverse relation naming conventions', () => {
+        expect(deriveCollectionFieldName('PersonalAccessToken')).toBe('personalAccessTokens')
+        expect(deriveCollectionFieldName('Token')).toBe('tokens')
+
+        expect(deriveInverseRelationAlias('PersonalAccessToken', 'User')).toBe('TokenUser')
+        expect(deriveInverseRelationAlias('Token', 'User')).toBe('TokenUser')
+        expect(deriveInverseRelationAlias('PersonalAccessToken', 'User', 'UserTokens')).toBe('UserTokens')
     })
 })

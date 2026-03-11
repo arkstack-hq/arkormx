@@ -26,6 +26,7 @@ export class SchemaBuilder {
             table,
             columns: builder.getColumns(),
             indexes: builder.getIndexes(),
+            foreignKeys: builder.getForeignKeys(),
         })
 
         return this
@@ -47,6 +48,7 @@ export class SchemaBuilder {
             addColumns: builder.getColumns(),
             dropColumns: builder.getDropColumns(),
             addIndexes: builder.getIndexes(),
+            addForeignKeys: builder.getForeignKeys(),
         })
 
         return this
@@ -82,6 +84,7 @@ export class SchemaBuilder {
                         ...index,
                         columns: [...index.columns],
                     })),
+                    foreignKeys: operation.foreignKeys.map(foreignKey => ({ ...foreignKey })),
                 }
             }
 
@@ -94,6 +97,7 @@ export class SchemaBuilder {
                         ...index,
                         columns: [...index.columns],
                     })),
+                    addForeignKeys: operation.addForeignKeys.map(foreignKey => ({ ...foreignKey })),
                 }
             }
 

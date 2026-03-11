@@ -34,6 +34,64 @@ npx arkorm migrate --all --skip-generate --skip-migrate
 npx arkorm migrate --all --deploy
 ```
 
+## Foreign keys and relation aliases
+
+Use `foreignKey` in table migrations to generate Prisma relation fields automatically:
+
+```ts
+schema.createTable('tokens', (table) => {
+  table.id();
+  table.integer('userId');
+  table.string('value');
+
+  table
+    .foreignKey('userId')
+    .references('users', 'id')
+    .onDelete('cascade')
+    .alias('TokenUser');
+});
+```
+
+This generates a relation field like:
+
+```prisma
+user User @relation("TokenUser", fields: [userId], references: [id], onDelete: Cascade)
+```
+
+You can also rename the generated relation field with `.as(fieldName)`:
+
+```ts
+table
+  .foreignKey('userId')
+  .references('users', 'id')
+  .onDelete('cascade')
+  .alias('TokenOwner')
+  .as('owner');
+```
+
+Generated relation field:
+
+```prisma
+owner User @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)
+```
+
+Arkormˣ also adds the inverse list relation on the referenced model automatically. For a `personal_access_tokens -> users` foreign key, it generates:
+
+```prisma
+personalAccessTokens PersonalAccessToken[] @relation("TokenUser")
+```
+
+You can override the inverse relation name with `.inverseAlias(name)` when needed:
+
+```ts
+table
+  .foreignKey('userId')
+  .references('users', 'id')
+  .alias('TokenOwner')
+  .inverseAlias('UserTokens')
+  .as('owner');
+```
+
 ## Production runtime notes
 
 When migrations/seeders are authored in TypeScript, production runtime should execute compiled JavaScript, to ensure that everything works as expected, consider the following:
