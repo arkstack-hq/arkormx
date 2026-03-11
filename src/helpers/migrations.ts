@@ -130,7 +130,7 @@ export const buildFieldLine = (column: SchemaColumn): string => {
 /**
  * Build a Prisma model-level @@index definition line.
  * 
- * @param index 
+ * @param index     The schema index definition to convert to a Prisma \@\@index line.
  * @returns 
  */
 export const buildIndexLine = (index: SchemaIndex): string => {
@@ -142,6 +142,13 @@ export const buildIndexLine = (index: SchemaIndex): string => {
     return `  @@index([${columns}]${named})`
 }
 
+/**
+ * Derive a relation field name from a foreign key column name by applying 
+ * common conventions, such as removing "Id" suffixes and converting to camelCase.
+ * 
+ * @param columnName    The name of the foreign key column.
+ * @returns             The derived relation field name.
+ */
 export const deriveRelationFieldName = (columnName: string): string => {
     const trimmed = columnName.trim()
     if (!trimmed)
@@ -166,6 +173,17 @@ const pascalWords = (value: string): string[] => {
     return value.match(/[A-Z][a-z0-9]*/g) ?? [value]
 }
 
+/**
+ * Derive a relation name for the inverse side of a relation based on the 
+ * source and target model names, using an explicit alias if provided or a 
+ * convention of combining the target model name with the last segment of 
+ * the source model name.
+ * 
+ * @param sourceModelName    The name of the source model in the relation.
+ * @param targetModelName    The name of the target model in the relation.
+ * @param explicitAlias      An optional explicit alias for the inverse relation.
+ * @returns                  The derived or explicit inverse relation alias.
+ */
 export const deriveInverseRelationAlias = (
     sourceModelName: string,
     targetModelName: string,
@@ -190,7 +208,12 @@ export const deriveCollectionFieldName = (modelName: string): string => {
 
     return `${camel}s`
 }
-
+/** 
+ * Format a SchemaForeignKeyAction value as a Prisma onDelete action string.
+ * 
+ * @param action    The foreign key action to format.
+ * @returns         The corresponding Prisma onDelete action string.
+ */
 export const formatRelationAction = (action: SchemaForeignKeyAction): string => {
     if (action === 'cascade')
         return 'Cascade'
@@ -204,6 +227,13 @@ export const formatRelationAction = (action: SchemaForeignKeyAction): string => 
     return 'NoAction'
 }
 
+/**
+ * Build a Prisma relation field line based on a SchemaForeignKey 
+ * definition, including relation name and onDelete action.
+ * 
+ * @param foreignKey    The foreign key definition to convert to a relation line.
+ * @returns             The corresponding Prisma schema line for the relation field.
+ */
 export const buildRelationLine = (foreignKey: SchemaForeignKey): string => {
     if (!foreignKey.referencesTable.trim())
         throw new ArkormException(`Foreign key [${foreignKey.column}] must define a referenced table.`)
@@ -223,6 +253,16 @@ export const buildRelationLine = (foreignKey: SchemaForeignKey): string => {
     return `  ${fieldName} ${targetModel} ${relationPrefix}fields: [${foreignKey.column}], references: [${foreignKey.referencesColumn}]${onDelete})`
 }
 
+/**
+ * Build a Prisma relation field line for the inverse side of a relation, based 
+ * on the source and target model names and the foreign key definition, using 
+ * naming conventions and any explicit inverse alias provided.
+ * 
+ * @param sourceModelName   The name of the source model in the relation.
+ * @param targetModelName   The name of the target model in the relation.
+ * @param foreignKey        The foreign key definition for the relation.
+ * @returns                 The Prisma schema line for the inverse relation field.
+ */
 export const buildInverseRelationLine = (
     sourceModelName: string,
     targetModelName: string,
@@ -234,6 +274,16 @@ export const buildInverseRelationLine = (
     return `  ${fieldName} ${sourceModelName}[] @relation("${relationName.replace(/"/g, '\\"')}")`
 }
 
+/**
+ * Inject a line into the body of a Prisma model block if it does not already 
+ * exist, using a provided existence check function to determine if the line 
+ * is already present.
+ * 
+ * @param bodyLines The lines of the model block body to modify.
+ * @param line      The line to inject if it does not already exist.
+ * @param exists    A function that checks if a given line already exists in the body.
+ * @returns 
+ */
 const injectLineIntoModelBody = (
     bodyLines: string[],
     line: string,
@@ -249,6 +299,16 @@ const injectLineIntoModelBody = (
     return bodyLines
 }
 
+/**
+ * Apply inverse relation definitions to a Prisma schema string based on the 
+ * foreign keys defined in a create or alter table operation, ensuring that 
+ * related models have corresponding relation fields for bi-directional navigation.
+ * 
+ * @param schema The Prisma schema string to modify.
+ * @param sourceModelName The name of the source model in the relation.
+ * @param foreignKeys An array of foreign key definitions to process.
+ * @returns The updated Prisma schema string with inverse relations applied.
+ */
 const applyInverseRelations = (
     schema: string,
     sourceModelName: string,
