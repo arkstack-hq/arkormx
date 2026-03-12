@@ -67,6 +67,9 @@ export default defineConfig({
         socialLinks: [
             { icon: 'github', link: 'https://github.com/arkstack/arkormx' },
             { icon: 'npm', link: 'https://www.npmjs.com/package/arkormx' },
-        ]
+        ],
+        search: {
+            provider: 'local'
+        },
     },
 })
