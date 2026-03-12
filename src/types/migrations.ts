@@ -104,4 +104,17 @@ export type MigrationInstanceLike = {
     down: (...args: any[]) => Promise<void> | void
 }
 
+export interface AppliedMigrationEntry {
+    id: string
+    file: string
+    className: string
+    appliedAt: string
+    checksum?: string
+}
+
+export interface AppliedMigrationsState {
+    version: 1
+    migrations: AppliedMigrationEntry[]
+}
+
 export type MigrationClass = new () => MigrationInstanceLike

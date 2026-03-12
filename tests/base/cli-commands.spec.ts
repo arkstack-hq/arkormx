@@ -1,22 +1,24 @@
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
-import { afterEach, describe, expect, it } from 'vitest'
-
 import {
     CliApp,
     configureArkormRuntime,
     resetArkormRuntimeForTests,
 } from '../../src'
+import { afterEach, describe, expect, it } from 'vitest'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+
 import { InitCommand } from '../../src/cli/commands/InitCommand'
+import { Kernel } from '@h3ravel/musket'
 import { MakeFactoryCommand } from '../../src/cli/commands/MakeFactoryCommand'
 import { MakeMigrationCommand } from '../../src/cli/commands/MakeMigrationCommand'
 import { MakeModelCommand } from '../../src/cli/commands/MakeModelCommand'
 import { MakeSeederCommand } from '../../src/cli/commands/MakeSeederCommand'
 import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
+import { MigrationHistoryCommand } from '../../src/cli/commands/MigrationHistoryCommand'
 import { ModelsSyncCommand } from '../../src/cli/commands/ModelsSyncCommand'
 import { SeedCommand } from '../../src/cli/commands/SeedCommand'
-import { Kernel } from '@h3ravel/musket'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+import { writeAppliedMigrationsState } from '../../src/helpers/migration-history'
 
 const originalCwd = process.cwd()
 const tempDirectories: string[] = []
@@ -366,5 +368,48 @@ describe('CLI command classes', () => {
         expect(errorLines).toHaveLength(0)
         expect(successLines.some(line => line.includes('Applied 1 migration(s).'))).toBe(true)
         expect(successLines.some(line => line.includes('Migrated'))).toBe(true)
+    })
+
+    it('MigrationHistoryCommand shows and resets tracked migration state', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-history-')
+        process.chdir(workspace)
+
+        const stateFile = join(workspace, '.arkormx', 'migrations.applied.json')
+        writeAppliedMigrationsState(stateFile, {
+            version: 1,
+            migrations: [{
+                id: '20260312_create_users:CreateUsersMigration',
+                file: '/tmp/20260312_create_users.mjs',
+                className: 'CreateUsersMigration',
+                appliedAt: '2026-03-12T04:00:00.000Z',
+                checksum: 'hash-one',
+            }],
+        })
+
+        const app = new CliApp()
+
+        const inspectCommand = new MigrationHistoryCommand(app, new Kernel(app))
+            ; (inspectCommand as unknown as { app: CliApp }).app = app
+        const inspected = attachCommandIo(inspectCommand as unknown as any)
+        await inspectCommand.handle()
+
+        expect(inspected.errorLines).toHaveLength(0)
+        expect(inspected.successLines.some(line => line.includes('Tracked'))).toBe(true)
+        expect(inspected.successLines.some(line => line.includes('CreateUsersMigration'))).toBe(true)
+
+        const resetCommand = new MigrationHistoryCommand(app, new Kernel(app))
+            ; (resetCommand as unknown as { app: CliApp }).app = app
+        const resetIo = attachCommandIo(resetCommand as unknown as any, { reset: true })
+        await resetCommand.handle()
+
+        expect(resetIo.errorLines).toHaveLength(0)
+        expect(resetIo.successLines.some(line => line.includes('Reset migration state'))).toBe(true)
+
+        const verifyCommand = new MigrationHistoryCommand(app, new Kernel(app))
+            ; (verifyCommand as unknown as { app: CliApp }).app = app
+        const verifyIo = attachCommandIo(verifyCommand as unknown as any)
+        await verifyCommand.handle()
+
+        expect(verifyIo.successLines.some(line => line.includes('No tracked migrations found.'))).toBe(true)
     })
 })

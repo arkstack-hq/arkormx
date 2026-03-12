@@ -1,5 +1,6 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
 import { applyMigrationToPrismaSchema, runPrismaCommand } from '../../helpers/migrations'
+import { buildMigrationIdentity, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, readAppliedMigrationsState, resolveMigrationStateFilePath, writeAppliedMigrationsState } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -22,6 +23,8 @@ export class MigrateCommand extends Command<CliApp> {
         {--deploy : Use prisma migrate deploy instead of migrate dev}
         {--skip-generate : Skip prisma generate}
         {--skip-migrate : Skip prisma migrate command}
+        {--skip-ran : Skip migration classes already tracked as applied}
+        {--state-file= : Path to applied migration state file}
         {--schema= : Explicit prisma schema path}
         {--migration-name= : Name for prisma migrate dev}
     `
@@ -59,8 +62,62 @@ export class MigrateCommand extends Command<CliApp> {
         if (classes.length === 0)
             return void this.error('Error: No migration classes found to run.')
 
-        for (const [MigrationClassItem] of classes)
+        const shouldTrackApplied = Boolean(this.option('skip-ran') || this.option('state-file'))
+        const stateFilePath = resolveMigrationStateFilePath(
+            process.cwd(),
+            this.option('state-file') ? String(this.option('state-file')) : undefined
+        )
+        let appliedState = shouldTrackApplied
+            ? readAppliedMigrationsState(stateFilePath)
+            : undefined
+
+        const skipped: [MigrationClass, string][] = []
+        const changed: [MigrationClass, string][] = []
+        const pending = classes.filter(([migrationClass, file]) => {
+            if (!appliedState)
+                return true
+
+            const identity = buildMigrationIdentity(file, migrationClass.name)
+            const checksum = computeMigrationChecksum(file)
+            const alreadyApplied = isMigrationApplied(appliedState, identity, checksum)
+            if (alreadyApplied)
+                skipped.push([migrationClass, file])
+            else if (findAppliedMigration(appliedState, identity))
+                changed.push([migrationClass, file])
+
+            return !alreadyApplied
+        })
+
+        skipped.forEach(([migrationClass, file]) => {
+            this.success(this.app.splitLogger('Skipped', `${file} (${migrationClass.name})`))
+        })
+        changed.forEach(([migrationClass, file]) => {
+            this.success(this.app.splitLogger('Changed', `${file} (${migrationClass.name})`))
+        })
+
+        if (pending.length === 0) {
+            this.success('No pending migration classes to apply.')
+
+            return
+        }
+
+        for (const [MigrationClassItem] of pending)
             await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
+
+        if (appliedState) {
+            for (const [migrationClass, file] of pending) {
+                const identity = buildMigrationIdentity(file, migrationClass.name)
+                appliedState = markMigrationApplied(appliedState, {
+                    id: identity,
+                    file,
+                    className: migrationClass.name,
+                    appliedAt: new Date().toISOString(),
+                    checksum: computeMigrationChecksum(file),
+                })
+            }
+
+            writeAppliedMigrationsState(stateFilePath, appliedState)
+        }
 
         if (!this.option('skip-generate'))
             runPrismaCommand(['generate'], process.cwd())
@@ -76,8 +133,8 @@ export class MigrateCommand extends Command<CliApp> {
             }
         }
 
-        this.success(`Applied ${classes.length} migration(s).`)
-        classes.forEach(([_, file]) => this.success(this.app.splitLogger('Migrated', file)))
+        this.success(`Applied ${pending.length} migration(s).`)
+        pending.forEach(([_, file]) => this.success(this.app.splitLogger('Migrated', file)))
     }
 
     /**
