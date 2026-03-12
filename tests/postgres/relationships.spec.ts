@@ -4,7 +4,6 @@ import {
     DbProfile,
     DbUser,
     acquirePostgresTestLock,
-    prisma,
     releasePostgresTestLock,
     seedPostgresFixtures
 } from './helpers/fixtures'
