@@ -51,7 +51,7 @@ export class MigrateCommand extends Command<CliApp> {
             ? resolve(String(this.option('schema')))
             : join(process.cwd(), 'prisma', 'schema.prisma')
 
-        const classes = this.option('all')
+        const classes = this.option('all') || !this.argument('name')
             ? await this.loadAllMigrations(migrationsDir)
             : (await this.loadNamedMigration(migrationsDir, this.argument('name')))
                 .filter(([cls]) => cls !== undefined) as [MigrationClass, string][]
