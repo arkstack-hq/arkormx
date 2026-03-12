@@ -23,7 +23,6 @@ export class MigrateCommand extends Command<CliApp> {
         {--deploy : Use prisma migrate deploy instead of migrate dev}
         {--skip-generate : Skip prisma generate}
         {--skip-migrate : Skip prisma migrate command}
-        {--skip-ran : Skip migration classes already tracked as applied}
         {--state-file= : Path to applied migration state file}
         {--schema= : Explicit prisma schema path}
         {--migration-name= : Name for prisma migrate dev}
@@ -62,7 +61,7 @@ export class MigrateCommand extends Command<CliApp> {
         if (classes.length === 0)
             return void this.error('Error: No migration classes found to run.')
 
-        const shouldTrackApplied = Boolean(this.option('skip-ran') || this.option('state-file'))
+        const shouldTrackApplied = Boolean(this.option('all') || !this.argument('name') || this.option('state-file'))
         const stateFilePath = resolveMigrationStateFilePath(
             process.cwd(),
             this.option('state-file') ? String(this.option('state-file')) : undefined
