@@ -13,6 +13,8 @@ model User {
     isActive  Int      @default(0)
     createdAt DateTime @default(now())
 
+    profile UserProfile? @relation(fields: [id], references: [userId])
+
     @@map("users")
 }
 
@@ -25,8 +27,9 @@ model Article {
 }
 
 model UserProfile {
-    id     Int @id @default(autoincrement())
-    userId Int
+    id     Int    @id @default(autoincrement())
+    userId Int    @unique
+    users  User[]
 
     @@map("profiles")
 }
@@ -89,7 +92,7 @@ model Taggable {
 }
 
 model Place {
-  id Int @id @default(autoincrement())
+    id Int @id @default(autoincrement())
 
-  @@map("places")
+    @@map("places")
 }

@@ -11,8 +11,8 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        const profile = await (user as User).profile().getResults()
-        const posts = await (user as User).posts().getResults()
+        const profile = await user?.profile().getResults()
+        const posts = await user?.posts().getResults()
 
         expect(profile).not.toBeNull()
         expect(posts).toBeInstanceOf(ArkormCollection)
@@ -24,11 +24,11 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        const posts = await (user as User).posts().getResults() as ArkormCollection<Post>
+        const posts = await user?.posts().getResults() as ArkormCollection<Post>
         expectTypeOf(posts.all()).toEqualTypeOf<Post[]>()
 
-        await (user as User).load('posts')
-        const eagerLoadedPosts = (user as User).getAttribute('posts') as ArkormCollection<Post>
+        await user?.load('posts')
+        const eagerLoadedPosts = user?.getAttribute('posts') as ArkormCollection<Post>
         expectTypeOf(eagerLoadedPosts.all()).toEqualTypeOf<Post[]>()
     })
 
@@ -36,9 +36,9 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        const roles = await (user as User).roles().getResults()
-        const avatar = await (user as User).avatar().getResults()
-        const postImages = await (user as User).postImages().getResults()
+        const roles = await user?.roles().getResults()
+        const avatar = await user?.avatar().getResults()
+        const postImages = await user?.postImages().getResults()
 
         expect((roles as ArkormCollection<Role>).all().length).toBe(2)
         expect(avatar).not.toBeNull()
@@ -49,8 +49,8 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        const comments = await (user as User).comments().getResults()
-        const tags = await (user as User).tags().getResults()
+        const comments = await user?.comments().getResults()
+        const tags = await user?.tags().getResults()
 
         expect((comments as ArkormCollection<Comment>).all().length).toBe(1)
         expect((tags as ArkormCollection<Tag>).all().length).toBe(2)
@@ -60,14 +60,12 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        const posts = await (user as User)
-            .posts()
+        const posts = await user?.posts()
             .where({ title: 'A' })
             .orderBy({ id: 'asc' })
             .getResults()
 
-        const profile = await (user as User)
-            .profile()
+        const profile = await user?.profile()
             .where({ id: 10 })
             .getResults()
 
@@ -81,9 +79,9 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        const posts = await (user as User).posts().where({ title: 'A' }).get()
-        const firstPost = await (user as User).posts().orderBy({ id: 'asc' }).first()
-        const firstProfile = await (user as User).profile().first()
+        const posts = await user?.posts().where({ title: 'A' }).get()
+        const firstPost = await user?.posts().orderBy({ id: 'asc' }).first()
+        const firstProfile = await user?.profile().first()
 
         expect(posts).toBeInstanceOf(ArkormCollection)
         expect((posts as ArkormCollection<Post>).all().length).toBe(1)
@@ -99,7 +97,7 @@ describe('Model relationships', () => {
         }).find(1)
 
         expect(user).not.toBeNull()
-        const posts = (user as User).getAttribute('posts') as ArkormCollection<Post>
+        const posts = user?.getAttribute('posts') as ArkormCollection<Post>
         expect(posts).toBeInstanceOf(ArkormCollection)
         expect(posts.all().length).toBe(1)
     })
@@ -108,10 +106,10 @@ describe('Model relationships', () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
-        await (user as User).load(['profile', 'posts'])
+        await user?.load(['profile', 'posts'])
 
-        const profile = (user as User).getAttribute('profile')
-        const posts = (user as User).getAttribute('posts') as ArkormCollection<Post>
+        const profile = user?.getAttribute('profile')
+        const posts = user?.getAttribute('posts') as ArkormCollection<Post>
 
         expect(profile).not.toBeNull()
         expect(posts).toBeInstanceOf(ArkormCollection)

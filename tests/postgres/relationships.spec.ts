@@ -4,6 +4,7 @@ import {
     DbProfile,
     DbUser,
     acquirePostgresTestLock,
+    prisma,
     releasePostgresTestLock,
     seedPostgresFixtures
 } from './helpers/fixtures'
@@ -164,5 +165,15 @@ describe('PostgreSQL model relationships', () => {
         expect(posts.all().length).toBe(2)
         expect(comments).toBeInstanceOf(ArkormCollection)
         expect(comments.all().length).toBe(1)
+    })
+
+    it('eager loads relations by string and list syntax', async () => {
+        const user = await DbUser.query().with(['profile']).find(1)
+        expect(user).not.toBeNull()
+
+        const profile = user?.getAttribute('profile')
+
+        expect(profile).not.toBeUndefined()
+        expect(profile).toBeInstanceOf(DbProfile)
     })
 })
