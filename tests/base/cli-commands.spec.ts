@@ -398,7 +398,7 @@ describe('CLI command classes', () => {
 
         expect(inspected.errorLines).toHaveLength(0)
         expect(inspected.successLines.some(line => line.includes('Tracked'))).toBe(true)
-        expect(inspected.successLines.some(line => line.includes('CreateUsersMigration'))).toBe(true)
+        expect(inspected.successLines.some(line => line.includes('_create_users'))).toBe(true)
 
         const resetCommand = new MigrationHistoryCommand(app, new Kernel(app))
             ; (resetCommand as unknown as { app: CliApp }).app = app
