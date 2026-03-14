@@ -73,7 +73,7 @@ export class MigrationHistoryCommand extends Command<CliApp> {
         state.migrations
             .sort((left, right) => left.appliedAt.localeCompare(right.appliedAt))
             .forEach((migration) => {
-                this.success(this.app.splitLogger('Applied', `${migration.id} @ ${migration.appliedAt}`))
+                this.success(this.app.splitLogger('Applied:', `${migration.id} @ ${migration.appliedAt}`))
             })
     }
 }
