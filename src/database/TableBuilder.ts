@@ -219,8 +219,8 @@ export class TableBuilder {
      * @returns 
      */
     public timestamps (): this {
-        this.timestamp('createdAt', { nullable: false })
-        this.timestamp('updatedAt', { nullable: false })
+        this.timestamp('createdAt', { nullable: false, default: 'now()' })
+        this.timestamp('updatedAt', { nullable: false, updatedAt: true })
 
         return this
     }
@@ -258,6 +258,20 @@ export class TableBuilder {
     public nullable (columnName?: string): this {
         const column = this.resolveColumn(columnName)
         column.nullable = true
+
+        return this
+    }
+
+    /**
+     * Sets a default value for a column.
+     *
+     * @param value      The default scalar value or Prisma expression (e.g. 'now()').
+     * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
+     * @returns          The current TableBuilder instance for chaining.
+     */
+    public default (value: unknown, columnName?: string): this {
+        const column = this.resolveColumn(columnName)
+        column.default = value
 
         return this
     }
@@ -404,6 +418,7 @@ export class TableBuilder {
             autoIncrement: options.autoIncrement,
             after: options.after,
             default: options.default,
+            updatedAt: options.updatedAt,
         })
         this.latestColumnName = name
 

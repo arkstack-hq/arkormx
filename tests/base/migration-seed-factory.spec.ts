@@ -102,6 +102,7 @@ describe('Database migration, seeding and factory helpers', () => {
                 schema.createTable('users', table => {
                     table.uuid('id').primary()
                     table.string('email').nullable()
+                    table.string('status').default('active')
                     table.timestamp('deletedAt').nullable().map('deleted_at')
                     table.index(['email', 'deletedAt'], 'users_email_deleted_at_idx')
                     table.timestamps()
@@ -160,7 +161,10 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(applied.schema).toContain('model User')
         expect(applied.schema).toContain('id String @id @default(uuid())')
         expect(applied.schema).toContain('email String?')
+        expect(applied.schema).toContain('status String @default("active")')
         expect(applied.schema).toContain('deletedAt DateTime? @map("deleted_at")')
+        expect(applied.schema).toContain('createdAt DateTime @default(now())')
+        expect(applied.schema).toContain('updatedAt DateTime @updatedAt')
         expect(applied.schema).toContain('@@index([email, deletedAt], name: "users_email_deleted_at_idx")')
 
         class AddNicknameMigration extends Migration {

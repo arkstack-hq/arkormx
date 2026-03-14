@@ -80,6 +80,9 @@ export const formatDefaultValue = (value: unknown): string | undefined => {
     if (value == null)
         return undefined
 
+    if (value === 'now()')
+        return '@default(now())'
+
     if (typeof value === 'string')
         return `@default("${value.replace(/"/g, '\\"')}")`
     if (typeof value === 'number' || typeof value === 'bigint')
@@ -120,11 +123,13 @@ export const buildFieldLine = (column: SchemaColumn): string => {
     const mapped = typeof column.map === 'string' && column.map.trim().length > 0
         ? ` @map("${column.map.replace(/"/g, '\\"')}")`
         : ''
+    const updatedAt = column.updatedAt ? ' @updatedAt' : ''
     const defaultValue = formatDefaultValue(column.default)
         ?? (column.type === 'uuid' && column.primary ? '@default(uuid())' : undefined)
     const defaultSuffix = defaultValue ? ` ${defaultValue}` : ''
 
-    return `  ${column.name} ${scalar}${nullable}${primary}${unique}${defaultSuffix}${mapped}`
+
+    return `  ${column.name} ${scalar}${nullable}${primary}${unique}${defaultSuffix}${updatedAt}${mapped}`
 }
 
 /**

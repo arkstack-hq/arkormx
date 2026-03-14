@@ -22,6 +22,7 @@ export interface SchemaColumn {
     autoIncrement?: boolean
     after?: string
     default?: unknown
+    updatedAt?: boolean
 }
 
 export interface SchemaIndex {
