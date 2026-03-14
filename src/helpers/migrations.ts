@@ -756,6 +756,31 @@ export const applyMigrationToPrismaSchema = async (
 }
 
 /**
+ * Apply the rollback (down) operations defined in a migration to a Prisma schema file.
+ *
+ * @param migration The migration class or instance to rollback.
+ * @param options   Options for applying the rollback, including schema path and write flag.
+ * @returns         A promise that resolves to an object containing the updated schema, schema path, and rollback operations applied.
+ */
+export const applyMigrationRollbackToPrismaSchema = async (
+    migration: Migration | (new () => Migration),
+    options: PrismaSchemaSyncOptions = {}
+): Promise<{ schema: string, schemaPath: string, operations: SchemaOperation[] }> => {
+    const schemaPath = options.schemaPath ?? join(process.cwd(), 'prisma', 'schema.prisma')
+    if (!existsSync(schemaPath))
+        throw new ArkormException(`Prisma schema file not found: ${schemaPath}`)
+
+    const source = readFileSync(schemaPath, 'utf-8')
+    const operations = await getMigrationPlan(migration, 'down')
+    const schema = applyOperationsToPrismaSchema(source, operations)
+
+    if (options.write ?? true)
+        writeFileSync(schemaPath, schema)
+
+    return { schema, schemaPath, operations }
+}
+
+/**
  * Run a migration by applying its schema operations to a Prisma schema 
  * file, optionally generating Prisma client code and running migrations after 
  * applying the schema changes.

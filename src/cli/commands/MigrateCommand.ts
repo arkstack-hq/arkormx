@@ -1,6 +1,6 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
 import { applyMigrationToPrismaSchema, runPrismaCommand } from '../../helpers/migrations'
-import { buildMigrationIdentity, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, readAppliedMigrationsState, resolveMigrationStateFilePath, writeAppliedMigrationsState } from '../../helpers/migration-history'
+import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsState, resolveMigrationStateFilePath, writeAppliedMigrationsState } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -61,7 +61,7 @@ export class MigrateCommand extends Command<CliApp> {
         if (classes.length === 0)
             return void this.error('Error: No migration classes found to run.')
 
-        const shouldTrackApplied = Boolean(this.option('all') || !this.argument('name') || this.option('state-file'))
+        const shouldTrackApplied = true
         const stateFilePath = resolveMigrationStateFilePath(
             process.cwd(),
             this.option('state-file') ? String(this.option('state-file')) : undefined
@@ -104,6 +104,8 @@ export class MigrateCommand extends Command<CliApp> {
             await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
 
         if (appliedState) {
+            const runAppliedIds: string[] = []
+
             for (const [migrationClass, file] of pending) {
                 const identity = buildMigrationIdentity(file, migrationClass.name)
                 appliedState = markMigrationApplied(appliedState, {
@@ -113,7 +115,14 @@ export class MigrateCommand extends Command<CliApp> {
                     appliedAt: new Date().toISOString(),
                     checksum: computeMigrationChecksum(file),
                 })
+                runAppliedIds.push(identity)
             }
+
+            appliedState = markMigrationRun(appliedState, {
+                id: buildMigrationRunId(),
+                appliedAt: new Date().toISOString(),
+                migrationIds: runAppliedIds,
+            })
 
             writeAppliedMigrationsState(stateFilePath, appliedState)
         }

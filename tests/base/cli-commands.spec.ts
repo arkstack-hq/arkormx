@@ -5,6 +5,7 @@ import {
 } from '../../src'
 import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { readAppliedMigrationsState, writeAppliedMigrationsState } from '../../src/helpers/migration-history'
 
 import { InitCommand } from '../../src/cli/commands/InitCommand'
 import { Kernel } from '@h3ravel/musket'
@@ -13,12 +14,12 @@ import { MakeMigrationCommand } from '../../src/cli/commands/MakeMigrationComman
 import { MakeModelCommand } from '../../src/cli/commands/MakeModelCommand'
 import { MakeSeederCommand } from '../../src/cli/commands/MakeSeederCommand'
 import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
+import { MigrateRollbackCommand } from '../../src/cli/commands/MigrateRollbackCommand'
 import { MigrationHistoryCommand } from '../../src/cli/commands/MigrationHistoryCommand'
 import { ModelsSyncCommand } from '../../src/cli/commands/ModelsSyncCommand'
 import { SeedCommand } from '../../src/cli/commands/SeedCommand'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { writeAppliedMigrationsState } from '../../src/helpers/migration-history'
 
 const originalCwd = process.cwd()
 const tempDirectories: string[] = []
@@ -250,6 +251,7 @@ describe('CLI command classes', () => {
             'model User {',
             '  id Int @id @default(autoincrement())',
             '  email String @unique',
+            '  nickname String?',
             '  isActive Boolean',
             '  @@map("users")',
             '}',
@@ -279,6 +281,7 @@ describe('CLI command classes', () => {
         const updatedSource = readFileSync(userModelPath, 'utf-8')
         expect(updatedSource).toContain('declare id: number')
         expect(updatedSource).toContain('declare email: string')
+        expect(updatedSource).toContain('declare nickname: string | null')
         expect(updatedSource).toContain('declare isActive: boolean')
         expect(errorLines).toHaveLength(0)
         expect(successLines.some(line => line.includes('SUCCESS: Model sync completed'))).toBe(true)
@@ -411,5 +414,150 @@ describe('CLI command classes', () => {
         await verifyCommand.handle()
 
         expect(verifyIo.successLines.some(line => line.includes('No tracked migrations found.'))).toBe(true)
+    })
+
+    it('MigrateRollbackCommand rolls back last run by default and honors --step', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-rollback-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.mjs'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'email\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        writeFileSync(join(migrationsDir, 'CreatePostsMigration.mjs'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreatePostsMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'posts\', (table) => {',
+            '      table.id()',
+            '      table.string(\'title\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'posts\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+
+        const migrateAll = new MigrateCommand(app, new Kernel(app))
+            ; (migrateAll as unknown as { app: CliApp }).app = app
+        const migrateIo = attachCommandIo(migrateAll as unknown as any, {
+            all: true,
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await migrateAll.handle()
+        expect(migrateIo.errorLines).toHaveLength(0)
+
+        const rollbackDryRun = new MigrateRollbackCommand(app, new Kernel(app))
+            ; (rollbackDryRun as unknown as { app: CliApp }).app = app
+        const rollbackDryRunIo = attachCommandIo(rollbackDryRun as unknown as any, {
+            'dry-run': true,
+            schema: schemaPath,
+        })
+
+        await rollbackDryRun.handle()
+
+        expect(rollbackDryRunIo.errorLines).toHaveLength(0)
+        expect(rollbackDryRunIo.successLines.some(line => line.includes('Dry run: 2 migration(s) would be rolled back.'))).toBe(true)
+
+        const schemaAfterDryRun = readFileSync(schemaPath, 'utf-8')
+        expect(schemaAfterDryRun).toContain('model User')
+        expect(schemaAfterDryRun).toContain('model Post')
+
+        const stateAfterDryRun = readAppliedMigrationsState(join(workspace, '.arkormx', 'migrations.applied.json'))
+        expect(stateAfterDryRun.migrations.length).toBe(2)
+
+        const rollbackLastRun = new MigrateRollbackCommand(app, new Kernel(app))
+            ; (rollbackLastRun as unknown as { app: CliApp }).app = app
+        const rollbackLastRunIo = attachCommandIo(rollbackLastRun as unknown as any, {
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await rollbackLastRun.handle()
+
+        expect(rollbackLastRunIo.errorLines).toHaveLength(0)
+        expect(rollbackLastRunIo.successLines.some(line => line.includes('Rolled back 2 migration(s).'))).toBe(true)
+
+        const schemaAfterLastRunRollback = readFileSync(schemaPath, 'utf-8')
+        expect(schemaAfterLastRunRollback).not.toContain('model User')
+        expect(schemaAfterLastRunRollback).not.toContain('model Post')
+
+        const migrateUsers = new MigrateCommand(app, new Kernel(app))
+            ; (migrateUsers as unknown as { app: CliApp }).app = app
+        const migrateUsersIo = attachCommandIo(migrateUsers as unknown as any, {
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        }, {
+            name: 'CreateUsersMigration',
+        })
+
+        await migrateUsers.handle()
+        expect(migrateUsersIo.errorLines).toHaveLength(0)
+
+        const migratePosts = new MigrateCommand(app, new Kernel(app))
+            ; (migratePosts as unknown as { app: CliApp }).app = app
+        const migratePostsIo = attachCommandIo(migratePosts as unknown as any, {
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        }, {
+            name: 'CreatePostsMigration',
+        })
+
+        await migratePosts.handle()
+        expect(migratePostsIo.errorLines).toHaveLength(0)
+
+        const rollbackStep = new MigrateRollbackCommand(app, new Kernel(app))
+            ; (rollbackStep as unknown as { app: CliApp }).app = app
+        const rollbackStepIo = attachCommandIo(rollbackStep as unknown as any, {
+            step: 1,
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await rollbackStep.handle()
+        expect(rollbackStepIo.errorLines).toHaveLength(0)
+        expect(rollbackStepIo.successLines.some(line => line.includes('Rolled back 1 migration(s).'))).toBe(true)
+
+        const schemaAfterStepRollback = readFileSync(schemaPath, 'utf-8')
+        expect(schemaAfterStepRollback).toContain('model User')
+        expect(schemaAfterStepRollback).not.toContain('model Post')
     })
 })

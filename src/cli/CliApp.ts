@@ -1,13 +1,13 @@
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { ArkormConfig, GetUserConfig } from 'src/types'
+import { applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { dirname, extname, join, relative } from 'path'
-import { createRequire } from 'module'
+import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
+import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
 
 import { Command } from '@h3ravel/musket'
-import { applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
-import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
-import { ArkormConfig, GetUserConfig } from 'src/types'
-import { str } from '@h3ravel/support'
 import { Logger } from '@h3ravel/shared'
+import { createRequire } from 'module'
+import { str } from '@h3ravel/support'
 
 /**
  * Main application class for the Arkormˣ CLI.
@@ -422,6 +422,8 @@ export class CliApp {
                     primary: true,
                 },
             ],
+            indexes: [],
+            foreignKeys: [],
         })
 
         writeFileSync(schemaPath, updated)
@@ -464,12 +466,12 @@ export class CliApp {
     private parsePrismaModels (schema: string): Array<{
         name: string
         table: string
-        fields: Array<{ name: string, type: string, optional: boolean }>
+        fields: Array<{ name: string, type: string, nullable: boolean }>
     }> {
         const models: Array<{
             name: string
             table: string
-            fields: Array<{ name: string, type: string, optional: boolean }>
+            fields: Array<{ name: string, type: string, nullable: boolean }>
         }> = []
 
         const modelRegex = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g
@@ -480,14 +482,14 @@ export class CliApp {
             const body = match[2]
             const mapped = body.match(/@@map\("([^"]+)"\)/)
             const table = mapped?.[1] ?? `${name.charAt(0).toLowerCase()}${name.slice(1)}s`
-            const fields: Array<{ name: string, type: string, optional: boolean }> = []
+            const fields: Array<{ name: string, type: string, nullable: boolean }> = []
 
             body.split('\n').forEach((rawLine) => {
                 const line = rawLine.trim()
                 if (!line || line.startsWith('@@') || line.startsWith('//'))
                     return
 
-                const fieldMatch = line.match(/^(\w+)\s+([A-Za-z]+)(\?)?\b/)
+                const fieldMatch = line.match(/^(\w+)\s+([A-Za-z]+)(\?)?(?:\s|$)/)
                 if (!fieldMatch)
                     return
 
@@ -498,7 +500,7 @@ export class CliApp {
                 fields.push({
                     name: fieldMatch[1],
                     type: this.prismaTypeToTs(fieldType),
-                    optional: Boolean(fieldMatch[3]),
+                    nullable: Boolean(fieldMatch[3]),
                 })
             })
 
@@ -613,7 +615,7 @@ export class CliApp {
                 return
             }
 
-            const declarations = prismaModel.fields.map(field => `declare ${field.name}${field.optional ? '?' : ''}: ${field.type}`)
+            const declarations = prismaModel.fields.map(field => `declare ${field.name}: ${field.type}${field.nullable ? ' | null' : ''}`)
             const synced = this.syncModelDeclarations(source, declarations)
             if (!synced.updated) {
                 skipped.push(filePath)

@@ -182,6 +182,7 @@ describe('CLI application', () => {
             'model User {',
             '  id Int @id @default(autoincrement())',
             '  email String @unique',
+            '  nickname String?',
             '  isActive Boolean',
             '  @@map("users")',
             '}',
@@ -212,6 +213,7 @@ describe('CLI application', () => {
         const updatedSource = readFileSync(modelPath, 'utf-8')
         expect(updatedSource).toContain('declare id: number')
         expect(updatedSource).toContain('declare email: string')
+        expect(updatedSource).toContain('declare nickname: string | null')
         expect(updatedSource).toContain('declare isActive: boolean')
     })
 })

@@ -1,4 +1,4 @@
-import { AppliedMigrationEntry, AppliedMigrationsState } from 'src/types'
+import { AppliedMigrationEntry, AppliedMigrationRun, AppliedMigrationsState } from 'src/types'
 import { dirname, extname, join, resolve } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
@@ -7,6 +7,7 @@ import { createHash } from 'node:crypto'
 const DEFAULT_STATE: AppliedMigrationsState = {
     version: 1,
     migrations: [],
+    runs: [],
 }
 
 export const resolveMigrationStateFilePath = (
@@ -58,6 +59,14 @@ export const readAppliedMigrationsState = (
                         && typeof migration?.appliedAt === 'string'
                         && (migration?.checksum === undefined || typeof migration?.checksum === 'string')
                 }),
+            runs: Array.isArray(parsed.runs)
+                ? parsed.runs.filter((run): run is AppliedMigrationRun => {
+                    return typeof run?.id === 'string'
+                        && typeof run?.appliedAt === 'string'
+                        && Array.isArray(run?.migrationIds)
+                        && run.migrationIds.every(item => typeof item === 'string')
+                })
+                : [],
         }
     } catch {
         return { ...DEFAULT_STATE }
@@ -110,5 +119,63 @@ export const markMigrationApplied = (
     return {
         version: 1,
         migrations: next,
+        runs: state.runs ?? [],
     }
+}
+
+export const removeAppliedMigration = (
+    state: AppliedMigrationsState,
+    identity: string
+): AppliedMigrationsState => {
+    const remainingMigrations = state.migrations.filter(migration => migration.id !== identity)
+    const remainingRuns = (state.runs ?? [])
+        .map(run => ({
+            ...run,
+            migrationIds: run.migrationIds.filter(id => id !== identity),
+        }))
+        .filter(run => run.migrationIds.length > 0)
+
+    return {
+        version: 1,
+        migrations: remainingMigrations,
+        runs: remainingRuns,
+    }
+}
+
+export const buildMigrationRunId = (): string => {
+    return `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+}
+
+export const markMigrationRun = (
+    state: AppliedMigrationsState,
+    run: AppliedMigrationRun
+): AppliedMigrationsState => {
+    const nextRuns = (state.runs ?? [])
+        .filter(existing => existing.id !== run.id)
+    nextRuns.push(run)
+
+    return {
+        version: 1,
+        migrations: state.migrations,
+        runs: nextRuns,
+    }
+}
+
+export const getLastMigrationRun = (
+    state: AppliedMigrationsState
+): AppliedMigrationRun | undefined => {
+    const runs = state.runs ?? []
+    if (runs.length === 0)
+        return undefined
+
+    return [...runs].sort((left, right) => right.appliedAt.localeCompare(left.appliedAt))[0]
+}
+
+export const getLatestAppliedMigrations = (
+    state: AppliedMigrationsState,
+    steps: number
+): AppliedMigrationEntry[] => {
+    return [...state.migrations]
+        .sort((left, right) => right.appliedAt.localeCompare(left.appliedAt))
+        .slice(0, Math.max(0, steps))
 }

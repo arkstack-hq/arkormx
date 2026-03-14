@@ -112,9 +112,16 @@ export interface AppliedMigrationEntry {
     checksum?: string
 }
 
+export interface AppliedMigrationRun {
+    id: string
+    appliedAt: string
+    migrationIds: string[]
+}
+
 export interface AppliedMigrationsState {
     version: 1
     migrations: AppliedMigrationEntry[]
+    runs?: AppliedMigrationRun[]
 }
 
 export type MigrationClass = new () => MigrationInstanceLike
