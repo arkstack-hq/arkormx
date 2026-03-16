@@ -14,6 +14,7 @@ import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDel
 import { ensureArkormConfigLoading, getRuntimePrismaClient, isDelegateLike } from './helpers/runtime-config'
 
 import { DelegateForModelSchema, ModelAttributesOf } from './types'
+import { Attribute } from './Attribute'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
@@ -72,13 +73,21 @@ export abstract class Model<
 
         return new Proxy(this, {
             get: (target, key, receiver) => {
-                if (typeof key !== 'string' || key in target)
+                if (typeof key !== 'string')
+                    return Reflect.get(target, key, receiver)
+
+                const attributeMutator = target.resolveAttributeMutator(key)
+                if (key in target && !attributeMutator)
                     return Reflect.get(target, key, receiver)
 
                 return target.getAttribute(key)
             },
             set: (target, key, value, receiver) => {
-                if (typeof key !== 'string' || key in target)
+                if (typeof key !== 'string')
+                    return Reflect.set(target, key, value, receiver)
+
+                const attributeMutator = target.resolveAttributeMutator(key)
+                if (key in target && !attributeMutator)
                     return Reflect.set(target, key, value, receiver)
 
                 target.setAttribute(key, value)
@@ -373,12 +382,16 @@ export abstract class Model<
     public getAttribute<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey]
     public getAttribute (key: string): unknown
     public getAttribute (key: string): unknown {
+        const attributeMutator = this.resolveAttributeMutator(key)
         const mutator = this.resolveGetMutator(key)
         const cast = this.casts[key]
         let value = this.attributes[key]
 
         if (cast)
             value = resolveCast(cast).get(value)
+
+        if (attributeMutator?.get)
+            return attributeMutator.get.call(this, value)
 
         if (mutator)
             return mutator.call(this, value)
@@ -399,11 +412,14 @@ export abstract class Model<
     ): this
     public setAttribute (key: string, value: unknown): this
     public setAttribute (key: string, value: unknown): this {
+        const attributeMutator = this.resolveAttributeMutator(key)
         const mutator = this.resolveSetMutator(key)
         const cast = this.casts[key]
         let resolved = value
 
-        if (mutator)
+        if (attributeMutator?.set)
+            resolved = attributeMutator.set.call(this, resolved)
+        else if (mutator)
             resolved = mutator.call(this, resolved)
 
         if (cast)
@@ -786,6 +802,36 @@ export abstract class Model<
         const method = (this as unknown as Record<string, unknown>)[methodName]
 
         return typeof method === 'function' ? method as (value: unknown) => unknown : null
+    }
+
+    /**
+     * Resolve an Attribute object mutator method for a given key, if it exists.
+     *
+     * @param key
+     * @returns
+     */
+    private resolveAttributeMutator (key: string): Attribute | null {
+        if (key === 'constructor')
+            return null
+
+        const methodName = `${str(key).camel()}`
+        const prototype = Object.getPrototypeOf(this) as Record<string, unknown> | null
+        if (!prototype)
+            return null
+
+        const method = prototype[methodName]
+        if (typeof method !== 'function')
+            return null
+
+        const baseMethod = (Model.prototype as unknown as Record<string, unknown>)[methodName]
+        if (method === baseMethod)
+            return null
+
+        const resolved = (method as () => unknown).call(this)
+        if (Attribute.isAttribute(resolved))
+            return resolved
+
+        return null
     }
 
     /**

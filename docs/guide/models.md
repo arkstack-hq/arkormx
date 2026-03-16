@@ -33,6 +33,11 @@ console.log(user.email);
 
 Use `hidden`, `visible`, and `appends` in model classes to shape serialization via `toObject()`.
 
+For focused guides, see:
+
+- [Mutators & Accessors](/guide/mutators)
+- [Casting](/guide/casting)
+
 ## Soft deletes
 
 ```ts

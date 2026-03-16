@@ -7,6 +7,7 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 ### Core ORM
 
 - [x] Model base class with attribute casting, mutators, and serialization
+- [x] Attribute casting system with built-in and custom casts via `Attribute({ get, set })` objects
 - [x] Query builder with fluent API
 - [x] Query ergonomics helpers (`latest`, `oldest`, `limit`, `offset`, `forPage`)
 - [x] Existence helpers (`exists`, `doesntExist`)

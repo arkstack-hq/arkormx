@@ -40,6 +40,8 @@ export default defineConfig({
                 items: [
                     { text: 'Typing', link: '/guide/typing' },
                     { text: 'Models', link: '/guide/models' },
+                    { text: 'Mutators & Accessors', link: '/guide/mutators' },
+                    { text: 'Casting', link: '/guide/casting' },
                     { text: 'Query Builder', link: '/guide/query-builder' },
                     { text: 'Pagination', link: '/guide/pagination' },
                 ],

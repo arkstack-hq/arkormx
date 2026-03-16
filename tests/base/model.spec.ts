@@ -1,4 +1,4 @@
-import { User, setupCoreRuntime } from './helpers/core-fixtures'
+import { User, UserWithAttributeObjects, setupCoreRuntime } from './helpers/core-fixtures'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 describe('Model lifecycle and serialization', () => {
@@ -104,5 +104,43 @@ describe('Model lifecycle and serialization', () => {
             'saving', 'updating', 'updated', 'saved',
             'deleting', 'deleted',
         ])
+    })
+
+    it('supports Attribute object mutators with get/set and serialization appends', async () => {
+        const user = await UserWithAttributeObjects.query().find(1)
+        expect(user).not.toBeNull()
+
+        const model = user as UserWithAttributeObjects
+        expect(model.getAttribute('name')).toBe('Jane')
+
+        model.setAttribute('name', '  Attribute Setter  ')
+        expect(model.getAttribute('name')).toBe('Attribute Setter')
+        expect(model.getRawAttributes().name).toBe('Attribute Setter')
+
+            ; (model as any).email = '  NEW@EXAMPLE.COM '
+        expect(model.getRawAttributes().email).toBe('new@example.com')
+        expect(model.getAttribute('email')).toBe('new@example.com')
+
+        const serialized = model.toObject()
+        expect(serialized.displayName).toBe('ATTRIBUTE SETTER')
+    })
+
+    it('prefers Attribute object mutators over legacy getXxxAttribute/setXxxAttribute methods', async () => {
+        const user = await UserWithAttributeObjects.query().find(1)
+        expect(user).not.toBeNull()
+
+        const model = user as UserWithAttributeObjects
+        expect(model.getAttribute('name')).toBe('Jane')
+
+        model.setAttribute('name', '  Mia  ')
+        expect(model.getRawAttributes().name).toBe('Mia')
+    })
+
+    it('keeps casts working with Attribute object mutators', async () => {
+        const user = new UserWithAttributeObjects({ isActive: 0 })
+        expect(user.getAttribute('isActive')).toBe(false)
+
+        user.setAttribute('isActive', 1)
+        expect(user.getAttribute('isActive')).toBe(true)
     })
 })

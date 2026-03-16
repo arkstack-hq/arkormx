@@ -1,5 +1,5 @@
 import { ModelNotFoundException } from '../../../src/Exceptions/ModelNotFoundException'
-import { configureArkormRuntime, Model, QueryBuilder } from '../../../src'
+import { Attribute, configureArkormRuntime, Model, QueryBuilder } from '../../../src'
 
 type Row = Record<string, unknown>
 
@@ -279,6 +279,45 @@ export class Tag extends Model {
 export class Article extends Model<'article'> {
     protected static override delegate = 'articles'
     protected static override softDeletes = true
+}
+
+export class UserWithAttributeObjects extends Model<'user'> {
+    declare id: number
+    declare isActive: number
+
+    protected static override delegate = 'users'
+    protected override casts = {
+        isActive: 'boolean',
+    } as const
+    protected override appends = ['displayName']
+
+    public name () {
+        return Attribute.make({
+            get: (value) => String(value ?? '').trim(),
+            set: (value) => String(value ?? '').trim(),
+        })
+    }
+
+    public email () {
+        return Attribute.make({
+            get: (value) => String(value ?? '').toLowerCase(),
+            set: (value) => String(value ?? '').trim().toLowerCase(),
+        })
+    }
+
+    public displayName () {
+        return Attribute.make({
+            get: () => String(this.getAttribute('name')).toUpperCase(),
+        })
+    }
+
+    public getNameAttribute (): string {
+        return 'legacy getter should be ignored when Attribute object is present'
+    }
+
+    public setNameAttribute (value: unknown): unknown {
+        return `legacy-set-${String(value)}`
+    }
 }
 
 export function createCoreClient () {
