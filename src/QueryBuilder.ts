@@ -21,6 +21,7 @@ import { LengthAwarePaginator, Paginator } from './Paginator'
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
+import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
 
 type RelationResult = unknown[] | unknown | null
 type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<RelationResult>>>>
@@ -62,6 +63,25 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         private readonly delegate: TDelegate,
         private readonly model: ModelStatic<TModel, TDelegate>,
     ) { }
+
+    private resolvePaginationPage (
+        page: number | undefined,
+        options: PaginationOptions,
+    ): number {
+        if (typeof page !== 'undefined') {
+            return Number.isFinite(page) ? Math.max(1, page) : 1
+        }
+
+        const pageName = options.pageName ?? 'page'
+        const resolveCurrentPage = getRuntimePaginationCurrentPageResolver()
+        const resolvedPage = resolveCurrentPage?.(pageName, options)
+
+        if (typeof resolvedPage !== 'number' || !Number.isFinite(resolvedPage)) {
+            return 1
+        }
+
+        return Math.max(1, resolvedPage)
+    }
 
     /**
      * Adds a where clause to the query. Multiple calls to where will combine 
@@ -1635,12 +1655,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async paginate (
-        page = 1,
         perPage = 15,
+        page: number | undefined = undefined,
         options: PaginationOptions = {}
     ): Promise<LengthAwarePaginator<TModel>> {
+        const currentPage = this.resolvePaginationPage(page, options)
+
         if (this.hasRelationFilters() || this.hasRelationAggregates()) {
-            const currentPage = Math.max(1, page)
             const pageSize = Math.max(1, perPage)
             const all = await this.get()
             const rows = all.all()
@@ -1650,7 +1671,6 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return new LengthAwarePaginator(slice, rows.length, pageSize, currentPage, options)
         }
 
-        const currentPage = Math.max(1, page)
         const pageSize = Math.max(1, perPage)
         const total = await this.count()
         const items = await this.clone()
@@ -1670,11 +1690,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public async simplePaginate (
         perPage = 15,
-        page = 1,
+        page: number | undefined = undefined,
         options: PaginationOptions = {}
     ): Promise<Paginator<TModel>> {
+        const currentPage = this.resolvePaginationPage(page, options)
+
         if (this.hasRelationFilters() || this.hasRelationAggregates()) {
-            const currentPage = Math.max(1, page)
             const pageSize = Math.max(1, perPage)
             const all = await this.get()
             const rows = all.all()
@@ -1685,7 +1706,6 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return new Paginator(new ArkormCollection(pageRows), pageSize, currentPage, hasMorePages, options)
         }
 
-        const currentPage = Math.max(1, page)
         const pageSize = Math.max(1, perPage)
         const items = await this.clone()
             .skip((currentPage - 1) * pageSize)

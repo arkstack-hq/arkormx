@@ -1,5 +1,3 @@
-import { beforeEach, describe, expect, it } from 'vitest'
-
 import {
     LengthAwarePaginator,
     Paginator,
@@ -10,6 +8,7 @@ import {
     createCoreClient,
     setupCoreRuntime
 } from './helpers/core-fixtures'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 describe('Pagination', () => {
     beforeEach(() => {
@@ -36,7 +35,7 @@ describe('Pagination', () => {
     })
 
     it('returns null ranges for empty datasets', async () => {
-        const page = await User.query().whereKey('id', 999).paginate(1, 10)
+        const page = await User.query().whereKey('id', 999).paginate(10, 1)
         expect(page.data.all().length).toBe(0)
         expect(page.meta.total).toBe(0)
         expect(page.meta.lastPage).toBe(1)
@@ -51,7 +50,7 @@ describe('Pagination', () => {
     })
 
     it('returns correct boundary metadata on last page', async () => {
-        const page = await User.query().orderBy({ id: 'asc' }).paginate(2, 1)
+        const page = await User.query().orderBy({ id: 'asc' }).paginate(1, 2)
         expect(page.data.all().length).toBe(1)
         expect(page.data.all()[0]?.getAttribute('id')).toBe(2)
         expect(page.meta.currentPage).toBe(2)
@@ -120,5 +119,33 @@ describe('Pagination', () => {
 
         const simplePage = await User.query().orderBy({ id: 'asc' }).simplePaginate(1, 1, { pageName: 'cursor' })
         expect(simplePage.nextPageUrl()).toBe('framework://pagination/cursor/2')
+    })
+
+    it('resolves the current page from runtime config when page is omitted', async () => {
+        configureArkormRuntime(createCoreClient(), {
+            pagination: {
+                resolveCurrentPage: pageName => pageName === 'cursor' ? 2 : 1,
+            },
+        })
+
+        const page = await User.query().orderBy({ id: 'asc' }).paginate(1, undefined, { pageName: 'cursor' })
+        expect(page.meta.currentPage).toBe(2)
+        expect(page.data.all()[0]?.getAttribute('id')).toBe(2)
+
+        const simplePage = await User.query().orderBy({ id: 'asc' }).simplePaginate(1, undefined, { pageName: 'cursor' })
+        expect(simplePage.meta.currentPage).toBe(2)
+        expect(simplePage.data.all()[0]?.getAttribute('id')).toBe(2)
+    })
+
+    it('prefers an explicit page over the runtime page resolver', async () => {
+        configureArkormRuntime(createCoreClient(), {
+            pagination: {
+                resolveCurrentPage: () => 2,
+            },
+        })
+
+        const page = await User.query().orderBy({ id: 'asc' }).paginate(1, 1)
+        expect(page.meta.currentPage).toBe(1)
+        expect(page.data.all()[0]?.getAttribute('id')).toBe(1)
     })
 })

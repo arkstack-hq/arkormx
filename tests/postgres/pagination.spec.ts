@@ -1,7 +1,6 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-
-import { LengthAwarePaginator, Paginator } from '../../src'
 import { DbUser, acquirePostgresTestLock, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
+import { LengthAwarePaginator, Paginator } from '../../src'
+import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 describe('PostgreSQL Pagination', () => {
     beforeEach(async () => {
@@ -33,7 +32,7 @@ describe('PostgreSQL Pagination', () => {
     })
 
     it('returns null ranges for empty datasets', async () => {
-        const page = await DbUser.query().whereKey('id', 99999).paginate(1, 10)
+        const page = await DbUser.query().whereKey('id', 99999).paginate(10, 1)
         expect(page.data.all().length).toBe(0)
         expect(page.meta.total).toBe(0)
         expect(page.meta.lastPage).toBe(1)
@@ -48,7 +47,7 @@ describe('PostgreSQL Pagination', () => {
     })
 
     it('returns correct boundary metadata on last page', async () => {
-        const page = await DbUser.query().orderBy({ id: 'asc' }).paginate(2, 1)
+        const page = await DbUser.query().orderBy({ id: 'asc' }).paginate(1, 2)
         expect(page.data.all().length).toBe(1)
         expect(page.data.all()[0]?.getAttribute('id')).toBe(2)
         expect(page.meta.currentPage).toBe(2)

@@ -2,6 +2,7 @@ import type {
     ArkormConfig,
     ClientResolver,
     GetUserConfig,
+    PaginationCurrentPageResolver,
     PaginationURLDriverFactory,
     PrismaClientLike,
     PrismaDelegateLike
@@ -53,6 +54,7 @@ let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
+let runtimePaginationCurrentPageResolver: PaginationCurrentPageResolver | undefined
 
 const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfig['paths']> => {
     const defaults = baseConfig.paths ?? {}
@@ -128,6 +130,7 @@ export const configureArkormRuntime = (
 
     runtimeClientResolver = prisma
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
+    runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
 }
 
 /**
@@ -145,6 +148,7 @@ export const resetArkormRuntimeForTests = (): void => {
     runtimeConfigLoadingPromise = undefined
     runtimeClientResolver = undefined
     runtimePaginationURLDriverFactory = undefined
+    runtimePaginationCurrentPageResolver = undefined
 }
 
 /**
@@ -310,6 +314,18 @@ export const getRuntimePaginationURLDriverFactory = (): PaginationURLDriverFacto
         loadRuntimeConfigSync()
 
     return runtimePaginationURLDriverFactory
+}
+
+/**
+ * Get the configured current-page resolver from runtime config.
+ *
+ * @returns
+ */
+export const getRuntimePaginationCurrentPageResolver = (): PaginationCurrentPageResolver | undefined => {
+    if (!runtimeConfigLoaded)
+        loadRuntimeConfigSync()
+
+    return runtimePaginationCurrentPageResolver
 }
 
 /**

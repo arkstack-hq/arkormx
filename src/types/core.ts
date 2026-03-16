@@ -26,6 +26,7 @@ export interface ArkormConfig {
      */
     pagination?: {
         urlDriver?: PaginationURLDriverFactory
+        resolveCurrentPage?: PaginationCurrentPageResolver
     }
     /**
      * @property paths Optional custom paths for various generated files.
@@ -97,6 +98,11 @@ export interface PaginationOptions {
     fragment?: string
     pageName?: string
 }
+
+export type PaginationCurrentPageResolver = (
+    pageName: string,
+    options: PaginationOptions,
+) => number | undefined
 
 export interface PaginationURLDriver {
     getPageName: () => string

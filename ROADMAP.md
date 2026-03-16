@@ -12,7 +12,7 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - [x] Query ergonomics helpers (`latest`, `oldest`, `limit`, `offset`, `forPage`)
 - [x] Existence helpers (`exists`, `doesntExist`)
 - [x] Typed collection-based query results (`get()` returns `ArkormCollection`)
-- [x] `LengthAwarePaginator` support via `paginate(page, perPage)`
+- [x] `LengthAwarePaginator` support via `paginate(perPage, page)`
 - [x] `Paginator` support via `simplePaginate(perPage, page)`
 - [x] Pagination URL options (`path`, `query`, `fragment`, `pageName`) via `URLDriver`
 - [x] Framework-specific URL driver override via `arkormx.config.*`

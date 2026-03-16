@@ -21,7 +21,7 @@ page.nextPageUrl();
 ## Simple pagination
 
 ```ts
-const page = await User.query().simplePaginate(15, 2, {
+const page = await User.query().simplePaginate(2, 15, {
   path: '/users',
   pageName: 'p',
 });
@@ -49,3 +49,28 @@ export default defineConfig({
   },
 });
 ```
+
+## Runtime current page resolution
+
+If your framework already stores the active request context elsewhere, you can
+let Arkorm derive the current page when `paginate()` or `simplePaginate()` is
+called without an explicit page argument.
+
+```ts
+import { configureArkormRuntime } from 'arkormx';
+
+configureArkormRuntime(() => prisma, {
+  pagination: {
+    resolveCurrentPage: (pageName) => {
+      const value = getCurrentRequestQueryValue(pageName);
+      const page = Number(value);
+
+      return Number.isInteger(page) && page > 0 ? page : undefined;
+    },
+  },
+});
+
+const page = await User.query().paginate(15);
+```
+
+An explicit page argument still wins over the runtime resolver.

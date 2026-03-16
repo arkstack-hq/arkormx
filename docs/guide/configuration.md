@@ -44,6 +44,7 @@ export default defineConfig({
 
 - `prisma` (required): Prisma client instance or resolver function.
 - `pagination.urlDriver`: custom URL driver factory for paginator links.
+- `pagination.resolveCurrentPage`: runtime hook used when `paginate()` or `simplePaginate()` is called without an explicit page argument.
 - `paths.models`: generated model directory.
 - `paths.factories`: generated factory directory.
 - `paths.seeders`: generated seeder directory.
