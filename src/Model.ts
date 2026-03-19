@@ -10,49 +10,15 @@ import {
     MorphToManyRelation
 } from './relationship'
 import type { ModelFactory } from './database/factories'
-import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, RelationshipModelStatic, Serializable, SoftDeleteConfig } from './types/core'
+import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, Serializable, SoftDeleteConfig } from './types/core'
 import { ensureArkormConfigLoading, getRuntimePrismaClient, isDelegateLike } from './helpers/runtime-config'
 
-import { DelegateForModelSchema, ModelAttributesOf } from './types'
+import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, RelatedModelClass } from './types'
 import { Attribute } from './Attribute'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
-
-type RelatedModelClass<TInstance = unknown> =
-    (abstract new (attributes?: Record<string, unknown>) => TInstance)
-    & RelationshipModelStatic
-
-type GlobalScope = (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void
-type ModelEventName =
-    | 'retrieved'
-    | 'saving'
-    | 'saved'
-    | 'creating'
-    | 'created'
-    | 'updating'
-    | 'updated'
-    | 'deleting'
-    | 'deleted'
-    | 'restoring'
-    | 'restored'
-    | 'forceDeleting'
-    | 'forceDeleted'
-type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void | Promise<void>
-type ModelEventHandler<TModel extends Model = Model> = {
-    handle: (model: TModel) => void | Promise<void>
-}
-type ModelEventHandlerConstructor<TModel extends Model = Model> = new () => ModelEventHandler<TModel>
-type ModelEventDispatcher<TModel extends Model = Model> =
-    | ModelEventHandler<TModel>
-    | ModelEventHandlerConstructor<TModel>
-
-type ModelLifecycleState = {
-    booted: boolean
-    booting: boolean
-    globalScopesSuppressed: number
-}
 
 /**
  * Base model class that all models should extend. 

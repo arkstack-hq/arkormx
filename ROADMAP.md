@@ -50,10 +50,9 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - [x] Global scopes
 - [ ] Transaction support
 - [x] Event hooks (`retrieved`, `creating`, `updating`, `deleting`, etc.)
-- [ ] Validation integration
 - [x] CLI tooling for model/resource generation/runnging migrations and seeders
 - [ ] Improved error handling and messages
-- [ ] Documentation site
+- [x] Documentation site
 - [x] More advanced relationship constraints
 - [ ] Performance optimizations
 - [x] Class based event listeners via `dispatchesEvents` Model property

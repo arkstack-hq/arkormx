@@ -1,7 +1,8 @@
-import { DelegateRow, PrismaDelegateLike } from './core'
+import { DelegateRow, PrismaDelegateLike, RelationshipModelStatic } from './core'
 
 import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
+import { QueryBuilder } from 'src'
 
 type LowercaseString<T extends string> = Lowercase<T>
 
@@ -52,3 +53,39 @@ export type ModelAttributesOf<TSchema extends PrismaDelegateLike | Record<string
 export type ModelAttributes<TModel> = TModel extends Model<infer TSchema>
     ? ModelAttributesOf<TSchema>
     : Record<string, any>
+
+
+
+export type RelatedModelClass<TInstance = unknown> =
+    (abstract new (attributes?: Record<string, unknown>) => TInstance)
+    & RelationshipModelStatic
+
+export type GlobalScope = (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void
+export type ModelEventName =
+    | 'retrieved'
+    | 'saving'
+    | 'saved'
+    | 'creating'
+    | 'created'
+    | 'updating'
+    | 'updated'
+    | 'deleting'
+    | 'deleted'
+    | 'restoring'
+    | 'restored'
+    | 'forceDeleting'
+    | 'forceDeleted'
+export type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void | Promise<void>
+export type ModelEventHandler<TModel extends Model = Model> = {
+    handle: (model: TModel) => void | Promise<void>
+}
+export type ModelEventHandlerConstructor<TModel extends Model = Model> = new () => ModelEventHandler<TModel>
+export type ModelEventDispatcher<TModel extends Model = Model> =
+    | ModelEventHandler<TModel>
+    | ModelEventHandlerConstructor<TModel>
+
+export type ModelLifecycleState = {
+    booted: boolean
+    booting: boolean
+    globalScopesSuppressed: number
+}
