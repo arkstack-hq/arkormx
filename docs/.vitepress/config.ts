@@ -43,6 +43,7 @@ export default defineConfig({
                     { text: 'Mutators & Accessors', link: '/guide/mutators' },
                     { text: 'Casting', link: '/guide/casting' },
                     { text: 'Query Builder', link: '/guide/query-builder' },
+                    { text: 'Transactions', link: '/guide/transactions' },
                     { text: 'Pagination', link: '/guide/pagination' },
                 ],
             },

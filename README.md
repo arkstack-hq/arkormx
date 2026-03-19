@@ -69,6 +69,22 @@ const users = await User.query()
   .get();
 ```
 
+### Run a transaction
+
+```ts
+await User.transaction(async () => {
+  await User.query().create({
+    name: 'Mia',
+    email: 'mia@example.com',
+    isActive: 1,
+  });
+
+  await User.query()
+    .where({ email: 'john@example.com' })
+    .updateFrom({ isActive: 1 });
+});
+```
+
 ## Next steps
 
 - [Setup](https://arkormx.toneflix.net/guide/setup)
@@ -76,4 +92,5 @@ const users = await User.query()
 - [Typing](https://arkormx.dev/guide/typing)
 - [Models](https://arkormx.dev/guide/models)
 - [Query Builder](https://arkormx.dev/guide/query-builder)
+- [Transactions](https://arkormx.dev/guide/transactions)
 - [Relationships](https://arkormx.dev/guide/relationships)

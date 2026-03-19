@@ -73,4 +73,5 @@ pnpm prisma generate
 - [Typing](./typing.md)
 - [Models](./models.md)
 - [Query Builder](./query-builder.md)
+- [Transactions](./transactions.md)
 - [Relationships](./relationships.md)

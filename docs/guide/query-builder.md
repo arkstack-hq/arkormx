@@ -2,6 +2,9 @@
 
 Arkormˣ query builder is fluent, typed, and delegate-backed.
 
+For multi-step write flows that need atomic commit/rollback behavior, see
+[Transactions](./transactions.md).
+
 ## Common reads
 
 ```ts
@@ -70,12 +73,33 @@ await User.query().insert({
 });
 
 await User.query().insert([
-  { id: 4, name: 'Bob', email: 'bob@example.com', isActive: true, createdAt: new Date(), updatedAt: new Date() },
-  { id: 5, name: 'Carol', email: 'carol@example.com', isActive: false, createdAt: new Date(), updatedAt: new Date() },
+  {
+    id: 4,
+    name: 'Bob',
+    email: 'bob@example.com',
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
+  {
+    id: 5,
+    name: 'Carol',
+    email: 'carol@example.com',
+    isActive: false,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
 ]);
 
 await User.query().insertOrIgnore([
-  { id: 6, name: 'Dylan', email: 'dylan@example.com', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+  {
+    id: 6,
+    name: 'Dylan',
+    email: 'dylan@example.com',
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
 ]);
 
 const id = await User.query().insertGetId({
@@ -90,30 +114,59 @@ const id = await User.query().insertGetId({
 await User.query().insertUsing(
   ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
   async () => [
-    { id: 8, name: 'Frank', email: 'frank@example.com', isActive: true, createdAt: new Date(), updatedAt: new Date() },
-  ]
+    {
+      id: 8,
+      name: 'Frank',
+      email: 'frank@example.com',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ],
 );
 
 await User.query().insertOrIgnoreUsing(
   ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
   [
-    { id: 9, name: 'Grace', email: 'grace@example.com', isActive: false, createdAt: new Date(), updatedAt: new Date() },
-  ]
+    {
+      id: 9,
+      name: 'Grace',
+      email: 'grace@example.com',
+      isActive: false,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
+  ],
 );
 
-await User.query().where({ email: 'jane@example.com' }).updateFrom({ name: 'Jane Updated' });
+await User.query()
+  .where({ email: 'jane@example.com' })
+  .updateFrom({ name: 'Jane Updated' });
 
 await User.query().updateOrInsert(
   { email: 'new-user@example.com' },
-  { id: 10, name: 'New User', isActive: true, createdAt: new Date(), updatedAt: new Date() }
+  {
+    id: 10,
+    name: 'New User',
+    isActive: true,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+  },
 );
 
 await User.query().upsert(
   [
-    { id: 11, email: 'jane@example.com', name: 'Jane Upserted', isActive: true, createdAt: new Date(), updatedAt: new Date() },
+    {
+      id: 11,
+      email: 'jane@example.com',
+      name: 'Jane Upserted',
+      isActive: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    },
   ],
   'email',
-  ['name']
+  ['name'],
 );
 ```
 

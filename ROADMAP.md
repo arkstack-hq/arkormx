@@ -48,10 +48,10 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 ## Upcoming / Planned Features
 
 - [x] Global scopes
-- [ ] Transaction support
+- [x] Transaction support
 - [x] Event hooks (`retrieved`, `creating`, `updating`, `deleting`, etc.)
 - [x] CLI tooling for model/resource generation/runnging migrations and seeders
-- [ ] Improved error handling and messages
+- [x] Improved error handling and messages
 - [x] Documentation site
 - [x] More advanced relationship constraints
 - [ ] Performance optimizations

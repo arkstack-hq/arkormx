@@ -63,3 +63,7 @@ configureArkormRuntime(() => prisma, {
   outputExt: 'js',
 });
 ```
+
+Runtime configuration also enables transaction scopes through
+`Model.transaction(...)`, because Arkorm can resolve the active Prisma client
+and switch model queries onto the transaction client automatically.
