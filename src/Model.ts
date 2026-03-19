@@ -19,6 +19,7 @@ import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
+import { MissingDelegateException } from './Exceptions/MissingDelegateException'
 
 /**
  * Base model class that all models should extend. 
@@ -101,7 +102,11 @@ export abstract class Model<
     public static factory<TFactory extends ModelFactory<any, any>> (count?: number): TFactory {
         const factoryClass = this.factoryClass as (new () => TFactory) | undefined
         if (!factoryClass)
-            throw new ArkormException(`Factory is not configured for model [${this.name}].`)
+            throw new ArkormException(`Factory is not configured for model [${this.name}].`, {
+                code: 'FACTORY_NOT_CONFIGURED',
+                operation: 'factory',
+                model: this.name,
+            })
 
         const factory = new factoryClass()
         if (typeof count === 'number')
@@ -311,7 +316,14 @@ export abstract class Model<
             .find(candidate => isDelegateLike(candidate))
 
         if (!resolved)
-            throw new ArkormException(`Database delegate [${key}] is not configured.`)
+            throw new MissingDelegateException(`Database delegate [${key}] is not configured.`, {
+                operation: 'getDelegate',
+                model: this.name,
+                delegate: key,
+                meta: {
+                    candidates,
+                },
+            })
 
         return resolved as TDelegate
     }

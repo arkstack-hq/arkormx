@@ -21,6 +21,11 @@ import { LengthAwarePaginator, Paginator } from './Paginator'
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
+import { QueryConstraintException } from './Exceptions/QueryConstraintException'
+import { RelationResolutionException } from './Exceptions/RelationResolutionException'
+import { ScopeNotDefinedException } from './Exceptions/ScopeNotDefinedException'
+import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
+import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
 import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
 
 type RelationResult = unknown[] | unknown | null
@@ -747,7 +752,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const prototype = (this.model as unknown as { prototype?: Record<string, unknown> }).prototype
         const scope = prototype?.[methodName]
         if (typeof scope !== 'function')
-            throw new ArkormException(`Scope [${name}] is not defined.`)
+            throw new ScopeNotDefinedException(`Scope [${name}] is not defined.`, {
+                operation: 'scope',
+                model: this.model.name,
+                scope: name,
+            })
 
         const scoped = scope.call(undefined, this, ...args)
         if (scoped && scoped !== this)
@@ -1038,7 +1047,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const key = typeof keyOrCallback === 'string' ? keyOrCallback : 'id'
         const callback = typeof keyOrCallback === 'function' ? keyOrCallback : maybeCallback
         if (!callback)
-            throw new ArkormException('findOr requires a fallback callback.')
+            throw new QueryConstraintException('findOr requires a fallback callback.', {
+                operation: 'findOr',
+                model: this.model.name,
+            })
 
         const found = await this.find(value, key)
         if (found)
@@ -1212,7 +1224,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const created = await this.delegate.create({ data: values } as Parameters<TDelegate['create']>[0]) as Record<string, unknown>
         const key = sequence ?? 'id'
         if (!(key in created))
-            throw new ArkormException(`Inserted record does not contain key [${key}].`)
+            throw new UniqueConstraintResolutionException(`Inserted record does not contain key [${key}].`, {
+                operation: 'insertGetId',
+                model: this.model.name,
+                meta: {
+                    key,
+                },
+            })
 
         return created[key]
     }
@@ -1265,7 +1283,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async update (data: DelegateUpdateData<TDelegate>): Promise<TModel> {
         const where = this.buildWhere()
         if (!where)
-            throw new ArkormException('Update requires a where clause.')
+            throw new QueryConstraintException('Update requires a where clause.', {
+                operation: 'update',
+                model: this.model.name,
+            })
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
         const updated = await this.delegate.update({ where: uniqueWhere, data } as Parameters<TDelegate['update']>[0])
@@ -1282,7 +1303,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async updateFrom (data: DelegateUpdateData<TDelegate>): Promise<number> {
         const where = this.buildWhere()
         if (!where)
-            throw new ArkormException('Update requires a where clause.')
+            throw new QueryConstraintException('Update requires a where clause.', {
+                operation: 'updateFrom',
+                model: this.model.name,
+            })
 
         const delegate = this.delegate as unknown as {
             updateMany?: (args: { where: DelegateWhere<TDelegate>, data: DelegateUpdateData<TDelegate> }) => Promise<unknown>
@@ -1381,7 +1405,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async delete (): Promise<TModel> {
         const where = this.buildWhere()
         if (!where)
-            throw new ArkormException('Delete requires a where clause.')
+            throw new QueryConstraintException('Delete requires a where clause.', {
+                operation: 'delete',
+                model: this.model.name,
+            })
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
         const deleted = await this.delegate.delete({ where: uniqueWhere } as Parameters<TDelegate['delete']>[0])
@@ -1489,7 +1516,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (Array.isArray(source))
             return source as Record<string, unknown>[]
 
-        throw new ArkormException('insertUsing expects a query builder, array of records, or async resolver.')
+        throw new QueryConstraintException('insertUsing expects a query builder, array of records, or async resolver.', {
+            operation: 'insertUsing',
+            model: this.model.name,
+        })
     }
 
     /**
@@ -1618,7 +1648,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         if (typeof delegate.applyRawWhere !== 'function')
-            throw new ArkormException('Raw where clauses are not supported by the current adapter.')
+            throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the current adapter.', {
+                operation: 'whereRaw',
+                model: this.model.name,
+                meta: {
+                    feature: 'rawWhere',
+                },
+            })
 
         this.args.where = delegate.applyRawWhere(this.buildWhere(), sql, bindings)
 
@@ -1638,7 +1674,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         if (typeof delegate.applyRawWhere !== 'function')
-            throw new ArkormException('Raw where clauses are not supported by the current adapter.')
+            throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the current adapter.', {
+                operation: 'orWhereRaw',
+                model: this.model.name,
+                meta: {
+                    feature: 'rawWhere',
+                },
+            })
 
         const rawWhere = delegate.applyRawWhere(undefined, sql, bindings)
 
@@ -1824,11 +1866,22 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         const row = await this.delegate.findFirst({ where } as DelegateFindManyArgs<TDelegate>) as DelegateRow<TDelegate> | null
         if (!row)
-            throw new ArkormException('Record not found for update/delete operation.')
+            throw new ModelNotFoundException(this.model.name, 'Record not found for update/delete operation.', {
+                operation: 'resolveUniqueWhere',
+                meta: {
+                    where: where as Record<string, unknown>,
+                },
+            })
 
         const record = row as Record<string, unknown>
         if (!Object.prototype.hasOwnProperty.call(record, 'id'))
-            throw new ArkormException('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.')
+            throw new UniqueConstraintResolutionException('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.', {
+                operation: 'resolveUniqueWhere',
+                model: this.model.name,
+                meta: {
+                    where: where as Record<string, unknown>,
+                },
+            })
 
         return { id: record.id } as unknown as DelegateUniqueWhere<TDelegate>
     }
@@ -2036,7 +2089,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const resolver = (async () => {
             const relationMethod = (model as Record<string, unknown>)[relation]
             if (typeof relationMethod !== 'function')
-                throw new ArkormException(`Relation [${relation}] is not defined on the model.`)
+                throw new RelationResolutionException(`Relation [${relation}] is not defined on the model.`, {
+                    operation: 'resolveRelatedResults',
+                    model: this.model.name,
+                    relation,
+                })
 
             const relationInstance = relationMethod.call(model) as {
                 constrain?: (constraint: (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void) => unknown
@@ -2070,7 +2127,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 return results as unknown | null
             }
 
-            throw new ArkormException(`Relation [${relation}] does not support result resolution.`)
+            throw new RelationResolutionException(`Relation [${relation}] does not support result resolution.`, {
+                operation: 'resolveRelatedResults',
+                model: this.model.name,
+                relation,
+            })
         })()
 
         callbackMap.set(callbackCacheKey, resolver)

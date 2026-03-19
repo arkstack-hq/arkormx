@@ -1,4 +1,4 @@
-import { ArkormException } from './ArkormException'
+import { ArkormErrorContext, ArkormException } from './ArkormException'
 
 /**
  * The ModelNotFoundException class is a custom error type for handling 
@@ -10,8 +10,16 @@ import { ArkormException } from './ArkormException'
 export class ModelNotFoundException extends ArkormException {
     private modelName: string
 
-    constructor(modelName: string, message: string = 'No query results for the given model.') {
-        super(message)
+    constructor(
+        modelName: string,
+        message: string = 'No query results for the given model.',
+        context: ArkormErrorContext = {}
+    ) {
+        super(message, {
+            code: 'MODEL_NOT_FOUND',
+            model: modelName,
+            ...context,
+        })
         this.name = 'ModelNotFoundException'
         this.modelName = modelName
     }
