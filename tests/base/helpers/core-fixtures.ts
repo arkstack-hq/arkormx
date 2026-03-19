@@ -2,6 +2,7 @@ import { ModelNotFoundException } from '../../../src/Exceptions/ModelNotFoundExc
 import { Attribute, configureArkormRuntime, Model, QueryBuilder } from '../../../src'
 
 type Row = Record<string, unknown>
+type CoreStore = Record<string, Row[]>
 
 function toComparable (value: unknown, template: unknown): unknown {
     if (template instanceof Date) {
@@ -132,7 +133,7 @@ function matchesWhere (row: Row, where: Record<string, unknown> | undefined): bo
 }
 
 function makeDelegate (rows: Row[]) {
-    const data = rows.map(row => ({ ...row }))
+    const data = rows
 
     return {
         findMany: async (args?: { where?: Row, orderBy?: Row | Row[], skip?: number, take?: number }) => {
@@ -177,6 +178,46 @@ function makeDelegate (rows: Row[]) {
             return data.filter(row => matchesWhere(row, where)).length
         },
     }
+}
+
+function cloneStore (store: CoreStore): CoreStore {
+    return Object.entries(store).reduce<CoreStore>((cloned, [key, rows]) => {
+        cloned[key] = rows.map(row => ({ ...row }))
+
+        return cloned
+    }, {})
+}
+
+function commitStore (target: CoreStore, source: CoreStore): void {
+    Object.entries(source).forEach(([key, rows]) => {
+        const targetRows = target[key]
+        if (!targetRows)
+            return
+
+        targetRows.splice(0, targetRows.length, ...rows.map(row => ({ ...row })))
+    })
+}
+
+function createTransactionalCoreClient (store: CoreStore): Record<string, unknown> {
+    const client = Object.entries(store).reduce<Record<string, unknown>>((delegates, [key, rows]) => {
+        delegates[key] = makeDelegate(rows)
+
+        return delegates
+    }, {})
+
+    client.$transaction = async <TResult> (
+        callback: (transactionClient: Record<string, unknown>) => TResult | Promise<TResult>
+    ): Promise<TResult> => {
+        const transactionStore = cloneStore(store)
+        const transactionClient = createTransactionalCoreClient(transactionStore)
+        const result = await callback(transactionClient)
+
+        commitStore(store, transactionStore)
+
+        return result
+    }
+
+    return client
 }
 
 export class User extends Model<'user'> {
@@ -321,49 +362,51 @@ export class UserWithAttributeObjects extends Model<'user'> {
 }
 
 export function createCoreClient () {
-    return {
-        users: makeDelegate([
+    const store: CoreStore = {
+        users: [
             { id: 1, name: '  Jane  ', email: 'jane@example.com', password: 'secret', isActive: 1, meta: '{"tier":"pro"}', createdAt: '2026-03-04T12:00:00.000Z' },
             { id: 2, name: 'John', email: 'john@example.com', password: 'secret', isActive: 0, meta: '{"tier":"free"}', createdAt: '2026-03-04T12:00:00.000Z' },
-        ]),
-        profiles: makeDelegate([
+        ],
+        profiles: [
             { id: 10, userId: 1 },
             { id: 11, userId: 2 },
-        ]),
-        posts: makeDelegate([
+        ],
+        posts: [
             { id: 100, userId: 1, title: 'A' },
             { id: 101, userId: 1, title: 'B' },
             { id: 102, userId: 2, title: 'C' },
-        ]),
-        roles: makeDelegate([
+        ],
+        roles: [
             { id: 500, name: 'admin' },
             { id: 501, name: 'editor' },
-        ]),
-        roleUsers: makeDelegate([
+        ],
+        roleUsers: [
             { userId: 1, roleId: 500 },
             { userId: 1, roleId: 501 },
-        ]),
-        images: makeDelegate([
+        ],
+        images: [
             { id: 900, profileId: 10, postId: 100, url: 'a.png' },
             { id: 901, profileId: 10, postId: 101, url: 'b.png' },
-        ]),
-        comments: makeDelegate([
+        ],
+        comments: [
             { id: 1000, commentableId: 1, commentableType: 'User', body: 'Hi user' },
             { id: 1001, commentableId: 100, commentableType: 'Post', body: 'Hi post' },
-        ]),
-        tags: makeDelegate([
+        ],
+        tags: [
             { id: 1200, name: 'orm' },
             { id: 1201, name: 'prisma' },
-        ]),
-        taggables: makeDelegate([
+        ],
+        taggables: [
             { tagId: 1200, taggableId: 1, taggableType: 'User' },
             { tagId: 1201, taggableId: 1, taggableType: 'User' },
-        ]),
-        articles: makeDelegate([
+        ],
+        articles: [
             { id: 2000, title: 'Live', deletedAt: null },
             { id: 2001, title: 'Archived', deletedAt: '2026-03-04T12:00:00.000Z' },
-        ]),
+        ],
     }
+
+    return createTransactionalCoreClient(cloneStore(store))
 }
 
 export function setupCoreRuntime () {

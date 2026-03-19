@@ -5,10 +5,16 @@ import type {
     PaginationCurrentPageResolver,
     PaginationURLDriverFactory,
     PrismaClientLike,
-    PrismaDelegateLike
+    PrismaDelegateLike,
+    PrismaTransactionCallback,
+    PrismaTransactionCapableClient,
+    PrismaTransactionOptions
 } from '../types/core'
 import { fileURLToPath, pathToFileURL } from 'url'
 
+import { ArkormException } from '../Exceptions/ArkormException'
+import { AsyncLocalStorage } from 'async_hooks'
+import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import path from 'path'
@@ -55,6 +61,7 @@ let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
 let runtimePaginationCurrentPageResolver: PaginationCurrentPageResolver | undefined
+const transactionClientStorage = new AsyncLocalStorage<PrismaClientLike>()
 
 const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfig['paths']> => {
     const defaults = baseConfig.paths ?? {}
@@ -298,10 +305,54 @@ export const getDefaultStubsPath = (): string => {
  * @returns 
  */
 export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
+    const activeTransactionClient = transactionClientStorage.getStore()
+    if (activeTransactionClient)
+        return activeTransactionClient
+
     if (!runtimeConfigLoaded)
         loadRuntimeConfigSync()
 
     return resolveClient(runtimeClientResolver)
+}
+
+export const getActiveTransactionClient = (): PrismaClientLike | undefined => {
+    return transactionClientStorage.getStore()
+}
+
+export const isTransactionCapableClient = (value: unknown): value is PrismaTransactionCapableClient => {
+    if (!value || typeof value !== 'object')
+        return false
+
+    return typeof (value as Record<string, unknown>).$transaction === 'function'
+}
+
+export const runArkormTransaction = async <TResult> (
+    callback: PrismaTransactionCallback<TResult>,
+    options: PrismaTransactionOptions = {},
+): Promise<TResult> => {
+    const activeTransactionClient = transactionClientStorage.getStore()
+    if (activeTransactionClient)
+        return await callback(activeTransactionClient)
+
+    const client = getRuntimePrismaClient()
+    if (!client)
+        throw new ArkormException('Cannot start a transaction without a configured Prisma client.', {
+            code: 'CLIENT_NOT_CONFIGURED',
+            operation: 'transaction',
+        })
+
+    if (!isTransactionCapableClient(client)) {
+        throw new UnsupportedAdapterFeatureException('Transactions are not supported by the current adapter.', {
+            code: 'TRANSACTION_NOT_SUPPORTED',
+            operation: 'transaction',
+        })
+    }
+
+    return await client.$transaction(async (transactionClient) => {
+        return await transactionClientStorage.run(transactionClient, async () => {
+            return await callback(transactionClient)
+        })
+    }, options)
 }
 
 /**

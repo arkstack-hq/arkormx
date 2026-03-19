@@ -14,6 +14,23 @@ export type CastMap = Record<string, CastDefinition>
 
 export type PrismaClientLike = PrismaClient | Record<string, unknown>
 
+export interface PrismaTransactionOptions {
+    maxWait?: number
+    timeout?: number
+    isolationLevel?: string
+}
+
+export type PrismaTransactionCallback<TResult = unknown> = (
+    client: PrismaClientLike,
+) => TResult | Promise<TResult>
+
+export interface PrismaTransactionCapableClient {
+    $transaction: <TResult>(
+        callback: PrismaTransactionCallback<TResult>,
+        options?: PrismaTransactionOptions,
+    ) => Promise<TResult>
+}
+
 export type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
 
 export interface ArkormConfig {

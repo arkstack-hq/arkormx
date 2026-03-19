@@ -10,8 +10,24 @@ import {
     MorphToManyRelation
 } from './relationship'
 import type { ModelFactory } from './database/factories'
-import type { CastMap, EagerLoadConstraint, EagerLoadMap, ModelStatic, PrismaDelegateLike, Serializable, SoftDeleteConfig } from './types/core'
-import { ensureArkormConfigLoading, getRuntimePrismaClient, isDelegateLike } from './helpers/runtime-config'
+import type {
+    CastMap,
+    EagerLoadConstraint,
+    EagerLoadMap,
+    ModelStatic,
+    PrismaClientLike,
+    PrismaDelegateLike,
+    PrismaTransactionOptions,
+    Serializable,
+    SoftDeleteConfig,
+} from './types/core'
+import {
+    ensureArkormConfigLoading,
+    getActiveTransactionClient,
+    getRuntimePrismaClient,
+    isDelegateLike,
+    runArkormTransaction,
+} from './helpers/runtime-config'
 
 import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, RelatedModelClass } from './types'
 import { Attribute } from './Attribute'
@@ -289,6 +305,25 @@ export abstract class Model<
     }
 
     /**
+     * Execute a callback within a transaction scope.
+     * Nested calls reuse the active transaction client.
+     *
+     * @param callback
+     * @param options
+     * @returns
+     */
+    public static async transaction<T> (
+        callback: (client: PrismaClientLike) => T | Promise<T>,
+        options: PrismaTransactionOptions = {}
+    ): Promise<Awaited<T>> {
+        ensureArkormConfigLoading()
+
+        return await runArkormTransaction(async (client) => {
+            return await callback(client)
+        }, options)
+    }
+
+    /**
      * Get the Prisma delegate for the model. 
      * If a delegate name is provided, it will attempt to resolve that delegate. 
      * Otherwise, it will attempt to resolve a delegate based on the model's name or 
@@ -310,9 +345,13 @@ export abstract class Model<
             `${str(key).camel().singular()}`,
         ]
 
+        const activeTransactionClient = getActiveTransactionClient()
         const runtimeClient = getRuntimePrismaClient()
+        const sources = activeTransactionClient
+            ? [activeTransactionClient, this.client, runtimeClient]
+            : [this.client, runtimeClient]
         const resolved = candidates
-            .map(name => this.client?.[name] ?? runtimeClient?.[name as never])
+            .flatMap(name => sources.map(source => source?.[name as never]))
             .find(candidate => isDelegateLike(candidate))
 
         if (!resolved)
