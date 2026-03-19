@@ -56,10 +56,10 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - [ ] Documentation site
 - [x] More advanced relationship constraints
 - [ ] Performance optimizations
-- [ ] Class based event listeners via `dispatchesEvents` Model property
-- [ ] Callback-based event listeners via `booted` and `boot` Model methods and `Model.event()` method
-- [ ] Quiet mode for suppressing events and global scopes via `Model.withoutEvents()` and `saveQuietly()`, `deleteQuietly()`, `restoreQuietly()`, etc. methods.
-- [ ] Model comparison operators (`is`, `isNot`) and identity checks (`isSame`, `isNotSame`)
+- [x] Class based event listeners via `dispatchesEvents` Model property
+- [x] Callback-based event listeners via `booted` and `boot` Model methods and `Model.event()` method
+- [x] Quiet mode for suppressing events and global scopes via `Model.withoutEvents()` and `saveQuietly()`, `deleteQuietly()`, `restoreQuietly()`, etc. methods.
+- [x] Model comparison operators (`is`, `isNot`) and identity checks (`isSame`, `isNotSame`)
 
 ## Eloquent Parity (Phased)
 

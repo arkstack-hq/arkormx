@@ -1,4 +1,4 @@
-import { User, UserWithAttributeObjects, setupCoreRuntime } from './helpers/core-fixtures'
+import { Article, User, UserWithAttributeObjects, setupCoreRuntime } from './helpers/core-fixtures'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 describe('Model lifecycle and serialization', () => {
@@ -104,6 +104,129 @@ describe('Model lifecycle and serialization', () => {
             'saving', 'updating', 'updated', 'saved',
             'deleting', 'deleted',
         ])
+    })
+
+    it('supports class-based event listeners via dispatchesEvents', async () => {
+        const events: string[] = []
+
+        class CreatedListener {
+            public handle (model: User): void {
+                events.push(`created:${String(model.getAttribute('email'))}`)
+            }
+        }
+
+        class DeletedListener {
+            public handle (model: User): void {
+                events.push(`deleted:${String(model.getAttribute('id'))}`)
+            }
+        }
+
+        class DispatchingUser extends User {
+            protected static override dispatchesEvents = {
+                created: CreatedListener,
+                deleted: DeletedListener,
+            }
+        }
+
+        const created = new DispatchingUser({ name: 'Mia', email: 'mia-dispatch@example.com', isActive: 1 })
+        await created.save()
+
+        const existing = await DispatchingUser.query().find(1)
+        expect(existing).not.toBeNull()
+
+        const user = existing as DispatchingUser
+        await user.delete()
+
+        expect(events).toEqual([
+            'created:mia-dispatch@example.com',
+            `deleted:${String(user.getAttribute('id'))}`,
+        ])
+    })
+
+    it('supports boot, booted, and Model.event() callbacks', async () => {
+        const events: string[] = []
+        let bootCalls = 0
+        let bootedCalls = 0
+
+        class BootedUser extends User {
+            protected static override boot (): void {
+                bootCalls += 1
+                this.addGlobalScope('active', query => query.whereKey('isActive', 1))
+            }
+
+            protected static override booted (): void {
+                bootedCalls += 1
+                this.event('created', model => {
+                    events.push(`created:${String(model.getAttribute('email'))}`)
+                })
+            }
+        }
+
+        const scoped = await BootedUser.query().get()
+        expect(scoped.all().length).toBe(1)
+
+        const created = new BootedUser({ name: 'Booted', email: 'booted@example.com', isActive: 1 })
+        await created.save()
+        await BootedUser.query().get()
+
+        expect(bootCalls).toBe(1)
+        expect(bootedCalls).toBe(1)
+        expect(events).toEqual(['created:booted@example.com'])
+    })
+
+    it('supports event suppression, quiet methods, and global scope suppression', async () => {
+        const events: string[] = []
+        User.on('saved', () => void events.push('saved'))
+        User.on('deleted', () => void events.push('deleted'))
+        Article.on('restored', () => void events.push('restored'))
+        Article.on('forceDeleted', () => void events.push('forceDeleted'))
+
+        await User.withoutEvents(async () => {
+            const muted = new User({ name: 'Muted', email: 'muted@example.com', isActive: 1 })
+            await muted.save()
+        })
+
+        const quiet = await User.query().find(1)
+        expect(quiet).not.toBeNull()
+
+        const persisted = quiet as User
+        persisted.setAttribute('name', 'Jane Quiet')
+        await persisted.saveQuietly()
+        await persisted.deleteQuietly()
+
+        const article = await Article.onlyTrashed().find(2001)
+        expect(article).not.toBeNull()
+
+        const archived = article as Article
+        await archived.restoreQuietly()
+        await archived.forceDeleteQuietly()
+
+        User.addGlobalScope('active', query => query.whereKey('isActive', 1))
+        const allUsers = await User.withoutGlobalScopes(async () => await User.query().get())
+
+        expect(events).toEqual([])
+        expect(allUsers.all().length).toBe(2)
+    })
+
+    it('supports model comparison and identity helpers', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        class OtherUser extends User {
+        }
+
+        const existing = user as User
+        const sameRecord = new User({ id: 1, name: 'Jane Clone', email: 'clone@example.com', isActive: 1 })
+        const differentRecord = new User({ id: 2, name: 'John', email: 'john@example.com', isActive: 0 })
+        const sameIdDifferentClass = new OtherUser({ id: 1, name: 'Jane', email: 'jane@example.com', isActive: 1 })
+        const unsaved = new User({ name: 'Unsaved' })
+
+        expect(existing.is(sameRecord)).toBe(true)
+        expect(existing.isNot(differentRecord)).toBe(true)
+        expect(existing.is(sameIdDifferentClass)).toBe(false)
+        expect(existing.is(unsaved)).toBe(false)
+        expect(existing.isSame(existing)).toBe(true)
+        expect(existing.isNotSame(sameRecord)).toBe(true)
     })
 
     it('supports Attribute object mutators with get/set and serialization appends', async () => {

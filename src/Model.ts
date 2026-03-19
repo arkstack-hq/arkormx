@@ -39,6 +39,19 @@ type ModelEventName =
     | 'forceDeleting'
     | 'forceDeleted'
 type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void | Promise<void>
+type ModelEventHandler<TModel extends Model = Model> = {
+    handle: (model: TModel) => void | Promise<void>
+}
+type ModelEventHandlerConstructor<TModel extends Model = Model> = new () => ModelEventHandler<TModel>
+type ModelEventDispatcher<TModel extends Model = Model> =
+    | ModelEventHandler<TModel>
+    | ModelEventHandlerConstructor<TModel>
+
+type ModelLifecycleState = {
+    booted: boolean
+    booting: boolean
+    globalScopesSuppressed: number
+}
 
 /**
  * Base model class that all models should extend. 
@@ -52,6 +65,9 @@ export abstract class Model<
     TSchema extends PrismaDelegateLike | Record<string, unknown> | string = Record<string, any>,
     TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
 > {
+    private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
+    private static eventsSuppressed = 0
+
     protected static factoryClass?: new () => ModelFactory<any, any>
     protected static client: Record<string, unknown>
     protected static delegate: string
@@ -59,6 +75,7 @@ export abstract class Model<
     protected static deletedAtColumn = 'deletedAt'
     protected static globalScopes: Record<string, GlobalScope> = {}
     protected static eventListeners: Partial<Record<ModelEventName, ModelEventListener<any>[]>> = {}
+    protected static dispatchesEvents: Partial<Record<ModelEventName, ModelEventDispatcher<any> | ModelEventDispatcher<any>[]>> = {}
 
     protected casts: CastMap = {}
     protected hidden: string[] = []
@@ -138,6 +155,23 @@ export abstract class Model<
     }
 
     /**
+     * Execute a callback without applying global scopes for the current model class.
+     *
+     * @param callback
+     * @returns
+     */
+    public static async withoutGlobalScopes<T> (callback: () => T | Promise<T>): Promise<Awaited<T>> {
+        const state = Model.getLifecycleState(this)
+        state.globalScopesSuppressed += 1
+
+        try {
+            return await callback()
+        } finally {
+            state.globalScopesSuppressed = Math.max(0, state.globalScopesSuppressed - 1)
+        }
+    }
+
+    /**
      * Remove a global scope by name.
      *
      * @param name
@@ -164,11 +198,25 @@ export abstract class Model<
         event: ModelEventName,
         listener: ModelEventListener<TModel>
     ): void {
+        Model.ensureModelBooted(this as unknown as typeof Model)
         this.ensureOwnEventListeners()
         if (!this.eventListeners[event])
             this.eventListeners[event] = []
 
         this.eventListeners[event]?.push(listener as ModelEventListener<any>)
+    }
+
+    /**
+     * Register a model lifecycle callback listener.
+     *
+     * @param event
+     * @param listener
+     */
+    public static event<TModel extends Model = Model> (
+        event: ModelEventName,
+        listener: ModelEventListener<TModel>
+    ): void {
+        this.on(event, listener)
     }
 
     /**
@@ -198,6 +246,22 @@ export abstract class Model<
      */
     public static clearEventListeners (): void {
         this.eventListeners = {}
+    }
+
+    /**
+     * Execute a callback while suppressing lifecycle events for all models.
+     *
+     * @param callback
+     * @returns
+     */
+    public static async withoutEvents<T> (callback: () => T | Promise<T>): Promise<Awaited<T>> {
+        Model.eventsSuppressed += 1
+
+        try {
+            return await callback()
+        } finally {
+            Model.eventsSuppressed = Math.max(0, Model.eventsSuppressed - 1)
+        }
     }
 
     /**
@@ -246,20 +310,36 @@ export abstract class Model<
     > (
         this: TThis
     ): QueryBuilder<TModel, TDelegate> {
+        Model.ensureModelBooted(this as unknown as typeof Model)
+
         let builder = new QueryBuilder<TModel, TDelegate>(
             (this as unknown as ModelStatic<TModel, TDelegate>).getDelegate(),
             this as unknown as ModelStatic<TModel, TDelegate>
         )
 
         const modelClass = this as unknown as typeof Model
-        modelClass.ensureOwnGlobalScopes()
-        Object.values(modelClass.globalScopes).forEach((scope) => {
-            const scoped = scope(builder as QueryBuilder<any, any>) as QueryBuilder<TModel, TDelegate> | void
-            if (scoped && scoped !== builder)
-                builder = scoped
-        })
+        if (!Model.areGlobalScopesSuppressed(modelClass)) {
+            modelClass.ensureOwnGlobalScopes()
+            Object.values(modelClass.globalScopes).forEach((scope) => {
+                const scoped = scope(builder as QueryBuilder<any, any>) as QueryBuilder<TModel, TDelegate> | void
+                if (scoped && scoped !== builder)
+                    builder = scoped
+            })
+        }
 
         return builder
+    }
+
+    /**
+     * Boot hook for subclasses to register scopes or perform one-time setup.
+     */
+    protected static boot (): void {
+    }
+
+    /**
+     * Booted hook for subclasses to register callbacks after boot logic runs.
+     */
+    protected static booted (): void {
     }
 
     /**
@@ -468,6 +548,15 @@ export abstract class Model<
     }
 
     /**
+     * Save the model without dispatching lifecycle events.
+     *
+     * @returns
+     */
+    public async saveQuietly (): Promise<this> {
+        return await Model.withoutEvents(() => this.save())
+    }
+
+    /**
      * Delete the model from the database. 
      * If soft deletes are enabled, it will perform a soft delete by 
      * setting the deleted at column to the current date. 
@@ -502,6 +591,15 @@ export abstract class Model<
     }
 
     /**
+     * Delete the model without dispatching lifecycle events.
+     *
+     * @returns
+     */
+    public async deleteQuietly (): Promise<this> {
+        return await Model.withoutEvents(() => this.delete())
+    }
+
+    /**
      * Permanently delete the model from the database, regardless of whether soft 
      * deletes are enabled.
      * 
@@ -523,6 +621,15 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
 
         return this
+    }
+
+    /**
+     * Force delete the model without dispatching lifecycle events.
+     *
+     * @returns
+     */
+    public async forceDeleteQuietly (): Promise<this> {
+        return await Model.withoutEvents(() => this.forceDelete())
     }
 
     /**
@@ -550,6 +657,15 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'restored', this)
 
         return this
+    }
+
+    /**
+     * Restore the model without dispatching lifecycle events.
+     *
+     * @returns
+     */
+    public async restoreQuietly (): Promise<this> {
+        return await Model.withoutEvents(() => this.restore())
     }
 
     /**
@@ -621,6 +737,58 @@ export abstract class Model<
      */
     public toJSON (): Serializable {
         return this.toObject()
+    }
+
+    /**
+     * Determine if another model represents the same persisted record.
+     *
+     * @param model
+     * @returns
+     */
+    public is (model: unknown): boolean {
+        if (!(model instanceof Model))
+            return false
+
+        if (this.constructor !== model.constructor)
+            return false
+
+        const identifier = this.getAttribute('id')
+        const otherIdentifier = model.getAttribute('id')
+
+        if (identifier == null || otherIdentifier == null)
+            return false
+
+        return identifier === otherIdentifier
+    }
+
+    /**
+     * Determine if another model does not represent the same persisted record.
+     *
+     * @param model
+     * @returns
+     */
+    public isNot (model: unknown): boolean {
+        return !this.is(model)
+    }
+
+    /**
+     * Determine if another model is the same in-memory instance.
+     *
+     * @param model
+     * @returns
+     */
+    public isSame (model: unknown): boolean {
+        return this === model
+    }
+
+    /**
+     * Determine if another model is not the same in-memory instance.
+     *
+     * @param model
+     * @returns
+     */
+    public isNotSame (model: unknown): boolean {
+        return !this.isSame(model)
     }
 
     /**
@@ -864,6 +1032,97 @@ export abstract class Model<
     }
 
     /**
+     * Resolve lifecycle state for the provided model class.
+     *
+     * @param modelClass
+     * @returns
+     */
+    private static getLifecycleState (modelClass: typeof Model): ModelLifecycleState {
+        const existing = Model.lifecycleStates.get(modelClass)
+        if (existing)
+            return existing
+
+        const state: ModelLifecycleState = {
+            booted: false,
+            booting: false,
+            globalScopesSuppressed: 0,
+        }
+
+        Model.lifecycleStates.set(modelClass, state)
+
+        return state
+    }
+
+    /**
+     * Ensure the target model class has executed its boot lifecycle.
+     *
+     * @param modelClass
+     */
+    private static ensureModelBooted (modelClass: typeof Model): void {
+        const state = Model.getLifecycleState(modelClass)
+        if (state.booted || state.booting)
+            return
+
+        state.booting = true
+
+        try {
+            const boot = modelClass.boot
+            if (boot !== Model.boot)
+                boot.call(modelClass)
+
+            const booted = modelClass.booted
+            if (booted !== Model.booted)
+                booted.call(modelClass)
+
+            state.booted = true
+        } finally {
+            state.booting = false
+        }
+    }
+
+    /**
+     * Determine if global scopes are currently suppressed for the model class.
+     *
+     * @param modelClass
+     * @returns
+     */
+    private static areGlobalScopesSuppressed (modelClass: typeof Model): boolean {
+        return Model.getLifecycleState(modelClass).globalScopesSuppressed > 0
+    }
+
+    /**
+     * Resolve configured class-based event handlers for a lifecycle event.
+     *
+     * @param modelClass
+     * @param event
+     * @returns
+     */
+    private static resolveDispatchedEventListeners (
+        modelClass: typeof Model,
+        event: ModelEventName,
+    ): ModelEventListener<any>[] {
+        const configured = modelClass.dispatchesEvents[event]
+        if (!configured)
+            return []
+
+        const entries = Array.isArray(configured) ? configured : [configured]
+
+        return entries.map((entry) => {
+            const handler = typeof entry === 'function'
+                ? new (entry as ModelEventHandlerConstructor<any>)()
+                : entry
+
+            if (!handler || typeof handler.handle !== 'function') {
+                throw new ArkormException(`Invalid event handler configured for [${modelClass.name}.${event}].`)
+            }
+
+            return async (model: Model) => {
+                await handler.handle(model)
+            }
+        })
+    }
+
+    /**
      * Dispatches lifecycle events to registered listeners.
      *
      * @param modelClass
@@ -875,8 +1134,15 @@ export abstract class Model<
         event: ModelEventName,
         model: Model
     ): Promise<void> {
+        if (Model.eventsSuppressed > 0)
+            return
+
+        Model.ensureModelBooted(modelClass)
         modelClass.ensureOwnEventListeners()
-        const listeners = modelClass.eventListeners[event] || []
+        const listeners = [
+            ...Model.resolveDispatchedEventListeners(modelClass, event),
+            ...(modelClass.eventListeners[event] || []),
+        ]
 
         for (const listener of listeners)
             await listener(model)
