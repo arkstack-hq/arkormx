@@ -62,6 +62,7 @@ export default defineConfig(
                 }
             ],
             '@typescript-eslint/no-explicit-any': 'off',
+            '@typescript-eslint/no-unsafe-function-type': 'off',
             '@typescript-eslint/triple-slash-reference': ['error', {
                 'path': 'always'
             }]

@@ -80,6 +80,7 @@ describe('Model lifecycle and serialization', () => {
 
     it('dispatches lifecycle events', async () => {
         const events: string[] = []
+        User.on('retrieved', () => void events.push('retrieved'))
         User.on('saving', () => void events.push('saving'))
         User.on('creating', () => void events.push('creating'))
         User.on('created', () => void events.push('created'))
@@ -101,9 +102,24 @@ describe('Model lifecycle and serialization', () => {
 
         expect(events).toEqual([
             'saving', 'creating', 'created', 'saved',
+            'retrieved',
             'saving', 'updating', 'updated', 'saved',
             'deleting', 'deleted',
         ])
+    })
+
+    it('supports retrieved listeners for query hydration', async () => {
+        const events: number[] = []
+        User.retrieved(model => {
+            events.push(Number(model.getAttribute('id')))
+        })
+
+        const allUsers = await User.query().orderBy({ id: 'asc' }).get()
+        const singleUser = await User.query().find(1)
+
+        expect(allUsers.all().length).toBe(2)
+        expect(singleUser).not.toBeNull()
+        expect(events).toEqual([1, 2, 1])
     })
 
     it('supports class-based event listeners via dispatchesEvents', async () => {
@@ -156,7 +172,7 @@ describe('Model lifecycle and serialization', () => {
 
             protected static override booted (): void {
                 bootedCalls += 1
-                this.event('created', model => {
+                this.created(model => {
                     events.push(`created:${String(model.getAttribute('email'))}`)
                 })
             }

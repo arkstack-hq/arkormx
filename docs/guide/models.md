@@ -56,9 +56,50 @@ await Article.onlyTrashed().get();
 
 ## Local scopes
 
-Define `scopeXxx` methods and call with `Model.scope('xxx', ...)`.
+Local scopes let you package a reusable query fragment directly on the model.
+They are useful when a filter is model-specific, frequently reused, and easier
+to understand as a named intent than as repeated `where(...)` clauses.
+
+Define `scopeXxx` methods on the model prototype and call them with
+`Model.scope('xxx', ...)` or from an existing query builder via `.scope('xxx', ...)`.
+
+```ts
+import { Model, QueryBuilder } from 'arkormx';
+
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
+  public scopeActive(query: QueryBuilder<User>) {
+    return query.whereKey('isActive', 1);
+  }
+
+  public scopeWithEmailDomain(query: QueryBuilder<User>, domain: string) {
+    return query.where({ email: { endsWith: `@${domain}` } });
+  }
+}
+```
+
+Usage:
+
+```ts
+const activeUsers = await User.scope('active').get();
+
+const companyUsers = await User.query()
+  .scope('active')
+  .scope('withEmailDomain', 'example.com')
+  .get();
+```
+
+Use local scopes when the logic belongs to the model itself. If the behavior
+should apply automatically to every query, prefer a global scope instead.
 
 ## Global scopes
+
+Global scopes are query constraints that Arkorm applies automatically every time
+you call `Model.query()` for a specific model class. They are a good fit for
+cross-cutting filters like active records, tenant isolation, or default sorting.
+
+You can register them manually:
 
 ```ts
 User.addGlobalScope('active', (query) => {
@@ -66,7 +107,52 @@ User.addGlobalScope('active', (query) => {
 });
 ```
 
+Then every `User.query()` call starts from the scoped query:
+
+```ts
+const activeUsers = await User.query().get();
+```
+
+The cleaner pattern is to register global scopes in `boot()` so they are set up
+once for the model class when Arkorm first touches it:
+
+```ts
+import { Model } from 'arkormx';
+
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
+  protected static override boot(): void {
+    this.addGlobalScope('active', (query) => {
+      query.whereKey('isActive', 1);
+    });
+  }
+}
+```
+
+If you need the unscoped dataset for a specific flow, use
+`Model.withoutGlobalScopes(...)`:
+
+```ts
+const allUsers = await User.withoutGlobalScopes(async () => {
+  return await User.query().get();
+});
+```
+
+Use global scopes carefully. They improve consistency, but they also change the
+default shape of every query for the model, so they should represent rules that
+are broadly true rather than ad hoc controller filters.
+
 ## Model events
+
+Model events let you hook into the model lifecycle so you can normalize data,
+trigger side effects, or centralize behavior close to the model instead of
+duplicating it across services and controllers.
+
+Arkorm dispatches events when a model is retrieved from storage and around the
+main write operations.
+
+### Registering listeners directly
 
 ```ts
 User.on('creating', async (model) => {
@@ -78,4 +164,90 @@ User.on('created', async (model) => {
 });
 ```
 
-Available events: `saving`, `saved`, `creating`, `created`, `updating`, `updated`, `deleting`, `deleted`, `restoring`, `restored`, `forceDeleting`, `forceDeleted`.
+### Fluent event registration helpers
+
+Every lifecycle event also has a convenience registration method, which reads
+better inside model boot hooks:
+
+```ts
+User.created(async (model) => {
+  // react after insert
+});
+
+User.retrieved((model) => {
+  // inspect hydrated models loaded from the database
+});
+```
+
+### Registering events in `booted()`
+
+`booted()` is a good place to register model-specific listeners once per class:
+
+```ts
+import { Model } from 'arkormx';
+
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
+  protected static override booted(): void {
+    this.creating((model) => {
+      model.setAttribute(
+        'email',
+        String(model.getAttribute('email')).toLowerCase(),
+      );
+    });
+
+    this.created((model) => {
+      console.log('created user', model.getAttribute('id'));
+    });
+
+    this.retrieved((model) => {
+      console.log('loaded user', model.getAttribute('id'));
+    });
+  }
+}
+```
+
+### Class-based dispatched events
+
+If you prefer dedicated listener classes, use `dispatchesEvents`:
+
+```ts
+class SendWelcomeEmail {
+  async handle(model: User) {
+    await queueWelcomeEmail(model.getAttribute('email'));
+  }
+}
+
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
+  protected static override dispatchesEvents = {
+    created: SendWelcomeEmail,
+  };
+}
+```
+
+### Quiet operations
+
+When you need to persist a model without dispatching lifecycle events, use the
+quiet helpers:
+
+```ts
+await user.saveQuietly();
+await user.deleteQuietly();
+await article.restoreQuietly();
+await article.forceDeleteQuietly();
+
+await User.withoutEvents(async () => {
+  await user.save();
+});
+```
+
+### Available events
+
+Available events: `retrieved`, `saving`, `saved`, `creating`, `created`, `updating`, `updated`, `deleting`, `deleted`, `restoring`, `restored`, `forceDeleting`, `forceDeleted`.
+
+`retrieved` fires only for models hydrated from query results such as `get()`,
+`first()`, and `find()`. It does not fire for `new Model(...)` or during create
+operations before the model is queried again.

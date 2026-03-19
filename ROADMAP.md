@@ -21,7 +21,7 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - [x] Local scopes
 - [x] Soft deletes (`withTrashed`, `onlyTrashed`, `restore`, `forceDelete`)
 - [x] Global scopes
-- [x] Model lifecycle events (`creating`, `created`, `updating`, `updated`, `deleting`, `deleted`, etc.)
+- [x] Model lifecycle events (`retrieved`, `creating`, `created`, `updating`, `updated`, `deleting`, `deleted`, etc.)
 
 ### Relationship Layer
 
@@ -49,7 +49,7 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 
 - [x] Global scopes
 - [ ] Transaction support
-- [x] Event hooks (creating, updating, deleting, etc.)
+- [x] Event hooks (`retrieved`, `creating`, `updating`, `deleting`, etc.)
 - [ ] Validation integration
 - [x] CLI tooling for model/resource generation/runnging migrations and seeders
 - [ ] Improved error handling and messages

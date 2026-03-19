@@ -912,7 +912,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const normalizedRows = this.randomOrderEnabled
             ? this.shuffleRows(rows as unknown[])
             : rows
-        const models = this.model.hydrateMany(normalizedRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
+        const models = await this.model.hydrateManyRetrieved(normalizedRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateManyRetrieved']>[0])
 
         let filteredModels = models
         if (this.hasRelationFilters()) {
@@ -968,7 +968,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             if (!row)
                 return null
 
-            const model = this.model.hydrate(row as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+            const model = await this.model.hydrateRetrieved(row as Parameters<ModelStatic<TModel, TDelegate>['hydrateRetrieved']>[0])
             const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
             await loadable.load(this.eagerLoads)
 
@@ -979,7 +979,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (!row)
             return null
 
-        const model = this.model.hydrate(row as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+        const model = await this.model.hydrateRetrieved(row as Parameters<ModelStatic<TModel, TDelegate>['hydrateRetrieved']>[0])
         const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
         await loadable.load(this.eagerLoads)
 

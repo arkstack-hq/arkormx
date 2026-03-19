@@ -7,6 +7,8 @@ export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = Pris
     query: () => QueryBuilder<TModel, TDelegate>
     hydrate: (attributes: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>) => TModel
     hydrateMany: (attributes: (DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>)[]) => TModel[]
+    hydrateRetrieved: (attributes: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>) => Promise<TModel>
+    hydrateManyRetrieved: (attributes: (DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>)[]) => Promise<TModel[]>
     getDelegate: (delegate?: string) => TDelegate
     getSoftDeleteConfig: () => SoftDeleteConfig
 }

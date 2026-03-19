@@ -26,6 +26,7 @@ type RelatedModelClass<TInstance = unknown> =
 
 type GlobalScope = (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void
 type ModelEventName =
+    | 'retrieved'
     | 'saving'
     | 'saved'
     | 'creating'
@@ -217,6 +218,58 @@ export abstract class Model<
         listener: ModelEventListener<TModel>
     ): void {
         this.on(event, listener)
+    }
+
+    public static retrieved<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('retrieved', listener)
+    }
+
+    public static saving<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('saving', listener)
+    }
+
+    public static saved<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('saved', listener)
+    }
+
+    public static creating<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('creating', listener)
+    }
+
+    public static created<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('created', listener)
+    }
+
+    public static updating<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('updating', listener)
+    }
+
+    public static updated<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('updated', listener)
+    }
+
+    public static deleting<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('deleting', listener)
+    }
+
+    public static deleted<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('deleted', listener)
+    }
+
+    public static restoring<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('restoring', listener)
+    }
+
+    public static restored<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('restored', listener)
+    }
+
+    public static forceDeleting<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('forceDeleting', listener)
+    }
+
+    public static forceDeleted<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
+        this.event('forceDeleted', listener)
     }
 
     /**
@@ -434,6 +487,44 @@ export abstract class Model<
         attributes: Record<string, unknown>[]
     ): TModel[] {
         return attributes.map(attribute => new this(attribute))
+    }
+
+    /**
+     * Hydrate a model instance and dispatch the retrieved lifecycle event.
+     *
+     * @param this
+     * @param attributes
+     * @returns
+     */
+    public static async hydrateRetrieved<TModel> (
+        this: ModelStatic<TModel, PrismaDelegateLike>,
+        attributes: Record<string, unknown>
+    ): Promise<TModel> {
+        const model = this.hydrate(attributes)
+
+        await Model.dispatchEvent(this as unknown as typeof Model, 'retrieved', model as unknown as Model)
+
+        return model
+    }
+
+    /**
+     * Hydrate multiple model instances and dispatch the retrieved lifecycle event for each.
+     *
+     * @param this
+     * @param attributes
+     * @returns
+     */
+    public static async hydrateManyRetrieved<TModel> (
+        this: ModelStatic<TModel, PrismaDelegateLike>,
+        attributes: Record<string, unknown>[]
+    ): Promise<TModel[]> {
+        const models = this.hydrateMany(attributes)
+
+        await Promise.all(models.map(async (model: TModel) => {
+            await Model.dispatchEvent(this as unknown as typeof Model, 'retrieved', model as unknown as Model)
+        }))
+
+        return models
     }
 
     /**

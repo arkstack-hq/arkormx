@@ -1,5 +1,5 @@
+import { DbUser, acquirePostgresTestLock, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { acquirePostgresTestLock, DbUser, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
 
 describe('PostgreSQL model lifecycle', () => {
     beforeEach(async () => {
@@ -64,6 +64,7 @@ describe('PostgreSQL model lifecycle', () => {
 
     it('dispatches lifecycle events with real DB operations', async () => {
         const events: string[] = []
+        DbUser.retrieved(() => void events.push('retrieved'))
         DbUser.on('saving', () => void events.push('saving'))
         DbUser.on('creating', () => void events.push('creating'))
         DbUser.on('created', () => void events.push('created'))
@@ -76,12 +77,16 @@ describe('PostgreSQL model lifecycle', () => {
         const created = new DbUser({ name: 'Mia', email: 'mia-events@example.com', isActive: 1 })
         await created.save()
 
+        const fetched = await DbUser.query().find(1)
+        expect(fetched).not.toBeNull()
+
         created.setAttribute('name', 'Mia Events Updated')
         await created.save()
         await created.delete()
 
         expect(events).toEqual([
             'saving', 'creating', 'created', 'saved',
+            'retrieved',
             'saving', 'updating', 'updated', 'saved',
             'deleting', 'deleted',
         ])
