@@ -59,6 +59,59 @@ describe('Model lifecycle and serialization', () => {
         expect((user as User).getAttribute('name')).toBe('Jane')
     })
 
+    it('tracks original, dirty, clean, and changed attributes', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const model = user as User
+        expect(model.isClean()).toBe(true)
+        expect(model.isDirty()).toBe(false)
+        expect(model.wasChanged()).toBe(false)
+        expect(model.getOriginal('name')).toBe('Jane')
+
+        model.setAttribute('name', '  Jane Dirty  ')
+
+        expect(model.isDirty()).toBe(true)
+        expect(model.isDirty('name')).toBe(true)
+        expect(model.isClean(['name'])).toBe(false)
+        expect(model.getOriginal('name')).toBe('Jane')
+        expect(model.wasChanged('name')).toBe(false)
+
+        await model.save()
+
+        expect(model.isClean()).toBe(true)
+        expect(model.isDirty()).toBe(false)
+        expect(model.wasChanged()).toBe(true)
+        expect(model.wasChanged('name')).toBe(true)
+        expect(model.getOriginal('name')).toBe('Jane Dirty')
+    })
+
+    it('marks new models as dirty until they are persisted', async () => {
+        const user = new User({ name: 'Unsaved', email: 'unsaved@example.com', isActive: 1 })
+
+        expect(user.isDirty()).toBe(true)
+        expect(user.isClean()).toBe(false)
+        expect(user.getOriginal()).toEqual({})
+        expect(user.wasChanged()).toBe(false)
+
+        await user.save()
+
+        expect(user.isClean()).toBe(true)
+        expect(user.wasChanged()).toBe(true)
+        expect(user.getOriginal('email')).toBe('unsaved@example.com')
+    })
+
+    it('does not mark loaded relations as dirty attributes', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const model = user as User
+        await model.load('posts')
+
+        expect(model.isClean()).toBe(true)
+        expect(model.isDirty()).toBe(false)
+    })
+
     it('throws when deleting or force deleting without an id', async () => {
         const user = new User({ name: 'No Id' })
 
@@ -283,6 +336,8 @@ describe('Model lifecycle and serialization', () => {
 
         const serialized = model.toObject()
         expect(serialized.displayName).toBe('ATTRIBUTE SETTER')
+        expect(model.isDirty(['name', 'email'])).toBe(true)
+        expect(model.getOriginal('name')).toBe('Jane')
     })
 
     it('prefers Attribute object mutators over legacy getXxxAttribute/setXxxAttribute methods', async () => {

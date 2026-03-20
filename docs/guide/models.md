@@ -29,6 +29,45 @@ user.name = 'Jane';
 console.log(user.email);
 ```
 
+## Model state
+
+Arkormˣ keeps track of a model's original persisted attributes and the changes
+made since it was loaded or last saved. This is useful when you need to decide
+whether a model actually changed before performing expensive work.
+
+Available helpers:
+
+- `getOriginal(key?)`: read the original persisted value for one attribute or all original attributes.
+- `isDirty(keyOrKeys?)`: check whether the model currently has unsaved changes.
+- `isClean(keyOrKeys?)`: inverse of `isDirty(...)`.
+- `wasChanged(keyOrKeys?)`: check whether the last successful persistence operation changed those attributes.
+
+```ts
+const user = await User.query().firstOrFail();
+
+user.isClean(); // true
+user.getOriginal('name'); // original persisted value
+
+user.setAttribute('name', 'Jane Updated');
+
+user.isDirty(); // true
+user.isDirty('name'); // true
+user.wasChanged('name'); // false, nothing has been persisted yet
+
+await user.save();
+
+user.isClean(); // true
+user.wasChanged('name'); // true
+user.getOriginal('name'); // 'Jane Updated'
+```
+
+New models created with `new Model(...)` start dirty because they do not have a
+persisted original snapshot yet. Models hydrated through `query()` start clean.
+
+Relation loading does not mark a model dirty. Calling `load('posts')` attaches
+related results to the instance, but Arkorm keeps dirty tracking focused on the
+model's own persisted attributes.
+
 ## Visibility and appends
 
 Use `hidden`, `visible`, and `appends` in model classes to shape serialization via `toObject()`.

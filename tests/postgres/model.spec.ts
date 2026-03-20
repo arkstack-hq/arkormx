@@ -1,18 +1,24 @@
 import { DbUser, acquirePostgresTestLock, releasePostgresTestLock, seedPostgresFixtures } from './helpers/fixtures'
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 
 describe('PostgreSQL model lifecycle', () => {
-    beforeEach(async () => {
+    beforeAll(async () => {
         await acquirePostgresTestLock()
+    })
+
+    afterAll(async () => {
+        await releasePostgresTestLock()
+    })
+
+    beforeEach(async () => {
         await seedPostgresFixtures()
         DbUser.clearGlobalScopes()
         DbUser.clearEventListeners()
     })
 
-    afterEach(async () => {
+    afterEach(() => {
         DbUser.clearGlobalScopes()
         DbUser.clearEventListeners()
-        await releasePostgresTestLock()
     })
 
     it('creates, updates, saves, and deletes rows with real DB data', async () => {
@@ -44,6 +50,39 @@ describe('PostgreSQL model lifecycle', () => {
         expect(object.id).toBeDefined()
         expect(object.email).toBe('jane@example.com')
         expect(json).toEqual(object)
+    })
+
+    it('tracks original, dirty, clean, and changed attributes with real DB data', async () => {
+        const user = await DbUser.query().whereKey('email', 'jane@example.com').firstOrFail()
+
+        expect(user.isClean()).toBe(true)
+        expect(user.wasChanged()).toBe(false)
+        expect(user.getOriginal('name')).toBe('Jane')
+
+        user.setAttribute('name', 'Jane Dirty')
+
+        expect(user.isDirty()).toBe(true)
+        expect(user.isDirty('name')).toBe(true)
+        expect(user.isClean('name')).toBe(false)
+        expect(user.wasChanged('name')).toBe(false)
+
+        await user.save()
+
+        expect(user.isClean()).toBe(true)
+        expect(user.wasChanged()).toBe(true)
+        expect(user.wasChanged('name')).toBe(true)
+        expect(user.getOriginal('name')).toBe('Jane Dirty')
+    })
+
+    it('does not mark loaded relations as dirty with real DB data', async () => {
+        const user = await DbUser.query().find(1)
+        expect(user).not.toBeNull()
+
+        const model = user as DbUser
+        await model.load(['posts', 'profile'])
+
+        expect(model.isClean()).toBe(true)
+        expect(model.isDirty()).toBe(false)
     })
 
     it('throws when delete/forceDelete/restore are called without id', async () => {

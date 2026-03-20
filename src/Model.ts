@@ -67,9 +67,15 @@ export abstract class Model<
     protected appends: string[] = []
 
     protected readonly attributes: Record<string, unknown>
+    protected original: Record<string, unknown>
+    protected changes: Record<string, unknown>
+    protected readonly touchedAttributes: Set<string>
 
     public constructor(attributes: Record<string, unknown> = {}) {
         this.attributes = {}
+        this.original = {}
+        this.changes = {}
+        this.touchedAttributes = new Set()
         this.fill(attributes)
 
         return new Proxy(this, {
@@ -489,7 +495,11 @@ export abstract class Model<
         this: new (attributes: Record<string, unknown>) => TModel,
         attributes: Record<string, unknown>
     ): TModel {
-        return new this(attributes)
+        const model = new this(attributes)
+        ; (model as unknown as Model).syncOriginal()
+        ; (model as unknown as Model).syncChanges({})
+
+        return model
     }
 
     /**
@@ -624,6 +634,7 @@ export abstract class Model<
             resolved = resolveCast(cast).set(resolved)
 
         this.attributes[key] = resolved
+        this.touchedAttributes.add(key)
 
         return this
     }
@@ -638,6 +649,7 @@ export abstract class Model<
     public async save (): Promise<this> {
         const identifier = this.getAttribute('id') as string | number | undefined
         const payload = this.getRawAttributes()
+        const previousOriginal = this.getOriginal()
 
         const constructor = this.constructor as unknown as ModelStatic<this>
         if (identifier == null) {
@@ -646,6 +658,8 @@ export abstract class Model<
 
             const model = await constructor.query().create(payload)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+            this.syncChanges(previousOriginal)
+            this.syncOriginal()
 
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'created', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
@@ -658,6 +672,8 @@ export abstract class Model<
 
         const model = await constructor.query().where({ id: identifier }).update(payload)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+        this.syncChanges(previousOriginal)
+        this.syncOriginal()
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updated', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
@@ -687,6 +703,7 @@ export abstract class Model<
         if (identifier == null)
             throw new ArkormException('Cannot delete a model without an id.')
 
+        const previousOriginal = this.getOriginal()
         const constructor = this.constructor as unknown as ModelStatic<this>
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
         const softDeleteConfig = constructor.getSoftDeleteConfig()
@@ -695,6 +712,8 @@ export abstract class Model<
                 .where({ id: identifier })
                 .update({ [softDeleteConfig.column]: new Date() })
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+            this.syncChanges(previousOriginal)
+            this.syncOriginal()
 
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
 
@@ -703,6 +722,8 @@ export abstract class Model<
 
         const deleted = await constructor.query().where({ id: identifier }).delete()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.syncChanges(previousOriginal)
+    this.syncOriginal()
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
 
         return this
@@ -728,12 +749,15 @@ export abstract class Model<
         if (identifier == null)
             throw new ArkormException('Cannot force delete a model without an id.')
 
+        const previousOriginal = this.getOriginal()
         const constructor = this.constructor as unknown as ModelStatic<this>
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleting', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
 
         const deleted = await constructor.query().withTrashed().where({ id: identifier }).delete()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+        this.syncChanges(previousOriginal)
+        this.syncOriginal()
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
@@ -765,12 +789,15 @@ export abstract class Model<
         if (!softDeleteConfig.enabled)
             return this
 
+        const previousOriginal = this.getOriginal()
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'restoring', this)
 
         const model = await constructor.query().withTrashed()
             .where({ id: identifier })
             .update({ [softDeleteConfig.column]: null })
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+        this.syncChanges(previousOriginal)
+        this.syncOriginal()
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'restored', this)
 
@@ -818,6 +845,61 @@ export abstract class Model<
      */
     public getRawAttributes (): Partial<TAttributes> {
         return { ...this.attributes } as Partial<TAttributes>
+    }
+
+    /**
+     * Get the model's original persisted attributes.
+     *
+     * @returns
+     */
+    public getOriginal (): Partial<TAttributes>
+    /**
+     * @param key The attribute key to retrieve the original value for.
+     */
+    public getOriginal<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey] | undefined
+    public getOriginal (key?: string): unknown {
+        if (typeof key === 'string')
+            return Model.cloneAttributeValue(this.original[key])
+
+        return Object.entries(this.original).reduce<Record<string, unknown>>((all, [originalKey, value]) => {
+            all[originalKey] = Model.cloneAttributeValue(value)
+
+            return all
+        }, {}) as Partial<TAttributes>
+    }
+
+    /**
+     * Determine whether the model has unsaved attribute changes.
+     *
+     * @param keys
+     * @returns
+     */
+    public isDirty (keys?: string | string[]): boolean {
+        return Object.keys(this.getDirtyAttributes(keys)).length > 0
+    }
+
+    /**
+     * Determine whether the model has no unsaved attribute changes.
+     *
+     * @param keys
+     * @returns
+     */
+    public isClean (keys?: string | string[]): boolean {
+        return !this.isDirty(keys)
+    }
+
+    /**
+     * Determine whether the model changed during the last successful persistence operation.
+     *
+     * @param keys
+     * @returns
+     */
+    public wasChanged (keys?: string | string[]): boolean {
+        const keyList = this.normalizeAttributeKeys(keys)
+        if (keyList.length === 0)
+            return Object.keys(this.changes).length > 0
+
+        return keyList.some(key => Object.prototype.hasOwnProperty.call(this.changes, key))
     }
 
     /**
@@ -1091,6 +1173,50 @@ export abstract class Model<
     }
 
     /**
+     * Build a map of dirty attributes, optionally limited to specific keys.
+     *
+     * @param keys
+     * @returns
+     */
+    private getDirtyAttributes (keys?: string | string[]): Record<string, unknown> {
+        const requestedKeys = this.normalizeAttributeKeys(keys)
+        const trackedKeys = requestedKeys.length > 0
+            ? requestedKeys
+            : Array.from(new Set([
+                ...Object.keys(this.original),
+                ...this.touchedAttributes,
+            ]))
+
+        return trackedKeys.reduce<Record<string, unknown>>((dirty, key) => {
+            const currentValue = this.attributes[key]
+            const originalValue = this.original[key]
+            const hasCurrent = Object.prototype.hasOwnProperty.call(this.attributes, key)
+            const hasOriginal = Object.prototype.hasOwnProperty.call(this.original, key)
+
+            if (!hasCurrent && !hasOriginal)
+                return dirty
+
+            if (hasCurrent !== hasOriginal || !Model.areAttributeValuesEqual(currentValue, originalValue))
+                dirty[key] = Model.cloneAttributeValue(currentValue)
+
+            return dirty
+        }, {})
+    }
+
+    /**
+     * Normalize a key or key list for dirty/change lookups.
+     *
+     * @param keys
+     * @returns
+     */
+    private normalizeAttributeKeys (keys?: string | string[]): string[] {
+        if (typeof keys === 'undefined')
+            return []
+
+        return Array.isArray(keys) ? keys : [keys]
+    }
+
+    /**
      * Resolve an Attribute object mutator method for a given key, if it exists.
      *
      * @param key
@@ -1147,6 +1273,94 @@ export abstract class Model<
     private static ensureOwnEventListeners (): void {
         if (!Object.prototype.hasOwnProperty.call(this, 'eventListeners'))
             this.eventListeners = { ...(this.eventListeners || {}) }
+    }
+
+    /**
+     * Clone an attribute value to keep snapshot state isolated from live mutations.
+     *
+     * @param value
+     * @returns
+     */
+    private static cloneAttributeValue (value: unknown): unknown {
+        if (value instanceof Date)
+            return new Date(value.getTime())
+
+        if (Array.isArray(value))
+            return value.map(item => Model.cloneAttributeValue(item))
+
+        if (value && typeof value === 'object') {
+            return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((all, [key, nestedValue]) => {
+                all[key] = Model.cloneAttributeValue(nestedValue)
+
+                return all
+            }, {})
+        }
+
+        return value
+    }
+
+    /**
+     * Compare attribute values for dirty/change detection.
+     *
+     * @param left
+     * @param right
+     * @returns
+     */
+    private static areAttributeValuesEqual (left: unknown, right: unknown): boolean {
+        if (left === right)
+            return true
+
+        if (left instanceof Date && right instanceof Date)
+            return left.getTime() === right.getTime()
+
+        if (Array.isArray(left) && Array.isArray(right)) {
+            if (left.length !== right.length)
+                return false
+
+            return left.every((value, index) => Model.areAttributeValuesEqual(value, right[index]))
+        }
+
+        if (left && right && typeof left === 'object' && typeof right === 'object') {
+            const leftEntries = Object.entries(left as Record<string, unknown>)
+            const rightEntries = Object.entries(right as Record<string, unknown>)
+            if (leftEntries.length !== rightEntries.length)
+                return false
+
+            return leftEntries.every(([key, value]) => {
+                return Object.prototype.hasOwnProperty.call(right as Record<string, unknown>, key)
+                    && Model.areAttributeValuesEqual(value, (right as Record<string, unknown>)[key])
+            })
+        }
+
+        return false
+    }
+
+    /**
+     * Sync the original snapshot to the model's current raw attributes.
+     */
+    private syncOriginal (): void {
+        this.original = Object.entries(this.attributes).reduce<Record<string, unknown>>((all, [key, value]) => {
+            all[key] = Model.cloneAttributeValue(value)
+
+            return all
+        }, {})
+        this.touchedAttributes.clear()
+    }
+
+    /**
+     * Sync the last-changed snapshot from a previous original state.
+     *
+     * @param previousOriginal
+     */
+    private syncChanges (previousOriginal: Record<string, unknown>): void {
+        this.changes = Object.entries(this.getDirtyAttributes()).reduce<Record<string, unknown>>((all, [key, value]) => {
+            if (!Object.prototype.hasOwnProperty.call(previousOriginal, key)
+                || !Model.areAttributeValuesEqual(value, previousOriginal[key])) {
+                all[key] = Model.cloneAttributeValue(value)
+            }
+
+            return all
+        }, {})
     }
 
     /**
