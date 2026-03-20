@@ -149,6 +149,57 @@ table
   .as('owner');
 ```
 
+## Enum columns
+
+Use `table.enum(...)` when a field should map to a Prisma enum type.
+
+```ts
+schema.createTable('orders', (table) => {
+  table.id();
+  table
+    .enum('status', ['PENDING', 'PAID', 'CANCELLED'])
+    .enumName('OrderStatus')
+    .default('PENDING');
+});
+```
+
+This generates both the model field and the Prisma enum block:
+
+```prisma
+enum OrderStatus {
+  PENDING
+  PAID
+  CANCELLED
+}
+
+model Order {
+  id     Int         @id @default(autoincrement())
+  status OrderStatus @default(PENDING)
+}
+```
+
+Notes:
+
+- `enumName` is required so Arkorm can emit a stable Prisma enum type name.
+- Enum defaults should be provided as enum member names like `'PENDING'`, not quoted Prisma expressions.
+- Enum defaults must match one of the enum members. Arkorm validates this before writing `schema.prisma`.
+- Enum member names must be valid Prisma identifiers such as `PENDING_REVIEW`; spaces and other invalid characters are rejected.
+- Enum member lists cannot contain duplicates.
+- Reusing the same `enumName` across migrations is supported as long as the enum values match exactly.
+
+You can also reuse an enum that already exists in `schema.prisma` by passing the
+enum name instead of redefining its values:
+
+```ts
+schema.alterTable('invoices', (table) => {
+  table.enum('status', 'OrderStatus').default('PAID');
+});
+```
+
+When you reuse an enum by name, Arkorm expects the enum block to already exist
+in the Prisma schema. If it cannot find that enum, the migration fails.
+Configured defaults are validated against the reused enum's existing members.
+
 ## Production runtime notes
 
 When migrations/seeders are authored in TypeScript, production runtime should execute compiled JavaScript, to ensure that everything works as expected, consider the following:

@@ -10,6 +10,8 @@ import { spawnSync } from 'node:child_process'
 import { str } from '@h3ravel/support'
 
 export const PRISMA_MODEL_REGEX = /model\s+(\w+)\s*\{[\s\S]*?\n\}/g
+export const PRISMA_ENUM_REGEX = /enum\s+(\w+)\s*\{[\s\S]*?\n\}/g
+export const PRISMA_ENUM_MEMBER_REGEX = /^[A-Za-z][A-Za-z0-9_]*$/
 
 /**
  * Convert a table name to a PascalCase model name, with basic singularization.
@@ -52,6 +54,8 @@ export const escapeRegex = (value: string): string => value.replace(/[.*+?^${}()
 export const resolvePrismaType = (column: SchemaColumn): string => {
     if (column.type === 'id')
         return 'Int'
+    if (column.type === 'enum')
+        return resolveEnumName(column)
     if (column.type === 'uuid')
         return 'String'
     if (column.type === 'string' || column.type === 'text')
@@ -68,6 +72,16 @@ export const resolvePrismaType = (column: SchemaColumn): string => {
         return 'Json'
 
     return 'DateTime'
+}
+
+export const resolveEnumName = (column: SchemaColumn): string => {
+    if (column.type !== 'enum')
+        throw new ArkormException(`Column [${column.name}] is not an enum column.`)
+
+    if (column.enumName && column.enumName.trim().length > 0)
+        return column.enumName.trim()
+
+    throw new ArkormException(`Enum column [${column.name}] must define an enum name.`)
 }
 
 /** 
@@ -91,6 +105,87 @@ export const formatDefaultValue = (value: unknown): string | undefined => {
         return `@default(${value ? 'true' : 'false'})`
 
     return undefined
+}
+
+/**
+ * Format a default value for an enum column as a Prisma @default attribute, validating that it is a non-empty string.
+ * 
+ * @param value 
+ * @returns 
+ */
+export const formatEnumDefaultValue = (value: unknown): string | undefined => {
+    if (value == null)
+        return undefined
+
+    if (typeof value !== 'string' || value.trim().length === 0)
+        throw new ArkormException('Enum default values must be provided as non-empty strings.')
+
+    return `@default(${value.trim()})`
+}
+
+/**
+ * Normalize an enum value by ensuring it is a non-empty string and trimming whitespace.
+ * 
+ * @param value 
+ * @returns 
+ */
+const normalizeEnumValue = (value: unknown): string => {
+    if (typeof value !== 'string' || value.trim().length === 0)
+        throw new ArkormException('Enum values must be provided as non-empty strings.')
+
+    const normalized = value.trim()
+    if (!PRISMA_ENUM_MEMBER_REGEX.test(normalized))
+        throw new ArkormException(`Enum value [${normalized}] is not a valid Prisma enum member name.`)
+
+    return normalized
+}
+
+/**
+ * Extract the enum values from a Prisma enum block string.
+ * 
+ * @param block 
+ * @returns 
+ */
+const extractEnumBlockValues = (block: string): string[] => {
+    return block
+        .split('\n')
+        .slice(1, -1)
+        .map(line => line.trim())
+        .filter(Boolean)
+}
+
+const validateEnumValues = (column: SchemaColumn, enumName: string, enumValues: string[]): string[] => {
+    const normalizedValues = enumValues.map(normalizeEnumValue)
+    const seen = new Set<string>()
+
+    for (const value of normalizedValues) {
+        if (seen.has(value)) {
+            throw new ArkormException(`Prisma enum [${enumName}] for column [${column.name}] contains duplicate value [${value}].`)
+        }
+
+        seen.add(value)
+    }
+
+    return normalizedValues
+}
+
+/**
+ * Validate that a default value for an enum column is included in the defined enum values.
+ * 
+ * @param column 
+ * @param enumName 
+ * @param enumValues 
+ * @returns 
+ */
+const validateEnumDefaultValue = (column: SchemaColumn, enumName: string, enumValues: string[]): void => {
+    if (column.default == null)
+        return
+
+    const normalizedDefault = normalizeEnumValue(column.default)
+    if (enumValues.includes(normalizedDefault))
+        return
+
+    throw new ArkormException(`Enum default value [${normalizedDefault}] is not defined in Prisma enum [${enumName}] for column [${column.name}].`)
 }
 
 /**
@@ -124,12 +219,111 @@ export const buildFieldLine = (column: SchemaColumn): string => {
         ? ` @map("${column.map.replace(/"/g, '\\"')}")`
         : ''
     const updatedAt = column.updatedAt ? ' @updatedAt' : ''
-    const defaultValue = formatDefaultValue(column.default)
+    const defaultValue = column.type === 'enum'
+        ? formatEnumDefaultValue(column.default)
+        : formatDefaultValue(column.default)
         ?? (column.type === 'uuid' && column.primary ? '@default(uuid())' : undefined)
     const defaultSuffix = defaultValue ? ` ${defaultValue}` : ''
 
 
     return `  ${column.name} ${scalar}${nullable}${primary}${unique}${defaultSuffix}${updatedAt}${mapped}`
+}
+
+/**
+ * Build a Prisma enum block string based on an enum name and its values, validating that 
+ * at least one value is provided.
+ * 
+ * @param enumName      The name of the enum to create.
+ * @param values        The array of values for the enum.
+ * @returns             The Prisma enum block string.
+ */
+export const buildEnumBlock = (enumName: string, values: string[]): string => {
+    if (values.length === 0)
+        throw new ArkormException(`Enum [${enumName}] must define at least one value.`)
+
+    return `enum ${enumName} {\n${values.map(value => `  ${value}`).join('\n')}\n}`
+}
+
+/**
+ * Find the Prisma enum block in a schema string that corresponds to a given enum 
+ * name, returning its details if found.
+ * 
+ * @param schema        The Prisma schema string to search for the enum block.
+ * @param enumName      The name of the enum to find in the schema.
+ * @returns 
+ */
+export const findEnumBlock = (schema: string, enumName: string): {
+    enumName: string
+    block: string
+    start: number
+    end: number
+} | null => {
+    const candidates = [...schema.matchAll(PRISMA_ENUM_REGEX)]
+
+    for (const match of candidates) {
+        const block = match[0]
+        const matchedEnumName = match[1]
+        const start = match.index ?? 0
+        const end = start + block.length
+
+        if (matchedEnumName === enumName)
+            return { enumName: matchedEnumName, block, start, end }
+    }
+
+    return null
+}
+
+/**
+ * Ensure that Prisma enum blocks exist in the schema for any enum columns defined in a 
+ * create or alter table operation, adding them if necessary and validating against 
+ * existing blocks.
+ * 
+ * @param schema    The current Prisma schema string to check and modify.
+ * @param columns   The array of schema column definitions to check for enum types and ensure corresponding blocks exist for.
+ * @returns 
+ */
+const ensureEnumBlocks = (schema: string, columns: SchemaColumn[]): string => {
+    let nextSchema = schema
+
+    for (const column of columns) {
+        if (column.type !== 'enum')
+            continue
+
+        const enumName = resolveEnumName(column)
+        const enumValues = column.enumValues ?? []
+        const existing = findEnumBlock(nextSchema, enumName)
+
+        if (existing) {
+            const existingValues = validateEnumValues(column, enumName, extractEnumBlockValues(existing.block))
+
+            if (enumValues.length === 0) {
+                validateEnumDefaultValue(column, enumName, existingValues)
+                continue
+            }
+
+            const normalizedEnumValues = validateEnumValues(column, enumName, enumValues)
+
+            if (existingValues.join('|') !== normalizedEnumValues.join('|')) {
+                throw new ArkormException(`Prisma enum [${enumName}] already exists with different values.`)
+            }
+
+            validateEnumDefaultValue(column, enumName, existingValues)
+
+            continue
+        }
+
+        if (enumValues.length === 0) {
+            throw new ArkormException(`Prisma enum [${enumName}] was not found for column [${column.name}].`)
+        }
+
+        const normalizedEnumValues = validateEnumValues(column, enumName, enumValues)
+        validateEnumDefaultValue(column, enumName, normalizedEnumValues)
+
+        const block = buildEnumBlock(enumName, normalizedEnumValues)
+        nextSchema = `${nextSchema.trimEnd()}\n\n${block}\n`
+    }
+
+    return nextSchema
 }
 
 /**
@@ -413,8 +607,9 @@ export const applyCreateTableOperation = (schema: string, operation: SchemaTable
     if (existing)
         throw new ArkormException(`Prisma model for table [${operation.table}] already exists.`)
 
+    const schemaWithEnums = ensureEnumBlocks(schema, operation.columns)
     const block = buildModelBlock(operation)
-    const prefix = schema.trimEnd()
+    const prefix = schemaWithEnums.trimEnd()
     const nextSchema = `${prefix}\n\n${block}\n`
 
     return applyInverseRelations(nextSchema, toModelName(operation.table), operation.foreignKeys ?? [])
@@ -436,7 +631,12 @@ export const applyAlterTableOperation = (
     if (!model)
         throw new ArkormException(`Prisma model for table [${operation.table}] was not found.`)
 
-    let block = model.block
+    const schemaWithEnums = ensureEnumBlocks(schema, operation.addColumns)
+    const refreshedModel = findModelBlock(schemaWithEnums, operation.table)
+    if (!refreshedModel)
+        throw new ArkormException(`Prisma model for table [${operation.table}] was not found.`)
+
+    let block = refreshedModel.block
     const bodyLines = block.split('\n')
 
     operation.dropColumns.forEach((column) => {
@@ -484,7 +684,7 @@ export const applyAlterTableOperation = (
     }
 
     block = bodyLines.join('\n')
-    const nextSchema = `${schema.slice(0, model.start)}${block}${schema.slice(model.end)}`
+    const nextSchema = `${schemaWithEnums.slice(0, refreshedModel.start)}${block}${schemaWithEnums.slice(refreshedModel.end)}`
 
     return applyInverseRelations(nextSchema, model.modelName, operation.addForeignKeys ?? [])
 }

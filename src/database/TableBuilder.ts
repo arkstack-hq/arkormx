@@ -2,6 +2,120 @@ import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex } from 's
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 
+const PRISMA_ENUM_MEMBER_REGEX = /^[A-Za-z][A-Za-z0-9_]*$/
+
+const normalizeEnumMember = (columnName: string, value: string): string => {
+    const normalized = value.trim()
+    if (!normalized)
+        throw new Error(`Enum column [${columnName}] must define only non-empty values.`)
+
+    if (!PRISMA_ENUM_MEMBER_REGEX.test(normalized))
+        throw new Error(`Enum column [${columnName}] contains invalid Prisma enum value [${normalized}].`)
+
+    return normalized
+}
+
+const normalizeEnumMembers = (columnName: string, values: string[]): string[] => {
+    const normalizedValues = values.map(value => normalizeEnumMember(columnName, value))
+    const seen = new Set<string>()
+
+    for (const value of normalizedValues) {
+        if (seen.has(value))
+            throw new Error(`Enum column [${columnName}] contains duplicate enum value [${value}].`)
+
+        seen.add(value)
+    }
+
+    return normalizedValues
+}
+
+/**
+ * The EnumBuilder class provides a fluent interface for configuring enum columns
+ * after they are defined on a table.
+ *
+ * @author Legacy (3m1n3nc3)
+ * @since 0.2.3
+ */
+export class EnumBuilder {
+    private readonly tableBuilder: TableBuilder
+    private readonly columnName: string
+
+    public constructor(tableBuilder: TableBuilder, columnName: string) {
+        this.tableBuilder = tableBuilder
+        this.columnName = columnName
+    }
+
+    /**
+     * Defines the Prisma enum name for this column.
+     *
+     * @param name
+     * @returns
+     */
+    public enumName (name: string): this {
+        this.tableBuilder.enumName(name, this.columnName)
+
+        return this
+    }
+
+    /**
+     * Marks the enum column as nullable.
+     *
+     * @returns
+     */
+    public nullable (): this {
+        this.tableBuilder.nullable(this.columnName)
+
+        return this
+    }
+
+    /**
+     * Marks the enum column as unique.
+     *
+     * @returns
+     */
+    public unique (): this {
+        this.tableBuilder.unique(this.columnName)
+
+        return this
+    }
+
+    /**
+     * Sets a default value for the enum column.
+     *
+     * @param value
+     * @returns
+     */
+    public default (value: unknown): this {
+        this.tableBuilder.default(value, this.columnName)
+
+        return this
+    }
+
+    /**
+     * Positions the enum column after another column when supported.
+     *
+     * @param referenceColumn
+     * @returns
+     */
+    public after (referenceColumn: string): this {
+        this.tableBuilder.after(referenceColumn, this.columnName)
+
+        return this
+    }
+
+    /**
+     * Maps the enum column to a custom database column name.
+     *
+     * @param name
+     * @returns
+     */
+    public map (name: string): this {
+        this.tableBuilder.map(name, this.columnName)
+
+        return this
+    }
+}
+
 /**
  * The TableBuilder class provides a fluent interface for defining 
  * the structure of a database table in a migration, including columns to add or drop.
@@ -75,6 +189,44 @@ export class TableBuilder {
      */
     public uuid (name: string, options: Partial<SchemaColumn> = {}): this {
         return this.column(name, 'uuid', options)
+    }
+
+    /**
+     * Defines an enum column in the table.
+     *
+     * @param name      The name of the enum column.
+     * @param values    Either an array of string values for the enum or the name of an existing enum to reuse.
+     * @param options   Additional options for the enum column.
+     * @returns
+     */
+    public enum (
+        name: string,
+        valuesOrEnumName: string[] | string,
+        options: Partial<SchemaColumn> & { enumName?: string } = {}
+    ): EnumBuilder {
+        const isEnumReuse = typeof valuesOrEnumName === 'string'
+
+        if (!isEnumReuse && valuesOrEnumName.length === 0)
+            throw new Error(`Enum column [${name}] must define at least one value.`)
+
+        const normalizedEnumValues = isEnumReuse
+            ? undefined
+            : normalizeEnumMembers(name, valuesOrEnumName)
+
+        const enumName = isEnumReuse
+            ? valuesOrEnumName.trim()
+            : options.enumName?.trim()
+
+        if (isEnumReuse && !enumName)
+            throw new Error(`Enum column [${name}] must define an enum name.`)
+
+        this.column(name, 'enum', {
+            ...options,
+            enumName,
+            enumValues: normalizedEnumValues,
+        })
+
+        return new EnumBuilder(this, name)
     }
 
     /**
@@ -263,6 +415,27 @@ export class TableBuilder {
     }
 
     /**
+     * Sets the Prisma enum name for an enum column.
+     *
+     * @param name       The enum name to assign.
+     * @param columnName Optional explicit target column name. When omitted, applies to the latest defined column.
+     * @returns          The current TableBuilder instance for chaining.
+     */
+    public enumName (name: string, columnName?: string): this {
+        const column = this.resolveColumn(columnName)
+        if (column.type !== 'enum')
+            throw new Error(`Column [${column.name}] is not an enum column.`)
+
+        const enumName = name.trim()
+        if (!enumName)
+            throw new Error(`Enum column [${column.name}] must define an enum name.`)
+
+        column.enumName = enumName
+
+        return this
+    }
+
+    /**
      * Sets a default value for a column.
      *
      * @param value      The default scalar value or Prisma expression (e.g. 'now()').
@@ -362,7 +535,10 @@ export class TableBuilder {
      * @returns 
      */
     public getColumns (): SchemaColumn[] {
-        return this.columns.map(column => ({ ...column }))
+        return this.columns.map(column => ({
+            ...column,
+            enumValues: column.enumValues ? [...column.enumValues] : undefined,
+        }))
     }
 
     /**
@@ -411,6 +587,8 @@ export class TableBuilder {
         this.columns.push({
             name,
             type,
+            enumName: options.enumName,
+            enumValues: options.enumValues ? [...options.enumValues] : undefined,
             map: options.map,
             nullable: options.nullable,
             unique: options.unique,

@@ -79,7 +79,10 @@ export class SchemaBuilder {
             if (operation.type === 'createTable') {
                 return {
                     ...operation,
-                    columns: operation.columns.map(column => ({ ...column })),
+                    columns: operation.columns.map(column => ({
+                        ...column,
+                        enumValues: column.enumValues ? [...column.enumValues] : undefined,
+                    })),
                     indexes: operation.indexes.map(index => ({
                         ...index,
                         columns: [...index.columns],
@@ -91,7 +94,10 @@ export class SchemaBuilder {
             if (operation.type === 'alterTable') {
                 return {
                     ...operation,
-                    addColumns: operation.addColumns.map(column => ({ ...column })),
+                    addColumns: operation.addColumns.map(column => ({
+                        ...column,
+                        enumValues: column.enumValues ? [...column.enumValues] : undefined,
+                    })),
                     dropColumns: [...operation.dropColumns],
                     addIndexes: operation.addIndexes.map(index => ({
                         ...index,

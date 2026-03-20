@@ -2,6 +2,7 @@
 export type SchemaColumnType =
     | 'id'
     | 'uuid'
+    | 'enum'
     | 'string'
     | 'text'
     | 'integer'
@@ -15,6 +16,8 @@ export type SchemaColumnType =
 export interface SchemaColumn {
     name: string
     type: SchemaColumnType
+    enumName?: string
+    enumValues?: string[]
     map?: string
     nullable?: boolean
     unique?: boolean

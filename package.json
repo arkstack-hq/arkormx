@@ -1,6 +1,6 @@
 {
   "name": "arkormx",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",

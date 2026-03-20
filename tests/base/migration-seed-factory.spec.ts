@@ -8,9 +8,9 @@ import {
     getMigrationPlan,
     runMigrationWithPrisma,
 } from '../../src'
-import { deriveCollectionFieldName, deriveInverseRelationAlias } from '../../src/helpers/migrations'
 import { User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it } from 'vitest'
+import { deriveCollectionFieldName, deriveInverseRelationAlias } from '../../src/helpers/migrations'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 import { join } from 'node:path'
@@ -167,6 +167,133 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(applied.schema).toContain('updatedAt DateTime @updatedAt')
         expect(applied.schema).toContain('@@index([email, deletedAt], name: "users_email_deleted_at_idx")')
 
+        class AddUserStatusEnumMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table
+                        .enum('accountStatus', ['ACTIVE', 'INACTIVE', 'SUSPENDED'])
+                        .enumName('UserStatus')
+                        .default('ACTIVE')
+                        .after('status')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        const enumApplied = await applyMigrationToPrismaSchema(AddUserStatusEnumMigration, {
+            schemaPath,
+        })
+        expect(enumApplied.schema).toContain('enum UserStatus {')
+        expect(enumApplied.schema).toContain('ACTIVE')
+        expect(enumApplied.schema).toContain('INACTIVE')
+        expect(enumApplied.schema).toContain('SUSPENDED')
+        expect(enumApplied.schema).toContain('accountStatus UserStatus @default(ACTIVE)')
+
+        class AddModerationStatusReuseMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table
+                        .enum('moderationStatus', 'UserStatus')
+                        .default('INACTIVE')
+                        .after('accountStatus')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        const enumReuseApplied = await applyMigrationToPrismaSchema(AddModerationStatusReuseMigration, {
+            schemaPath,
+        })
+        expect(enumReuseApplied.schema).toContain('moderationStatus UserStatus @default(INACTIVE)')
+
+        class AddMissingEnumReuseMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table.enum('unknownStatus', 'MissingEnum')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        await expect(applyMigrationToPrismaSchema(AddMissingEnumReuseMigration, {
+            schemaPath,
+        })).rejects.toThrow('Prisma enum [MissingEnum] was not found for column [unknownStatus].')
+
+        class AddInvalidEnumDefaultMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table
+                        .enum('billingStatus', ['DUE', 'PAID'])
+                        .enumName('BillingStatus')
+                        .default('VOID')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        await expect(applyMigrationToPrismaSchema(AddInvalidEnumDefaultMigration, {
+            schemaPath,
+        })).rejects.toThrow('Enum default value [VOID] is not defined in Prisma enum [BillingStatus] for column [billingStatus].')
+
+        class AddInvalidEnumReuseDefaultMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table
+                        .enum('shippingStatus', 'UserStatus')
+                        .default('ARCHIVED')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        await expect(applyMigrationToPrismaSchema(AddInvalidEnumReuseDefaultMigration, {
+            schemaPath,
+        })).rejects.toThrow('Enum default value [ARCHIVED] is not defined in Prisma enum [UserStatus] for column [shippingStatus].')
+
+        class AddDuplicateEnumValuesMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table
+                        .enum('duplicateStatus', ['OPEN', 'CLOSED', 'OPEN'])
+                        .enumName('DuplicateStatus')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        await expect(applyMigrationToPrismaSchema(AddDuplicateEnumValuesMigration, {
+            schemaPath,
+        })).rejects.toThrow('Enum column [duplicateStatus] contains duplicate enum value [OPEN].')
+
+        class AddInvalidEnumMemberMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table
+                        .enum('workflowStatus', ['PENDING', 'IN PROGRESS'])
+                        .enumName('WorkflowStatus')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        await expect(applyMigrationToPrismaSchema(AddInvalidEnumMemberMigration, {
+            schemaPath,
+        })).rejects.toThrow('Enum column [workflowStatus] contains invalid Prisma enum value [IN PROGRESS].')
+
         class AddNicknameMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.alterTable('users', table => {
@@ -194,6 +321,50 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(nicknameLinePosition).toBeGreaterThan(-1)
         expect(emailLinePosition).toBeGreaterThan(-1)
         expect(nicknameLinePosition).toBeGreaterThan(emailLinePosition)
+
+        class CreateOrdersMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('orders', table => {
+                    table.id()
+                    table
+                        .enum('state', ['PENDING', 'PAID'])
+                        .enumName('OrderState')
+                        .default('PENDING')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('orders')
+            }
+        }
+
+        const ordersApplied = await applyMigrationToPrismaSchema(CreateOrdersMigration, {
+            schemaPath,
+        })
+        expect(ordersApplied.schema).toContain('model Order')
+        expect(ordersApplied.schema).toContain('state OrderState @default(PENDING)')
+        expect(ordersApplied.schema).toContain('enum OrderState {')
+
+        class CreateInvoicesMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('invoices', table => {
+                    table.id()
+                    table
+                        .enum('state', 'OrderState')
+                        .default('PAID')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('invoices')
+            }
+        }
+
+        const invoicesApplied = await applyMigrationToPrismaSchema(CreateInvoicesMigration, {
+            schemaPath,
+        })
+        expect(invoicesApplied.schema).toContain('model Invoice')
+        expect(invoicesApplied.schema).toContain('state OrderState @default(PAID)')
 
         class CreateApiKeysMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
