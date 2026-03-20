@@ -56,6 +56,24 @@ describe('Model relationships', () => {
         expect((tags as ArkormCollection<Tag>).all().length).toBe(2)
     })
 
+    it('returns empty collections for through and many-to-many relations with no matches', async () => {
+        const user = await User.query().find(2)
+        expect(user).not.toBeNull()
+
+        const roles = await user?.roles().getResults()
+        const postImages = await user?.postImages().getResults()
+        const tags = await user?.tags().getResults()
+        const avatar = await user?.avatar().getResults()
+
+        expect(roles).toBeInstanceOf(ArkormCollection)
+        expect((roles as ArkormCollection<Role>).all()).toEqual([])
+        expect(postImages).toBeInstanceOf(ArkormCollection)
+        expect((postImages as ArkormCollection<Image>).all()).toEqual([])
+        expect(tags).toBeInstanceOf(ArkormCollection)
+        expect((tags as ArkormCollection<Tag>).all()).toEqual([])
+        expect(avatar).toBeNull()
+    })
+
     it('supports fluent relation query chaining', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()

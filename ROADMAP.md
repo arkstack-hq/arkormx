@@ -54,7 +54,7 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - [x] Improved error handling and messages
 - [x] Documentation site
 - [x] More advanced relationship constraints
-- [ ] Performance optimizations
+- [x] Performance optimizations
 - [x] Class based event listeners via `dispatchesEvents` Model property
 - [x] Callback-based event listeners via `booted` and `boot` Model methods and `Model.event()` method
 - [x] Quiet mode for suppressing events and global scopes via `Model.withoutEvents()` and `saveQuietly()`, `deleteQuietly()`, `restoreQuietly()`, etc. methods.

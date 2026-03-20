@@ -517,6 +517,11 @@ export abstract class Model<
         this: ModelStatic<TModel, PrismaDelegateLike>,
         attributes: Record<string, unknown>
     ): Promise<TModel> {
+        Model.ensureModelBooted(this as unknown as typeof Model)
+
+        if (!Model.hasEventListeners(this as unknown as typeof Model, 'retrieved'))
+            return this.hydrate(attributes)
+
         const model = this.hydrate(attributes)
 
         await Model.dispatchEvent(this as unknown as typeof Model, 'retrieved', model as unknown as Model)
@@ -535,6 +540,11 @@ export abstract class Model<
         this: ModelStatic<TModel, PrismaDelegateLike>,
         attributes: Record<string, unknown>[]
     ): Promise<TModel[]> {
+        Model.ensureModelBooted(this as unknown as typeof Model)
+
+        if (!Model.hasEventListeners(this as unknown as typeof Model, 'retrieved'))
+            return this.hydrateMany(attributes)
+
         const models = this.hydrateMany(attributes)
 
         await Promise.all(models.map(async (model: TModel) => {
@@ -1231,6 +1241,35 @@ export abstract class Model<
     }
 
     /**
+     * Determine whether a lifecycle event has any registered listeners.
+     *
+     * @param modelClass
+     * @param event
+     * @returns
+     */
+    private static hasEventListeners (
+        modelClass: typeof Model,
+        event: ModelEventName,
+    ): boolean {
+        if (Model.eventsSuppressed > 0)
+            return false
+
+        modelClass.ensureOwnEventListeners()
+
+        const registeredListeners = modelClass.eventListeners[event] || []
+        if (registeredListeners.length > 0)
+            return true
+
+        const configuredDispatchers = modelClass.dispatchesEvents[event]
+        if (!configuredDispatchers)
+            return false
+
+        return Array.isArray(configuredDispatchers)
+            ? configuredDispatchers.length > 0
+            : true
+    }
+
+    /**
      * Dispatches lifecycle events to registered listeners.
      *
      * @param modelClass
@@ -1242,11 +1281,10 @@ export abstract class Model<
         event: ModelEventName,
         model: Model
     ): Promise<void> {
-        if (Model.eventsSuppressed > 0)
+        Model.ensureModelBooted(modelClass)
+        if (!Model.hasEventListeners(modelClass, event))
             return
 
-        Model.ensureModelBooted(modelClass)
-        modelClass.ensureOwnEventListeners()
         const listeners = [
             ...Model.resolveDispatchedEventListeners(modelClass, event),
             ...(modelClass.eventListeners[event] || []),

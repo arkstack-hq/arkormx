@@ -122,6 +122,27 @@ describe('Model lifecycle and serialization', () => {
         expect(events).toEqual([1, 2, 1])
     })
 
+    it('supports class-based retrieved listeners for query hydration', async () => {
+        const events: number[] = []
+
+        class RetrievedListener {
+            public handle (model: User): void {
+                events.push(Number(model.getAttribute('id')))
+            }
+        }
+
+        class DispatchingUser extends User {
+            protected static override dispatchesEvents = {
+                retrieved: RetrievedListener,
+            }
+        }
+
+        const allUsers = await DispatchingUser.query().orderBy({ id: 'asc' }).get()
+
+        expect(allUsers.all().length).toBe(2)
+        expect(events).toEqual([1, 2])
+    })
+
     it('supports class-based event listeners via dispatchesEvents', async () => {
         const events: string[] = []
 

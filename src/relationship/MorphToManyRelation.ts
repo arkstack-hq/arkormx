@@ -1,4 +1,4 @@
-import type { ArkormCollection } from 'src/Collection'
+import { ArkormCollection } from '../Collection'
 import { Relation } from './Relation'
 import type { RelationshipModelStatic } from 'src/types'
 
@@ -36,6 +36,9 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
             },
         }) as Record<string, unknown>[]
         const ids = pivots.map(row => row[this.relatedPivotKey])
+        if (ids.length === 0)
+            return new ArkormCollection([])
+
         const query = this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
 
         return query.get()

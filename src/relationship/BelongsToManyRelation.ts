@@ -1,4 +1,4 @@
-import type { ArkormCollection } from 'src/Collection'
+import { ArkormCollection } from '../Collection'
 import { Relation } from './Relation'
 import type { RelationshipModelStatic } from 'src/types'
 
@@ -32,6 +32,9 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
             where: { [this.foreignPivotKey]: parentValue },
         }) as Record<string, unknown>[]
         const ids = pivotRows.map(row => row[this.relatedPivotKey])
+        if (ids.length === 0)
+            return new ArkormCollection([])
+
         const query = this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
 
         return query.get()
