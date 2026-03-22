@@ -138,6 +138,52 @@ Arkormˣ also adds the inverse list relation on the referenced model automatical
 personalAccessTokens PersonalAccessToken[] @relation("TokenUser")
 ```
 
+If the foreign key column is the latest column you added, you can also chain `foreign()` directly from that column definition:
+
+```ts
+schema.createTable('next_of_kins', (table) => {
+  table.id();
+  table.uuid('userId').foreign().references('users', 'id').onDelete('cascade');
+});
+```
+
+That generates a named relation on both sides by default:
+
+```prisma
+model NextOfKin {
+  user User @relation("NextOfKinUser", fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model User {
+  nextOfKins NextOfKin[] @relation("NextOfKinUser")
+}
+```
+
+For one-to-one relations, make the foreign key column `@unique`. If the relation should be optional on the owning side, make the foreign key nullable and alias the relation field explicitly when the column name is not descriptive enough:
+
+```ts
+schema.alterTable('users', (table) => {
+  table.uuid('nokId').nullable().unique().map('nok_id');
+
+  table.foreignKey('nokId').references('next_of_kins', 'id').as('nextOfKin');
+});
+```
+
+This generates a one-to-one relation shape:
+
+```prisma
+model User {
+  nokId     String?     @unique @map("nok_id")
+  nextOfKin NextOfKin?  @relation("NextOfKinUser", fields: [nokId], references: [id])
+}
+
+model NextOfKin {
+  user User? @relation("NextOfKinUser")
+}
+```
+
+If you want the owning-side relation to be required, keep the foreign key unique but drop `.nullable()`.
+
 You can override the inverse relation name with `.inverseAlias(name)` when needed:
 
 ```ts

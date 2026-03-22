@@ -526,7 +526,7 @@ export class TableBuilder {
     public foreign (column?: string): ForeignKeyBuilder {
         const columnName = this.resolveColumn(column).name
 
-        return this.foreignKey(columnName + (column ? '' : 'Id'))
+        return this.foreignKey(column ?? columnName)
     }
 
     /**

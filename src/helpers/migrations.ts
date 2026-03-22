@@ -368,22 +368,17 @@ export const deriveRelationFieldName = (columnName: string): string => {
     return `${trimmed.charAt(0).toLowerCase()}${trimmed.slice(1)}`
 }
 
-const pascalWords = (value: string): string[] => {
-    return value.match(/[A-Z][a-z0-9]*/g) ?? [value]
-}
-
 /**
- * Derive a relation name for the inverse side of a relation based on the 
+ * Derive a relation name for both sides of a relation based on the 
  * source and target model names, using an explicit alias if provided or a 
- * convention of combining the target model name with the last segment of 
- * the source model name.
+ * convention of combining the full source model name with the target model name.
  * 
  * @param sourceModelName    The name of the source model in the relation.
  * @param targetModelName    The name of the target model in the relation.
- * @param explicitAlias      An optional explicit alias for the inverse relation.
- * @returns                  The derived or explicit inverse relation alias.
+ * @param explicitAlias      An optional explicit alias for the relation.
+ * @returns                  The derived or explicit relation alias.
  */
-export const deriveInverseRelationAlias = (
+export const deriveRelationAlias = (
     sourceModelName: string,
     targetModelName: string,
     explicitAlias?: string
@@ -391,10 +386,18 @@ export const deriveInverseRelationAlias = (
     if (explicitAlias && explicitAlias.trim().length > 0)
         return explicitAlias.trim()
 
-    const sourceWords = pascalWords(sourceModelName)
-    const sourceSegment = sourceWords[sourceWords.length - 1] ?? sourceModelName
+    return [sourceModelName, targetModelName]
+        .sort((left, right) => left.localeCompare(right))
+        .join('')
+}
 
-    return `${sourceSegment}${targetModelName}`
+export const deriveInverseRelationAlias = deriveRelationAlias
+
+export const deriveSingularFieldName = (modelName: string): string => {
+    if (!modelName)
+        return 'item'
+
+    return `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}`
 }
 
 export const deriveCollectionFieldName = (modelName: string): string => {
@@ -406,6 +409,14 @@ export const deriveCollectionFieldName = (modelName: string): string => {
         return `${camel}es`
 
     return `${camel}s`
+}
+
+const resolveForeignKeyColumn = (columns: SchemaColumn[], foreignKey: SchemaForeignKey): SchemaColumn | undefined => {
+    return columns.find(column => column.name === foreignKey.column)
+}
+
+const isOneToOneForeignKey = (column?: SchemaColumn): boolean => {
+    return Boolean(column?.unique || column?.primary)
 }
 /** 
  * Format a SchemaForeignKeyAction value as a Prisma onDelete action string.
@@ -433,23 +444,26 @@ export const formatRelationAction = (action: SchemaForeignKeyAction): string => 
  * @param foreignKey    The foreign key definition to convert to a relation line.
  * @returns             The corresponding Prisma schema line for the relation field.
  */
-export const buildRelationLine = (foreignKey: SchemaForeignKey): string => {
+export const buildRelationLine = (
+    sourceModelName: string,
+    foreignKey: SchemaForeignKey,
+    columns: SchemaColumn[] = []
+): string => {
     if (!foreignKey.referencesTable.trim())
         throw new ArkormException(`Foreign key [${foreignKey.column}] must define a referenced table.`)
     if (!foreignKey.referencesColumn.trim())
         throw new ArkormException(`Foreign key [${foreignKey.column}] must define a referenced column.`)
 
+    const sourceColumn = resolveForeignKeyColumn(columns, foreignKey)
     const fieldName = foreignKey.fieldAlias?.trim() || deriveRelationFieldName(foreignKey.column)
     const targetModel = toModelName(foreignKey.referencesTable)
-    const relationName = foreignKey.relationAlias?.trim()
-    const relationPrefix = relationName
-        ? `@relation("${relationName.replace(/"/g, '\\"')}", `
-        : '@relation('
+    const relationName = deriveRelationAlias(sourceModelName, targetModel, foreignKey.relationAlias?.trim())
+    const optional = sourceColumn?.nullable ? '?' : ''
     const onDelete = foreignKey.onDelete
         ? `, onDelete: ${formatRelationAction(foreignKey.onDelete)}`
         : ''
 
-    return `  ${fieldName} ${targetModel} ${relationPrefix}fields: [${foreignKey.column}], references: [${foreignKey.referencesColumn}]${onDelete})`
+    return `  ${fieldName} ${targetModel}${optional} @relation("${relationName.replace(/"/g, '\\"')}", fields: [${foreignKey.column}], references: [${foreignKey.referencesColumn}]${onDelete})`
 }
 
 /**
@@ -465,12 +479,19 @@ export const buildRelationLine = (foreignKey: SchemaForeignKey): string => {
 export const buildInverseRelationLine = (
     sourceModelName: string,
     targetModelName: string,
-    foreignKey: SchemaForeignKey
+    foreignKey: SchemaForeignKey,
+    columns: SchemaColumn[] = []
 ): string => {
-    const fieldName = deriveCollectionFieldName(sourceModelName)
-    const relationName = deriveInverseRelationAlias(sourceModelName, targetModelName, foreignKey.inverseRelationAlias)
+    const sourceColumn = resolveForeignKeyColumn(columns, foreignKey)
+    const fieldName = isOneToOneForeignKey(sourceColumn)
+        ? deriveSingularFieldName(sourceModelName)
+        : deriveCollectionFieldName(sourceModelName)
+    const relationName = deriveRelationAlias(sourceModelName, targetModelName, foreignKey.relationAlias?.trim())
+    const relationType = isOneToOneForeignKey(sourceColumn)
+        ? `${sourceModelName}?`
+        : `${sourceModelName}[]`
 
-    return `  ${fieldName} ${sourceModelName}[] @relation("${relationName.replace(/"/g, '\\"')}")`
+    return `  ${fieldName} ${relationType} @relation("${relationName.replace(/"/g, '\\"')}")`
 }
 
 /**
@@ -511,7 +532,8 @@ const injectLineIntoModelBody = (
 const applyInverseRelations = (
     schema: string,
     sourceModelName: string,
-    foreignKeys: SchemaForeignKey[]
+    foreignKeys: SchemaForeignKey[],
+    columns: SchemaColumn[] = []
 ): string => {
     let nextSchema = schema
 
@@ -520,9 +542,12 @@ const applyInverseRelations = (
         if (!targetModel)
             continue
 
-        const inverseLine = buildInverseRelationLine(sourceModelName, targetModel.modelName, foreignKey)
+        const sourceColumn = resolveForeignKeyColumn(columns, foreignKey)
+        const inverseLine = buildInverseRelationLine(sourceModelName, targetModel.modelName, foreignKey, columns)
         const targetBodyLines = targetModel.block.split('\n')
-        const fieldName = deriveCollectionFieldName(sourceModelName)
+        const fieldName = isOneToOneForeignKey(sourceColumn)
+            ? deriveSingularFieldName(sourceModelName)
+            : deriveCollectionFieldName(sourceModelName)
         const fieldRegex = new RegExp(`^\\s*${escapeRegex(fieldName)}\\s+`)
 
         injectLineIntoModelBody(targetBodyLines, inverseLine, line => fieldRegex.test(line))
@@ -545,7 +570,7 @@ export const buildModelBlock = (operation: SchemaTableCreateOperation): string =
     const modelName = toModelName(operation.table)
     const mapped = operation.table !== modelName.toLowerCase()
     const fields = operation.columns.map(buildFieldLine)
-    const relations = (operation.foreignKeys ?? []).map(buildRelationLine)
+    const relations = (operation.foreignKeys ?? []).map(foreignKey => buildRelationLine(modelName, foreignKey, operation.columns))
     const indexes = (operation.indexes ?? []).map(buildIndexLine)
     const metadata = [
         ...indexes,
@@ -612,7 +637,7 @@ export const applyCreateTableOperation = (schema: string, operation: SchemaTable
     const prefix = schemaWithEnums.trimEnd()
     const nextSchema = `${prefix}\n\n${block}\n`
 
-    return applyInverseRelations(nextSchema, toModelName(operation.table), operation.foreignKeys ?? [])
+    return applyInverseRelations(nextSchema, toModelName(operation.table), operation.foreignKeys ?? [], operation.columns)
 }
 
 /**
@@ -678,7 +703,7 @@ export const applyAlterTableOperation = (
     })
 
     for (const foreignKey of (operation.addForeignKeys ?? [])) {
-        const relationLine = buildRelationLine(foreignKey)
+        const relationLine = buildRelationLine(model.modelName, foreignKey, operation.addColumns)
         const relationRegex = new RegExp(`^\\s*${escapeRegex(foreignKey.fieldAlias?.trim() || deriveRelationFieldName(foreignKey.column))}\\s+`)
         injectLineIntoModelBody(bodyLines, relationLine, line => relationRegex.test(line))
     }
@@ -686,7 +711,7 @@ export const applyAlterTableOperation = (
     block = bodyLines.join('\n')
     const nextSchema = `${schemaWithEnums.slice(0, refreshedModel.start)}${block}${schemaWithEnums.slice(refreshedModel.end)}`
 
-    return applyInverseRelations(nextSchema, model.modelName, operation.addForeignKeys ?? [])
+    return applyInverseRelations(nextSchema, model.modelName, operation.addForeignKeys ?? [], operation.addColumns)
 }
 
 /**

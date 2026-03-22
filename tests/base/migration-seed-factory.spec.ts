@@ -10,7 +10,7 @@ import {
 } from '../../src'
 import { User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it } from 'vitest'
-import { deriveCollectionFieldName, deriveInverseRelationAlias } from '../../src/helpers/migrations'
+import { deriveCollectionFieldName, deriveRelationAlias, deriveSingularFieldName } from '../../src/helpers/migrations'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 import { join } from 'node:path'
@@ -462,7 +462,61 @@ describe('Database migration, seeding and factory helpers', () => {
             schemaPath,
         })
         expect(personalTokensApplied.schema).toContain('owner User @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)')
-        expect(personalTokensApplied.schema).toContain('personalAccessTokens PersonalAccessToken[] @relation("TokenUser")')
+        expect(personalTokensApplied.schema).toContain('personalAccessTokens PersonalAccessToken[] @relation("TokenOwner")')
+
+        class CreateNextOfKinsMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('next_of_kins', table => {
+                    table.id()
+                    table.uuid('userId').foreign().references('users', 'id').onDelete('cascade')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('next_of_kins')
+            }
+        }
+
+        const nextOfKinsApplied = await applyMigrationToPrismaSchema(CreateNextOfKinsMigration, {
+            schemaPath,
+        })
+        expect(nextOfKinsApplied.schema).toContain('user User @relation("NextOfKinUser", fields: [userId], references: [id], onDelete: Cascade)')
+        expect(nextOfKinsApplied.schema).toContain('nextOfKins NextOfKin[] @relation("NextOfKinUser")')
+
+        class CreateStandaloneNextOfKinMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('standalone_next_of_kins', table => {
+                    table.uuid('id').primary()
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('standalone_next_of_kins')
+            }
+        }
+
+        await applyMigrationToPrismaSchema(CreateStandaloneNextOfKinMigration, {
+            schemaPath,
+        })
+
+        class AddUserNextOfKinOneToOneMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('users', table => {
+                    table.uuid('nokId').nullable().unique().map('nok_id')
+                    table.foreignKey('nokId').references('standalone_next_of_kins', 'id').as('nextOfKin')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        const oneToOneApplied = await applyMigrationToPrismaSchema(AddUserNextOfKinOneToOneMigration, {
+            schemaPath,
+        })
+        expect(oneToOneApplied.schema).toContain('nokId String? @unique @map("nok_id")')
+        expect(oneToOneApplied.schema).toContain('nextOfKin StandaloneNextOfKin? @relation("StandaloneNextOfKinUser", fields: [nokId], references: [id])')
+        expect(oneToOneApplied.schema).toContain('user User? @relation("StandaloneNextOfKinUser")')
 
         rmSync(directory, { recursive: true, force: true })
         rmSync(prismaDirectory, { recursive: true, force: true })
@@ -471,9 +525,14 @@ describe('Database migration, seeding and factory helpers', () => {
     it('derives inverse relation naming conventions', () => {
         expect(deriveCollectionFieldName('PersonalAccessToken')).toBe('personalAccessTokens')
         expect(deriveCollectionFieldName('Token')).toBe('tokens')
+        expect(deriveCollectionFieldName('NextOfKin')).toBe('nextOfKins')
+        expect(deriveSingularFieldName('User')).toBe('user')
+        expect(deriveSingularFieldName('NextOfKin')).toBe('nextOfKin')
 
-        expect(deriveInverseRelationAlias('PersonalAccessToken', 'User')).toBe('TokenUser')
-        expect(deriveInverseRelationAlias('Token', 'User')).toBe('TokenUser')
-        expect(deriveInverseRelationAlias('PersonalAccessToken', 'User', 'UserTokens')).toBe('UserTokens')
+        expect(deriveRelationAlias('PersonalAccessToken', 'User')).toBe('PersonalAccessTokenUser')
+        expect(deriveRelationAlias('Token', 'User')).toBe('TokenUser')
+        expect(deriveRelationAlias('NextOfKin', 'User')).toBe('NextOfKinUser')
+        expect(deriveRelationAlias('User', 'NextOfKin')).toBe('NextOfKinUser')
+        expect(deriveRelationAlias('PersonalAccessToken', 'User', 'UserTokens')).toBe('UserTokens')
     })
 })
