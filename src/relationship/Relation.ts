@@ -218,6 +218,37 @@ export abstract class Relation<TModel> {
     }
 
     /**
+     * Count records that match the relationship query.
+     *
+     * @returns
+     */
+    public async count (): Promise<number> {
+        const query = await this.getQuery()
+
+        return query.count()
+    }
+
+    /**
+     * Determine whether the relationship query has any matching records.
+     *
+     * @returns
+     */
+    public async exists (): Promise<boolean> {
+        const query = await this.getQuery()
+
+        return query.exists()
+    }
+
+    /**
+     * Determine whether the relationship query has no matching records.
+     *
+     * @returns
+     */
+    public async doesntExist (): Promise<boolean> {
+        return !(await this.exists())
+    }
+
+    /**
      * Get the results of the relationship query.
      * 
      * @returns A promise that resolves to the related model(s) or null if not found.

@@ -159,6 +159,36 @@ describe('Model relationships', () => {
         expect((firstRole as Role).getAttribute('name')).toBe('editor')
     })
 
+    it('supports relation exists() and count() helpers', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const postCount = await user?.posts().count()
+        const hasAvatar = await user?.avatar().exists()
+        const hasNoMissingProfile = await user?.profile().doesntExist()
+        const roleCount = await user?.roles().count()
+
+        expect(postCount).toBe(2)
+        expect(hasAvatar).toBe(true)
+        expect(hasNoMissingProfile).toBe(false)
+        expect(roleCount).toBe(2)
+
+        const missingUser = new User({ id: 999, name: 'Ghost', email: 'ghost@example.com', isActive: 0 })
+        const missingProfileCount = await missingUser.profile()
+            .withDefault({ id: 500 })
+            .count()
+        const missingProfileExists = await missingUser.profile()
+            .withDefault({ id: 500 })
+            .exists()
+        const missingProfileDoesntExist = await missingUser.profile()
+            .withDefault({ id: 500 })
+            .doesntExist()
+
+        expect(missingProfileCount).toBe(0)
+        expect(missingProfileExists).toBe(false)
+        expect(missingProfileDoesntExist).toBe(true)
+    })
+
     it('supports constrained eager loading callbacks', async () => {
         const user = await User.query().with({
             posts: (query) => (query as QueryBuilder<Post>).where({ title: 'A' }),
