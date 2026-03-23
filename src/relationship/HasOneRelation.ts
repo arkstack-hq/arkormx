@@ -1,4 +1,5 @@
 import type { RelatedModelClass } from 'src/types'
+import type { QueryBuilder } from '../QueryBuilder'
 import { SingleResultRelation } from './SingleResultRelation'
 
 /**
@@ -18,13 +19,23 @@ export class HasOneRelation<TParent, TRelated> extends SingleResultRelation<TPar
     }
 
     /**
+     * Build the relationship query.
+     *
+     * @returns
+     */
+    public async getQuery (): Promise<QueryBuilder<TRelated>> {
+        const localValue = this.parent.getAttribute(this.localKey)
+
+        return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+    }
+
+    /**
      * Fetches the related models for this relationship.
      * 
      * @returns 
      */
     public async getResults (): Promise<TRelated | null> {
-        const localValue = this.parent.getAttribute(this.localKey)
-        const query = this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+        const query = await this.getQuery()
 
         const result = await query.first()
 

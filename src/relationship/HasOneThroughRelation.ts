@@ -1,3 +1,4 @@
+import type { QueryBuilder } from '../QueryBuilder'
 import type { RelatedModelClass } from 'src/types'
 import { SingleResultRelation } from './SingleResultRelation'
 
@@ -22,17 +23,27 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
     }
 
     /**
+     * Build the relationship query.
+     *
+     * @returns
+     */
+    public async getQuery (): Promise<QueryBuilder<TRelated>> {
+        const localValue = this.parent.getAttribute(this.localKey)
+        const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null
+
+        if (!intermediate)
+            return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: [] } }))
+
+        return this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }))
+    }
+
+    /**
      * Fetches the related models for this relationship.
      * 
      * @returns 
      */
     public async getResults (): Promise<TRelated | null> {
-        const localValue = this.parent.getAttribute(this.localKey)
-        const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null
-        if (!intermediate)
-            return this.resolveDefaultResult()
-
-        const query = this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }))
+        const query = await this.getQuery()
 
         const result = await query.first()
 

@@ -141,6 +141,24 @@ describe('Model relationships', () => {
         expect((firstProfile as Profile).getAttribute('id')).toBe(10)
     })
 
+    it('supports getQuery() for continued query chaining', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const postsQuery = await user?.posts().getQuery()
+        const posts = await postsQuery?.where({ title: 'B' }).get()
+
+        expect(posts).toBeInstanceOf(ArkormCollection)
+        expect((posts as ArkormCollection<Post>).all()).toHaveLength(1)
+        expect((posts as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('B')
+
+        const rolesQuery = await user?.roles().getQuery()
+        const firstRole = await rolesQuery?.orderBy({ id: 'desc' }).first()
+
+        expect(firstRole).not.toBeNull()
+        expect((firstRole as Role).getAttribute('name')).toBe('editor')
+    })
+
     it('supports constrained eager loading callbacks', async () => {
         const user = await User.query().with({
             posts: (query) => (query as QueryBuilder<Post>).where({ title: 'A' }),

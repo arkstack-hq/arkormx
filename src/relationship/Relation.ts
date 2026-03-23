@@ -1,6 +1,6 @@
 import { ArkormCollection } from '../Collection'
-import { QueryBuilder } from '../QueryBuilder'
 import type { ModelAttributes } from '../types'
+import { QueryBuilder } from '../QueryBuilder'
 import type { RelationConstraint } from '../types/relationship'
 
 /**
@@ -186,6 +186,13 @@ export abstract class Relation<TModel> {
 
         return constrained ?? query
     }
+
+    /**
+     * Build the underlying query for the relationship.
+     *
+     * @returns
+     */
+    public abstract getQuery (): Promise<QueryBuilder<TModel>>
 
     /**
      * Execute the relationship query and return relation results.

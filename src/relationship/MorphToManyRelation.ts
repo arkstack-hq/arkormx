@@ -1,4 +1,5 @@
 import { ArkormCollection } from '../Collection'
+import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
 import type { RelationshipModelStatic } from 'src/types'
 
@@ -22,11 +23,11 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
     }
 
     /**
-     * Fetches the related models for this relationship.
-     * 
-     * @returns 
+     * Build the relationship query.
+     *
+     * @returns
      */
-    public async getResults (): Promise<ArkormCollection<TRelated>> {
+    public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const parentValue = this.parent.getAttribute(this.parentKey)
         const morphType = (this.parent as { constructor: { name: string } }).constructor.name
         const pivots = await this.related.getDelegate(this.throughDelegate).findMany({
@@ -36,10 +37,17 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
             },
         }) as Record<string, unknown>[]
         const ids = pivots.map(row => row[this.relatedPivotKey])
-        if (ids.length === 0)
-            return new ArkormCollection([])
 
-        const query = this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
+        return this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
+    }
+
+    /**
+     * Fetches the related models for this relationship.
+     * 
+     * @returns 
+     */
+    public async getResults (): Promise<ArkormCollection<TRelated>> {
+        const query = await this.getQuery()
 
         return query.get()
     }

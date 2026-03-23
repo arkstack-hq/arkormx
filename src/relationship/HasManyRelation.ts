@@ -1,4 +1,5 @@
 import type { ArkormCollection } from 'src/Collection'
+import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
 import type { RelationshipModelStatic } from 'src/types'
 
@@ -19,13 +20,23 @@ export class HasManyRelation<TParent, TRelated> extends Relation<TRelated> {
     }
 
     /**
+     * Build the relationship query.
+     *
+     * @returns
+     */
+    public async getQuery (): Promise<QueryBuilder<TRelated>> {
+        const localValue = this.parent.getAttribute(this.localKey)
+
+        return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+    }
+
+    /**
      * Fetches the related models for this relationship.
      * 
      * @returns 
      */
     public async getResults (): Promise<ArkormCollection<TRelated>> {
-        const localValue = this.parent.getAttribute(this.localKey)
-        const query = this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+        const query = await this.getQuery()
 
         return query.get()
     }

@@ -1,4 +1,5 @@
 import type { ArkormCollection } from 'src/Collection'
+import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
 import type { RelationshipModelStatic } from 'src/types'
 
@@ -19,14 +20,24 @@ export class MorphManyRelation<TParent, TRelated> extends Relation<TRelated> {
     }
 
     /**
+     * Build the relationship query.
+     *
+     * @returns
+     */
+    public async getQuery (): Promise<QueryBuilder<TRelated>> {
+        const id = this.parent.getAttribute(this.localKey)
+        const type = (this.parent as { constructor: { name: string } }).constructor.name
+
+        return this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
+    }
+
+    /**
      * Fetches the related models for this relationship.
      * 
      * @returns 
      */
     public async getResults (): Promise<ArkormCollection<TRelated>> {
-        const id = this.parent.getAttribute(this.localKey)
-        const type = (this.parent as { constructor: { name: string } }).constructor.name
-        const query = this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
+        const query = await this.getQuery()
 
         return query.get()
     }
