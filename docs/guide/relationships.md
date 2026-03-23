@@ -177,6 +177,44 @@ class Post extends Model<'posts'> {
 }
 ```
 
+## Default related models
+
+Single-result relationships support `withDefault()`:
+
+- `belongsTo`
+- `hasOne`
+- `hasOneThrough`
+- `morphOne`
+
+Use it when a missing related record should resolve to a fallback model instead of `null`.
+
+```ts
+class Profile extends Model<'profiles'> {
+  protected static override delegate = 'profiles';
+
+  user() {
+    return this.belongsTo(User, 'userId').withDefault({
+      name: 'Guest User',
+      email: 'guest@example.com',
+    });
+  }
+}
+```
+
+`withDefault()` accepts:
+
+- A plain object of related model attributes
+- An instance of the related model
+- A callback that returns either of the above
+
+```ts
+user.profile().withDefault(new Profile({ bio: 'Not provided yet' }));
+
+user.avatar().withDefault((parent) => ({
+  url: `/images/default-${parent.getAttribute('id')}.png`,
+}));
+```
+
 ## Eager loading
 
 ```ts

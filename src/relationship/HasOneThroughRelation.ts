@@ -1,5 +1,5 @@
-import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
+import type { RelatedModelClass } from 'src/types'
+import { SingleResultRelation } from './SingleResultRelation'
 
 /**
  * Represents a "has one through" relationship, where the parent model is related 
@@ -8,17 +8,17 @@ import type { RelationshipModelStatic } from 'src/types'
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated> {
+export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelation<TParent & { getAttribute: (key: string) => unknown }, TRelated> {
     public constructor(
-        private readonly parent: TParent & { getAttribute: (key: string) => unknown },
-        private readonly related: RelationshipModelStatic,
+        parent: TParent & { getAttribute: (key: string) => unknown },
+        related: RelatedModelClass<TRelated>,
         private readonly throughDelegate: string,
         private readonly firstKey: string,
         private readonly secondKey: string,
         private readonly localKey: string,
         private readonly secondLocalKey: string,
     ) {
-        super()
+        super(parent, related)
     }
 
     /**
@@ -30,10 +30,12 @@ export class HasOneThroughRelation<TParent, TRelated> extends Relation<TRelated>
         const localValue = this.parent.getAttribute(this.localKey)
         const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null
         if (!intermediate)
-            return null
+            return this.resolveDefaultResult()
 
         const query = this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }))
 
-        return query.first()
+        const result = await query.first()
+
+        return result ?? this.resolveDefaultResult()
     }
 }

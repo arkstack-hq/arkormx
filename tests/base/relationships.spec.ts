@@ -74,6 +74,38 @@ describe('Model relationships', () => {
         expect(avatar).toBeNull()
     })
 
+    it('supports withDefault for single-result relationships', async () => {
+        const missingProfileOwner = new Profile({ id: 99, userId: 999 })
+        const belongsToDefault = await missingProfileOwner.user()
+            .withDefault({ name: 'Guest User', email: 'guest@example.com' })
+            .getResults()
+
+        expect(belongsToDefault).toBeInstanceOf(User)
+        expect((belongsToDefault as User).getAttribute('name')).toBe('Guest User')
+
+        const missingUser = new User({ id: 999, name: 'Ghost', email: 'ghost@example.com', isActive: 0 })
+        const hasOneDefault = await missingUser.profile()
+            .withDefault(new Profile({ id: 500, userId: 999 }))
+            .getResults()
+
+        expect(hasOneDefault).toBeInstanceOf(Profile)
+        expect((hasOneDefault as Profile).getAttribute('id')).toBe(500)
+
+        const throughDefault = await missingUser.avatar()
+            .withDefault((parent) => new Image({ id: 9010, profileId: parent.getAttribute('id'), url: 'fallback.png' }))
+            .getResults()
+
+        expect(throughDefault).toBeInstanceOf(Image)
+        expect((throughDefault as Image).getAttribute('url')).toBe('fallback.png')
+
+        const morphDefault = await missingUser.primaryComment()
+            .withDefault((parent) => ({ body: `No comment for ${String(parent.getAttribute('name'))}` }))
+            .getResults()
+
+        expect(morphDefault).toBeInstanceOf(Comment)
+        expect((morphDefault as Comment).getAttribute('body')).toBe('No comment for Ghost')
+    })
+
     it('supports fluent relation query chaining', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()

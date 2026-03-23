@@ -1,5 +1,5 @@
-import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
+import type { RelatedModelClass } from 'src/types'
+import { SingleResultRelation } from './SingleResultRelation'
 
 /**
  * Represents a "has one" relationship between two models.
@@ -7,14 +7,14 @@ import type { RelationshipModelStatic } from 'src/types'
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export class HasOneRelation<TParent, TRelated> extends Relation<TRelated> {
+export class HasOneRelation<TParent, TRelated> extends SingleResultRelation<TParent & { getAttribute: (key: string) => unknown }, TRelated> {
     public constructor(
-        private readonly parent: TParent & { getAttribute: (key: string) => unknown },
-        private readonly related: RelationshipModelStatic,
+        parent: TParent & { getAttribute: (key: string) => unknown },
+        related: RelatedModelClass<TRelated>,
         private readonly foreignKey: string,
         private readonly localKey: string,
     ) {
-        super()
+        super(parent, related)
     }
 
     /**
@@ -26,6 +26,8 @@ export class HasOneRelation<TParent, TRelated> extends Relation<TRelated> {
         const localValue = this.parent.getAttribute(this.localKey)
         const query = this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
 
-        return query.first()
+        const result = await query.first()
+
+        return result ?? this.resolveDefaultResult()
     }
 }

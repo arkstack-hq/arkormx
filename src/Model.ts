@@ -496,8 +496,8 @@ export abstract class Model<
         attributes: Record<string, unknown>
     ): TModel {
         const model = new this(attributes)
-        ; (model as unknown as Model).syncOriginal()
-        ; (model as unknown as Model).syncChanges({})
+            ; (model as unknown as Model).syncOriginal()
+            ; (model as unknown as Model).syncChanges({})
 
         return model
     }
@@ -722,8 +722,8 @@ export abstract class Model<
 
         const deleted = await constructor.query().where({ id: identifier }).delete()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-    this.syncChanges(previousOriginal)
-    this.syncOriginal()
+        this.syncChanges(previousOriginal)
+        this.syncOriginal()
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
 
         return this

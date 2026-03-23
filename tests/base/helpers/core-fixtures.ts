@@ -260,6 +260,10 @@ export class User extends Model<'user'> {
         return this.morphMany(Comment, 'commentable')
     }
 
+    public primaryComment () {
+        return this.morphOne(Comment, 'commentable')
+    }
+
     public tags () {
         return this.morphToMany(Tag, 'taggables', 'taggable', 'tagId')
     }
@@ -311,6 +315,10 @@ export class Image extends Model {
 
 export class Comment extends Model {
     protected static override delegate = 'comments'
+
+    public user () {
+        return this.belongsTo(User, 'commentableId', 'id')
+    }
 }
 
 export class Tag extends Model {

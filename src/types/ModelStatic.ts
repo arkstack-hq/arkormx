@@ -14,6 +14,8 @@ export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = Pris
 }
 
 export interface RelationshipModelStatic {
+    new(attributes?: Record<string, unknown>): any
     query: () => QueryBuilder<any, any>
+    hydrate: (attributes: Record<string, unknown>) => any
     getDelegate: (delegate?: string) => PrismaDelegateLike
 }
