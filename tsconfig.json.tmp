@@ -2,9 +2,12 @@
   "compilerOptions": {
     "module": "ESNext",
     "target": "ES2023",
-    "lib": ["es2022", "DOM"],
+    "lib": [
+      "es2022",
+      "DOM"
+    ],
     "esModuleInterop": true,
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "strict": true,
     "moduleResolution": "bundler",
@@ -13,7 +16,10 @@
     "sourceMap": true,
     "outDir": "./dist",
     "rootDir": "./",
-    "types": ["node", "vitest"],
+    "types": [
+      "node",
+      "vitest"
+    ],
     "baseUrl": "."
   },
   "include": [
@@ -26,5 +32,8 @@
     "vitest.config.ts",
     "tsdown.config.ts"
   ],
-  "exclude": ["node_modules", "dist"]
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
 }

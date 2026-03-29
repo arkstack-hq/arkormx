@@ -32,8 +32,11 @@ npx arkorm make:migration "create users table"
 `models:sync` reads Prisma models from `schema.prisma` and updates `declare` attributes inside your Arkorm models.
 
 - Scalar fields are mapped to TypeScript types.
+- Prisma enum fields are emitted with `import type { EnumName } from '@prisma/client'` declarations.
+- `Json` fields are emitted as `Record<string, unknown> | unknown[]`, and Prisma list fields are emitted as `Array<...>`.
 - Nullable Prisma fields are emitted as `type | null`.
 - Existing non-`declare` class members are preserved.
+- Existing `declare` fields are preserved when their current type is already compatible with the generated type.
 
 ```sh
 npx arkorm models:sync

@@ -216,4 +216,113 @@ describe('CLI application', () => {
         expect(updatedSource).toContain('declare nickname: string | null')
         expect(updatedSource).toContain('declare isActive: boolean')
     })
+
+    it('syncs json, enum imports, and list declarations from prisma schema', () => {
+        const tempWorkspace = makeTempDir('arkormx-cli-model-sync-json-enum-')
+        process.chdir(tempWorkspace)
+        const workspace = process.cwd()
+        const schemaPath = writePrismaSchema(workspace)
+        const modelsDir = join(workspace, 'src', 'models')
+
+        mkdirSync(modelsDir, { recursive: true })
+        writeFileSync(schemaPath, readFileSync(schemaPath, 'utf-8') + [
+            'enum UserStatus {',
+            '  ACTIVE @map("active")',
+            '  SUSPENDED @map("suspended")',
+            '  @@map("user_status")',
+            '}',
+            '',
+            'model User {',
+            '  id Int @id @default(autoincrement())',
+            '  metadata Json',
+            '  preferences Json?',
+            '  snapshots Json[]',
+            '  status UserStatus',
+            '  tags UserStatus[]',
+            '  @@map("users")',
+            '}',
+            '',
+        ].join('\n'))
+
+        const modelPath = join(modelsDir, 'User.ts')
+        writeFileSync(modelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model<\'users\'> {',
+            '    protected static override delegate = \'users\'',
+            '}',
+            '',
+        ].join('\n'))
+
+        const app = createCliApp({
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const result = app.syncModelsFromPrisma({ schemaPath, modelsDir })
+
+        expect(result.total).toBe(1)
+        expect(result.updated).toEqual([modelPath])
+
+        const updatedSource = readFileSync(modelPath, 'utf-8')
+        expect(updatedSource).toContain('import type { UserStatus } from \'@prisma/client\'')
+        expect(updatedSource).toContain('declare metadata: Record<string, unknown> | unknown[]')
+        expect(updatedSource).toContain('declare preferences: Record<string, unknown> | unknown[] | null')
+        expect(updatedSource).toContain('declare snapshots: Array<Record<string, unknown> | unknown[]>')
+        expect(updatedSource).toContain('declare status: UserStatus')
+        expect(updatedSource).toContain('declare tags: Array<UserStatus>')
+    })
+
+    it('preserves compatible manual declaration overrides', () => {
+        const tempWorkspace = makeTempDir('arkormx-cli-model-sync-manual-overrides-')
+        process.chdir(tempWorkspace)
+        const workspace = process.cwd()
+        const schemaPath = writePrismaSchema(workspace)
+        const modelsDir = join(workspace, 'src', 'models')
+
+        mkdirSync(modelsDir, { recursive: true })
+        writeFileSync(schemaPath, readFileSync(schemaPath, 'utf-8') + [
+            'enum UserStatus {',
+            '  ACTIVE',
+            '  SUSPENDED',
+            '}',
+            '',
+            'model User {',
+            '  metadata Json',
+            '  status UserStatus',
+            '  @@map("users")',
+            '}',
+            '',
+        ].join('\n'))
+
+        const modelPath = join(modelsDir, 'User.ts')
+        writeFileSync(modelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model<\'users\'> {',
+            '    declare metadata: string[]',
+            '    declare status: \'ACTIVE\'',
+            '    protected static override delegate = \'users\'',
+            '}',
+            '',
+        ].join('\n'))
+
+        const app = createCliApp({
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const result = app.syncModelsFromPrisma({ schemaPath, modelsDir })
+
+        expect(result.total).toBe(1)
+        expect(result.updated).toEqual([])
+        expect(result.skipped).toEqual([modelPath])
+
+        const updatedSource = readFileSync(modelPath, 'utf-8')
+        expect(updatedSource).toContain('declare metadata: string[]')
+        expect(updatedSource).toContain('declare status: \'ACTIVE\'')
+        expect(updatedSource).not.toContain('import type { UserStatus } from \'@prisma/client\'')
+    })
 })

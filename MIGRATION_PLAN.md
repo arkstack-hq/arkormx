@@ -1,85 +1,64 @@
-# Arkorm Migration Plan: Prisma to Kysely
+# Arkorm Migration Plan: Delegate Runtime to Adapter-First SQL
 
 ## Goal
 
-Port Arkorm from a Prisma-centered execution model to a Kysely-backed SQL adapter while preserving Arkorm's public Eloquent-style API.
+Move Arkorm from its current Prisma-delegate-centered runtime to an adapter-first architecture that can support a Kysely-backed SQL implementation without changing Arkorm's public Eloquent-style API.
 
-The migration would improve:
-
-- relationship loading efficiency
-- control over generated SQL
-- support for set-based eager loading and aggregates
-- scalability for complex relation graphs
-
-The public API should remain centered on:
+The long-term public API should remain centered on:
 
 - `Model`
 - `QueryBuilder`
 - relation classes such as `HasManyRelation`, `BelongsToRelation`, and `BelongsToManyRelation`
 
-## Why Migrate
+The backend should become an implementation detail behind an Arkorm-owned adapter contract.
 
-Arkorm currently models database access around Prisma-like delegates. That works for basic CRUD, but it becomes a poor fit for relation-heavy ORM behavior.
+## Why This Plan Exists
 
-Current pain points:
+Arkorm currently works, but its execution model is still shaped around Prisma-like delegates. That backend shape is good enough for basic CRUD, but it limits how far Arkorm can go as a real ORM.
 
-- relations are resolved through multiple delegate calls instead of set-based SQL
-- many-to-many relationships already require a pivot query and a second related-model query
-- eager loading is applied model-by-model after hydration, which trends toward N+1 query behavior
-- relationship aggregates and relation filters are difficult to push fully into SQL when the backend API is delegate-shaped
+This migration is intended to improve:
 
-Kysely is a better execution substrate because it is:
+- relationship loading efficiency
+- control over generated SQL
+- support for set-based eager loading and aggregates
+- scalability for complex relation graphs
+- long-term backend portability beyond Prisma
 
-- SQL-native
-- strongly typed
-- flexible enough for joins, subqueries, CTEs, and JSON aggregation
-- low-level enough that Arkorm can remain the actual ORM abstraction
+## Current State Snapshot
 
-## Recommended Stack
+As of this revision, Arkorm is still delegate-first internally.
 
-Core recommendation:
+What exists today:
 
-- `kysely`
+- `Model.query()` still instantiates `QueryBuilder` with a runtime delegate, not an adapter.
+- `QueryBuilder` still executes against methods such as `findMany`, `findFirst`, `create`, `update`, and `delete` on the delegate.
+- several relation classes still call `getDelegate()` directly for through and pivot operations.
+- relation aggregates and relation filters are still constrained by delegate-shaped execution.
+- `UnsupportedAdapterFeatureException` exists, which is useful as a future-facing signal, but there is not yet a real adapter boundary in runtime architecture.
 
-Database driver recommendation:
+This means the migration has not started in architectural terms. The next step is still to introduce the adapter boundary rather than trying to optimize SQL behavior directly.
 
-- Postgres-first: `postgres` or `pg`
+## Concrete Code Hotspots
 
-Suggested default:
+The migration should be planned around the files that currently define the runtime shape:
 
-- `kysely`
-- `postgres`
+- `src/Model.ts`
+- `src/QueryBuilder.ts`
+- `src/relationship/BelongsToManyRelation.ts`
+- `src/relationship/HasManyThroughRelation.ts`
+- `src/relationship/HasOneThroughRelation.ts`
+- `src/relationship/MorphToManyRelation.ts`
+- `src/helpers/runtime-config.ts`
+- `src/types/model.ts`
+- `src/types/core.ts`
 
-Reasoning:
-
-- Kysely gives Arkorm control over SQL compilation and execution strategy
-- Arkorm keeps ownership of models, relations, hydration, scopes, soft deletes, and serialization
-- The backend becomes an adapter layer instead of another ORM hidden under Arkorm
-
-## Migration Principles
-
-1. Preserve the Arkorm public API where possible.
-2. Replace the Prisma delegate dependency at the adapter boundary, not at the model API.
-3. Move relation execution from per-model resolution to set-based loading.
-4. Push aggregates and relationship filters into SQL when practical.
-5. Keep the migration incremental so the package can continue to ship during the transition.
-
-## Current Architecture Constraints
-
-The current design couples several core paths to a Prisma-like delegate contract:
-
-- `Model.getDelegate()` resolves a runtime delegate by name
-- `Model.query()` constructs `QueryBuilder` with that delegate
-- `QueryBuilder` calls methods like `findMany`, `findFirst`, `create`, `update`, and `delete`
-- relation classes often compose queries by issuing more delegate calls
-
-That backend shape is too narrow for efficient ORM-style relation loading.
+These files currently encode most of the delegate assumptions that need to be removed or isolated.
 
 ## Target Architecture
 
-Replace the implicit Prisma delegate contract with a real Arkorm adapter contract.
+The target architecture should be adapter-first, with Arkorm owning query intent and backend implementations owning execution.
 
-### Proposed Layers
+### Desired Layers
 
 1. Public ORM layer
 
@@ -90,66 +69,127 @@ Replace the implicit Prisma delegate contract with a real Arkorm adapter contrac
 - soft delete behavior
 - hydration and serialization
 
-2. Intermediate query representation
+2. Internal Arkorm query layer
 
-- Arkorm query state
+- query state
+- query spec types
 - relation load plans
 - aggregate specifications
 - model metadata
 
 3. Adapter layer
 
-- SQL adapter interface
-- Kysely implementation
+- Arkorm-defined database adapter contract
+- Prisma compatibility adapter
+- Kysely adapter
 - transaction integration
 - dialect-specific helpers where necessary
 
-4. Database driver
+4. Driver layer
 
-- Postgres driver for actual execution
+- Postgres driver for actual SQL execution
+- room for other SQL dialects later if the adapter contract stays clean
 
-## Proposed Adapter Contract
+## Migration Principles
 
-Introduce a backend contract that is centered on Arkorm behavior instead of Prisma delegates.
+1. Preserve the Arkorm public API where practical.
+2. Replace delegate assumptions at the adapter boundary instead of leaking backend semantics upward.
+3. Move relation execution from model-by-model loading to set-based loading.
+4. Push aggregates and relation filters into SQL when practical.
+5. Keep the migration incremental enough that Arkorm can continue shipping during the transition.
+6. Prefer Arkorm-native abstractions over a one-to-one mirror of Prisma or Kysely APIs.
 
-Example shape:
+## Revised Problem Statement
 
-```ts
-interface DatabaseAdapter {
-  select<TModel>(spec: SelectSpec<TModel>): Promise<Record<string, unknown>[]>;
-  selectOne<TModel>(
-    spec: SelectSpec<TModel>,
-  ): Promise<Record<string, unknown> | null>;
-  insert<TModel>(spec: InsertSpec<TModel>): Promise<Record<string, unknown>>;
-  insertMany<TModel>(spec: InsertManySpec<TModel>): Promise<number>;
-  update<TModel>(
-    spec: UpdateSpec<TModel>,
-  ): Promise<Record<string, unknown> | null>;
-  updateMany<TModel>(spec: UpdateManySpec<TModel>): Promise<number>;
-  delete<TModel>(
-    spec: DeleteSpec<TModel>,
-  ): Promise<Record<string, unknown> | null>;
-  deleteMany<TModel>(spec: DeleteManySpec<TModel>): Promise<number>;
-  count<TModel>(spec: AggregateSpec<TModel>): Promise<number>;
-  exists<TModel>(spec: SelectSpec<TModel>): Promise<boolean>;
-  loadRelations<TModel>(spec: RelationLoadSpec<TModel>): Promise<void>;
-  transaction<T>(
-    callback: (adapter: DatabaseAdapter) => Promise<T>,
-  ): Promise<T>;
-}
-```
+The main problem is not Prisma itself. The main problem is that Arkorm internal execution is shaped like a delegate wrapper instead of a full ORM planning layer.
 
-This contract should not mimic Prisma method-for-method. It should describe what Arkorm needs to do.
+That creates several constraints:
+
+- `QueryBuilder` is coupled to delegate method names and delegate argument shapes.
+- relation classes perform extra round trips directly instead of going through a central load planner.
+- relation aggregates are hard to express efficiently because the execution layer is not SQL-native.
+- `has` and `whereHas` are difficult to push down cleanly because Arkorm does not yet compile relationship intent into backend-agnostic specs.
+
+Kysely is the recommended target backend because it gives Arkorm SQL control without taking ownership of the ORM abstraction.
+
+## Recommended Backend Stack
+
+Core recommendation:
+
+- `kysely`
+
+Postgres-first driver recommendation:
+
+- `postgres` or `pg`
+
+Suggested default target:
+
+- `kysely`
+- `postgres`
+
+Reasoning:
+
+- Kysely is SQL-native and type-safe.
+- Arkorm keeps ownership of models, relations, scopes, serialization, hydration, and soft deletes.
+- Kysely is flexible enough for joins, subqueries, CTEs, JSON aggregation, and correlated aggregate queries.
+
+## Adapter Contract Direction
+
+Arkorm should define a backend contract around ORM behavior, not around Prisma delegate methods.
+
+The contract should support at least these capability groups:
+
+- select one
+- select many
+- insert one
+- insert many
+- update one
+- update many
+- delete one
+- delete many
+- count
+- exists
+- transaction
+
+It should also leave room for richer features later:
+
+- relation batch loading
+- aggregate projection
+- existence and count subqueries
+- raw predicates only when explicitly supported by the adapter
+
+The adapter API should be described in Arkorm types under `src/types`, not buried inside runtime code.
+
+## Internal Query Spec Direction
+
+Before Kysely can be introduced cleanly, Arkorm needs internal query specification types.
+
+`QueryBuilder` should build Arkorm-owned specs rather than immediately calling delegate methods.
+
+Minimum useful spec areas:
+
+- model or table target
+- selected columns or projections
+- where conditions
+- ordering
+- pagination
+- include or eager-load plan
+- aggregate plan
+- mutation payloads
+- unique row targeting
+- soft delete behavior
+
+These specs do not need to be perfect on day one. They just need to be expressive enough to support current behavior through a Prisma compatibility adapter.
 
 ## Metadata Needed for SQL Compilation
 
-To compile efficient SQL, Arkorm will need reliable model metadata beyond the current delegate naming pattern.
+To compile efficient SQL, Arkorm will need metadata beyond the current delegate naming conventions.
 
-Recommended metadata additions:
+Recommended metadata:
 
 - table name
 - primary key
-- column map when property names differ from column names
+- optional column map when property names differ from column names
 - soft delete column metadata
 - relation metadata
 - pivot table metadata for many-to-many relations
@@ -164,87 +204,86 @@ class User extends Model {
 }
 ```
 
-## QueryBuilder Refactor Outline
+This metadata should be introduced early, but in a way that does not break existing naming conventions immediately.
 
-`QueryBuilder` should stop holding a raw Prisma-like delegate and instead hold:
+## QueryBuilder Refactor Strategy
+
+`QueryBuilder` is the critical seam.
+
+Today it holds:
+
+- a delegate reference
+- query state tightly coupled to delegate argument shapes
+
+It should eventually hold:
 
 - a model reference
-- query state
+- Arkorm query state
 - an adapter reference
 
-### Responsibilities to Preserve
+### Responsibilities to Keep in QueryBuilder
 
-- fluent query chaining
+- fluent chaining
 - scopes
-- soft delete filters
+- soft delete semantics
 - pagination helpers
-- hydration into model instances
+- hydration orchestration
+- eager-load intent registration
 
 ### Responsibilities to Move Downward
 
+- backend-specific execution
 - SQL generation
-- execution strategy
-- relation batching
+- batch relation execution
 - aggregate pushdown
+- backend capability checks
 
-### Recommended Refactor Steps
+## Relation Loading Redesign
 
-1. Introduce internal query spec types in `src/types`
-2. Make `QueryBuilder` build specs rather than invoke delegate methods directly
-3. Implement a compatibility adapter that temporarily wraps Prisma delegates
-4. Implement the Kysely adapter against the same contract
-5. Switch runtime configuration to use adapters as the primary backend entry point
+This is the highest-value runtime improvement, but it should come after the adapter boundary exists.
 
-## Eager Loading Redesign
+Current relation loading is still too tied to per-model delegate calls, especially for through and pivot-based relations.
 
-This is the highest-value change.
-
-Current behavior loads relations per model instance after the base query returns. That should be replaced with set-based loaders.
-
-### Target Strategy by Relation Type
+### Target Loading Strategy
 
 #### BelongsTo
 
-Current shape:
-
-- collect foreign keys from parent models
-- execute one query using `WHERE owner_key IN (...)`
-- map results back to each parent
+- collect foreign keys from parents
+- execute one related query using `IN (...)`
+- map related rows back to parents
 
 #### HasMany
 
-Current shape:
-
-- collect parent primary keys
-- execute one query using `WHERE foreign_key IN (...)`
+- collect parent keys
+- execute one child query using `IN (...)`
 - group children by foreign key
-- assign grouped collections to parents
 
 #### HasOne
 
-Same as `HasMany`, but select the first grouped child per parent.
+- same batch approach as `HasMany`
+- choose the first related row per parent
 
 #### BelongsToMany
 
-Preferred shape:
-
-- query pivot table joined to related table for all parent ids in one statement
-- return rows keyed by parent id
-- group and hydrate related models per parent
-
-For Postgres, this can later be optimized further using JSON aggregation where beneficial.
+- query pivot and related data in one joined operation where practical
+- otherwise at least batch the pivot phase and related phase instead of resolving per parent
 
 #### HasManyThrough and HasOneThrough
 
-Use explicit joins through the intermediate table instead of nested round trips.
+- replace nested through-round-trips with explicit join-based or batched-through execution
 
 #### Morph Relations
 
-Batch by morph type and morph id. These will likely remain more complex, but should still be set-based rather than model-by-model.
+- batch by morph type and morph id
+- keep these later in the migration because they are more complex
 
-## Relationship Aggregates
+The goal is not one giant SQL statement for every graph. The goal is predictable set-based loading with bounded round trips.
 
-Current aggregate features such as:
+## Aggregates and Relation Filters
+
+These should move to SQL-backed execution after the adapter boundary and base CRUD work are stable.
+
+Features in scope:
 
 - `withCount`
 - `withExists`
@@ -252,264 +291,400 @@ Current aggregate features such as:
 - `withAvg`
 - `withMin`
 - `withMax`
-
-should move to SQL-backed implementations.
-
-### Recommended Implementation Strategy
-
-For simple cases:
-
-- use subqueries in the select list
-- or use grouped joins when cardinality is manageable
-
-Examples:
-
-- `withCount('posts')` -> correlated count subquery
-- `withExists('posts')` -> correlated exists subquery
-- `withSum('orders', 'amount')` -> correlated aggregate subquery
-
-This avoids fetching whole relation collections just to compute counts or sums.
-
-## Relationship Filters
-
-Features such as:
-
 - `has`
 - `whereHas`
 - `doesntHave`
 - `orWhereHas`
 
-should compile into SQL predicates instead of post-query in-memory filtering.
-
 Preferred SQL forms:
 
-- `EXISTS (...)`
+- correlated `EXISTS (...)`
 - `NOT EXISTS (...)`
-- correlated count subqueries when exact count comparisons are required
+- correlated aggregate subqueries
+- grouped joins only when they do not distort result shape
 
-This is a major improvement over loading candidate models and filtering them in application code.
+The point is to stop materializing whole relation collections merely to compute counts, sums, or existence checks.
 
-## Transaction Model
+## Transaction Model Direction
 
-Arkorm currently supports transaction scoping. Preserve that API, but bind it to adapter-managed transactions.
+Arkorm transaction scoping should remain part of the public API.
 
 Target behavior:
 
-- `Model.transaction()` delegates to the adapter transaction API
-- nested transactions reuse the same transaction context where appropriate
-- `Model.getDelegate()` should eventually disappear in favor of adapter-backed model access
+- `Model.transaction()` delegates to adapter-managed transactions
+- nested transactions reuse the current adapter transaction context where appropriate
+- runtime transaction scoping stays in Arkorm helpers, but no longer depends on raw delegate semantics
 
-## Runtime Configuration Changes
+## Runtime Configuration Direction
 
-Current setup is oriented around a runtime Prisma client.
+The runtime should move from client-first to adapter-first configuration.
 
-Target setup should support something like:
+Target primary setup:
 
 ```ts
 Model.setAdapter(createKyselyAdapter(db, config));
 ```
 
-Transition support may include:
+Transition setup:
 
 ```ts
 Model.setAdapter(createPrismaCompatibilityAdapter(prisma));
 ```
 
-That allows Arkorm to ship the new abstraction without a flag day rewrite.
+Compatibility support can continue to infer delegates for a transition period, but that should stop being the primary documented runtime path.
 
 ## Phased Migration Plan
 
-### Phase 1: Introduce the Adapter Boundary
+### Phase 0: Freeze the Architectural Baseline
 
 Deliverables:
 
-- define `DatabaseAdapter` types in `src/types`
-- add `Model.setAdapter()` as the primary runtime entry point if not already present in the desired shape
-- refactor `QueryBuilder` to depend on the adapter contract internally
-- implement a Prisma compatibility adapter so current behavior keeps working
+- document current delegate-first execution points in `Model`, `QueryBuilder`, and relation classes
+- add repository notes for known delegate-only paths
+- confirm the current base and postgres test suites are green before refactoring begins
+
+Implementation checklist:
+
+- [ ] audit `src/Model.ts` for delegate-only entry points and note them inline in the plan or repo memory
+- [ ] audit `src/QueryBuilder.ts` for direct delegate method usage and group those usages by operation type
+- [ ] audit relation classes for direct `getDelegate()` calls, especially pivot and through relations
+- [ ] identify runtime-config code paths that assume a Prisma client instead of a generic adapter
+- [ ] record the current green test command set for base and postgres coverage
+- [ ] decide which current behaviors are compatibility guarantees versus behaviors that may change during migration
 
 Success criteria:
 
-- public API remains unchanged
-- existing tests continue to pass on Prisma-backed runtime
+- the team agrees on the exact current seams to refactor
+- this migration plan matches the codebase instead of an aspirational future state
 
-### Phase 2: Add Model Metadata for SQL Compilation
+### Phase 1: Introduce Arkorm Adapter Types
+
+Deliverables:
+
+- define `DatabaseAdapter` and related spec types in `src/types`
+- define capability types or feature flags for optional adapter features
+- define row, mutation, select, and transaction spec shapes at the Arkorm layer
+
+Implementation checklist:
+
+- [ ] add adapter contract types under `src/types`
+- [ ] define select, mutation, aggregate, relation-load, and transaction spec types
+- [ ] define adapter capability flags or feature descriptors for optional features
+- [ ] define shared row and result types that are not Prisma-specific
+- [ ] review existing type exports and decide where the new adapter types should be re-exported
+- [ ] add type-level tests or compile-only fixtures for the new public and internal type shapes
+
+Success criteria:
+
+- adapter shapes are represented in types without changing runtime behavior yet
+
+### Phase 2: Add a Prisma Compatibility Adapter
+
+Deliverables:
+
+- implement a compatibility adapter that wraps the current Prisma-like delegate flow
+- move current delegate execution behind that adapter
+- keep Prisma-backed tests passing with no public API break
+
+Implementation checklist:
+
+- [ ] create a Prisma compatibility adapter module in `src`
+- [ ] map Arkorm select specs to existing Prisma delegate calls
+- [ ] map create, update, delete, count, and exists operations through the compatibility adapter
+- [ ] add transaction bridging so adapter-managed transactions still use the current Prisma transaction context correctly
+- [ ] preserve current soft delete expectations at the adapter boundary
+- [ ] add focused tests that compare compatibility-adapter behavior to current delegate behavior
+
+Success criteria:
+
+- Arkorm still behaves the same, but the runtime calls an adapter instead of a delegate directly
+
+### Phase 3: Refactor QueryBuilder to Emit Arkorm Specs
+
+Deliverables:
+
+- make `QueryBuilder` build Arkorm-owned specs instead of delegate-shaped arguments
+- keep fluent chaining and scope behavior intact
+- route select, create, update, delete, count, and exists through the adapter contract
+
+Implementation checklist:
+
+- [ ] identify all methods in `QueryBuilder` that currently build Prisma-shaped args objects
+- [ ] replace internal delegate-arg state with Arkorm-owned query state structures
+- [ ] add one or more internal spec-builder methods for read, write, and aggregate paths
+- [ ] route execution methods through the adapter instead of calling delegate methods directly
+- [ ] preserve scope, pagination, eager-load intent, and soft-delete behavior during the refactor
+- [ ] remove or isolate Prisma-specific type dependencies from `QueryBuilder` where practical
+
+Success criteria:
+
+- `QueryBuilder` is no longer the place where backend argument shapes are defined
+
+### Phase 4: Remove Direct Delegate Access from Relation Classes
+
+Deliverables:
+
+- replace direct `getDelegate()` calls inside through and pivot relations
+- introduce centralized relation-loading utilities or planner hooks
+- make relation classes express relation intent rather than backend calls
+
+Implementation checklist:
+
+- [ ] inventory every relation class that bypasses `QueryBuilder` or the future adapter
+- [ ] define relation-load plan types for direct, pivot, through, and morph relations
+- [ ] move pivot and through query execution out of relation classes and into shared loader utilities
+- [ ] ensure relation classes still own relation metadata and mapping logic but no longer own backend execution
+- [ ] add focused tests for belongs-to-many and through relations before removing direct delegate access
+- [ ] confirm that no relation class still reaches into `getDelegate()` after the refactor
+
+Success criteria:
+
+- relation classes no longer reach around the adapter boundary for pivot or through queries
+
+### Phase 5: Add Model Metadata Needed for SQL Compilation
 
 Deliverables:
 
 - formalize table name and primary key metadata
-- define relation metadata structures
 - add optional column mapping metadata
-- document naming conventions and overrides
+- define relation metadata structures for SQL compilation
+- keep convention-based fallback behavior for transition compatibility
+
+Implementation checklist:
+
+- [ ] define table and primary-key metadata APIs on `Model`
+- [ ] add optional column mapping support for attribute-to-column translation
+- [ ] formalize relation metadata structures that loaders and adapters can consume
+- [ ] ensure soft delete metadata is represented explicitly instead of inferred ad hoc
+- [ ] add fallback behavior so existing models without explicit metadata still work
+- [ ] document the metadata APIs and naming-convention fallback rules
 
 Success criteria:
 
-- enough metadata exists to build SQL queries without relying on delegate inference
+- Arkorm can plan SQL without relying solely on delegate naming inference
 
-### Phase 3: Implement the Kysely Adapter
+### Phase 6: Implement the Kysely Adapter for Core CRUD
 
 Deliverables:
 
 - create `createKyselyAdapter()`
-- implement select, insert, update, delete, count, exists, and transaction methods
-- support soft deletes in adapter-aware query compilation
+- implement select, insert, update, delete, count, exists, and transaction support
+- preserve soft delete behavior through adapter-aware query planning
+
+Implementation checklist:
+
+- [ ] add Kysely and the chosen Postgres driver dependencies
+- [ ] create a Kysely adapter module and its runtime factory
+- [ ] implement select-one and select-many execution from Arkorm read specs
+- [ ] implement insert, update, delete, count, and exists from Arkorm specs
+- [ ] preserve soft delete semantics without changing the public query API
+- [ ] add CRUD parity tests that run against both the Prisma compatibility adapter and Kysely adapter
 
 Success criteria:
 
-- core CRUD and pagination tests pass on Kysely
+- core CRUD and pagination tests pass on Kysely-backed runtime
 
-### Phase 4: Rewrite Eager Loading as Set-Based Loaders
+### Phase 7: Rewrite Eager Loading as Set-Based Loaders
 
 Deliverables:
 
-- create relation loader utilities per relation type
 - batch `belongsTo`, `hasOne`, and `hasMany`
-- batch `belongsToMany` through joined pivot queries
-- wire `Model.load()` and `QueryBuilder.with()` into the new loader path
+- batch `belongsToMany` using pivot-aware set-based loading
+- add through-relation batching or join-based execution
+- wire `Model.load()` and `QueryBuilder.with()` into the new loading path
+
+Implementation checklist:
+
+- [ ] design a shared eager-load planner that groups parent models by relation request
+- [ ] implement batched loaders for `belongsTo`, `hasMany`, and `hasOne`
+- [ ] implement pivot-aware batching for `belongsToMany`
+- [ ] implement through-relation loading without nested per-parent round trips
+- [ ] integrate the loaders into `Model.load()` and `QueryBuilder.with()`
+- [ ] add query-count assertions so eager loading regressions are caught by tests
 
 Success criteria:
 
-- eager loading no longer issues relation queries per model instance for supported relation types
+- eager loading no longer scales linearly with the number of loaded parent models for supported relation types
 
-### Phase 5: Push Aggregates and Relation Filters into SQL
+### Phase 8: Push Aggregates and Relation Filters into SQL
 
 Deliverables:
 
-- SQL-backed `has` and `whereHas`
-- SQL-backed `withCount`, `withExists`, `withSum`, `withAvg`, `withMin`, `withMax`
-- fallback strategy only for cases not yet expressible in SQL
+- SQL-backed `has`, `whereHas`, `doesntHave`, and `orWhereHas`
+- SQL-backed `withCount`, `withExists`, `withSum`, `withAvg`, `withMin`, and `withMax`
+- fallback only for unsupported edge cases
+
+Implementation checklist:
+
+- [ ] define internal aggregate and relation-filter spec shapes if Phase 1 did not already cover them fully
+- [ ] compile `has` and `whereHas` into SQL-friendly existence or count predicates
+- [ ] compile `withCount` and `withExists` into select-list subqueries or equivalent SQL
+- [ ] compile sum, avg, min, and max relation aggregates into SQL-backed expressions
+- [ ] keep edge-case fallback behavior explicit and adapter-capability-aware
+- [ ] add correctness tests and query-shape tests for all aggregate and relation-filter helpers
 
 Success criteria:
 
-- relation aggregates and filters stop depending on in-memory post-processing for common cases
+- common relation filters and aggregates no longer depend on post-query in-memory processing
 
-### Phase 6: Optimize Postgres-Specific Paths
+### Phase 9: Optimize Postgres-Specific Paths
 
 Deliverables:
 
-- optional JSON aggregation for nested graph fetches
-- better `RETURNING` support
-- conflict handling for upserts and insert-ignore patterns
-- dialect-specific performance tuning where appropriate
+- optional JSON aggregation for selected nested graph cases
+- strong `RETURNING` support
+- conflict handling for upserts and insert-ignore flows
+- dialect-specific performance tuning where justified
+
+Implementation checklist:
+
+- [ ] identify which eager-load or nested graph cases materially benefit from JSON aggregation
+- [ ] add `RETURNING`-aware implementations where Postgres can avoid extra round trips
+- [ ] implement conflict-handling helpers for upsert and insert-ignore style flows
+- [ ] benchmark representative Postgres-heavy workloads before and after optimizations
+- [ ] keep Postgres-specific behavior behind adapter or dialect-specific seams
+- [ ] document which optimizations are Postgres-specific versus adapter-generic
 
 Success criteria:
 
-- Arkorm performs well for common Postgres-heavy workloads
+- Arkorm performs well for common Postgres-heavy workloads without polluting the public API
 
-### Phase 7: Deprecate Prisma-Centered Runtime APIs
+### Phase 10: Deprecate Delegate-First Runtime APIs
 
 Deliverables:
 
 - deprecate `setClient()` and direct delegate assumptions
 - update docs to show adapter-first setup
-- keep compatibility layer for a transition window
+- keep Prisma compatibility adapter during the transition window
+
+Implementation checklist:
+
+- [ ] mark delegate-first runtime APIs as deprecated in code and docs
+- [ ] update examples, guides, and README content to show adapter-first setup first
+- [ ] add migration notes for existing Prisma-client users moving to the compatibility adapter
+- [ ] keep compatibility coverage in CI for the agreed transition window
+- [ ] define the removal criteria and target release for delegate-first runtime APIs
+- [ ] announce the compatibility window and deprecation path in release notes or roadmap docs
 
 Success criteria:
 
-- adapter-first runtime becomes the primary documented and tested path
+- adapter-first setup is the primary documented and tested runtime path
 
 ## Compatibility Strategy
 
-To reduce migration risk, keep both backends temporarily:
+During the migration, keep both backends temporarily:
 
 - Prisma compatibility adapter
 - Kysely adapter
 
-This allows:
+This enables:
 
-- running the same test suite across both backends
-- incremental migration of features
-- easier isolation of regressions
+- running the same behavioral tests across both implementations
+- incremental delivery instead of a flag-day rewrite
+- easier regression isolation when behavior diverges
 
 ## Testing Plan
 
-### Base Coverage
+### Existing Coverage to Preserve
 
-Ensure the existing test suite continues to validate:
+The existing suite should continue to validate:
 
 - CRUD operations
 - scopes
 - soft deletes
-- attribute mutators and casts
+- mutators and casts
 - serialization
 - pagination
+- transaction behavior
 
-### New Coverage to Add
+### Coverage to Add During Migration
 
 - eager loading query-count behavior for `belongsTo`, `hasMany`, and `belongsToMany`
-- aggregate correctness for `withCount`, `withExists`, `withSum`, `withAvg`, `withMin`, `withMax`
-- relation filter correctness for `has` and `whereHas`
-- transaction behavior under the new adapter
+- through-relation correctness under the new loading path
+- aggregate correctness for `withCount`, `withExists`, `withSum`, `withAvg`, `withMin`, and `withMax`
+- relation filter correctness for `has`, `whereHas`, and `doesntHave`
 - metadata override behavior for table and key mapping
+- parity tests that run the same behavior against Prisma compatibility and Kysely adapters
 
 ### Important Validation Goal
 
-Measure not just correctness, but query shape and round-trip count.
+Measure not only correctness but also query shape and round-trip count.
 
-For example:
+Examples:
 
 - eager loading 100 parents with one `hasMany` relation should not perform 101 relation queries
 - many-to-many eager loading should not issue one pivot query per parent
+- aggregate helpers should not fetch whole related collections merely to count or sum them
 
 ## Risks
 
-### Risk 1: Over-correcting Toward Giant Single Queries
+### Risk 1: Refactoring QueryBuilder Too Late
 
-Not every relation graph should become one SQL statement. Large joined queries can produce row explosion and poor memory behavior.
+If Kysely is introduced before Arkorm owns its own query specs, backend-specific logic will leak everywhere.
 
 Mitigation:
 
-- prefer set-based batched loading as the default
+- make adapter types and query spec types the first real architectural deliverable
+
+### Risk 2: Leaving Relation Classes Delegate-Aware
+
+Even after a compatibility adapter exists, direct delegate calls inside relation classes would keep the architecture split-brained.
+
+Mitigation:
+
+- treat relation classes as a first-class migration scope, not a cleanup task for later
+
+### Risk 3: Over-correcting Toward Giant Single Queries
+
+Not every relation graph should become one SQL statement. Large joins can create row explosion and poor memory behavior.
+
+Mitigation:
+
+- prefer set-based batching as the default strategy
 - reserve single-statement graph fetches for shallow or aggregation-friendly cases
 
-### Risk 2: Insufficient Metadata
+### Risk 4: Insufficient Metadata
 
-If Arkorm keeps relying on naming conventions alone, SQL compilation will be brittle.
-
-Mitigation:
-
-- formalize table, key, and relation metadata early
-
-### Risk 3: Leaking Backend-Specific Semantics Upward
-
-The public API should not become Kysely-flavored.
+If Arkorm continues relying only on naming conventions, SQL compilation will remain brittle.
 
 Mitigation:
 
-- keep Kysely inside the adapter layer
-- expose Arkorm concepts, not query-builder internals
+- formalize table, key, and relation metadata before advanced SQL features land
 
-### Risk 4: Regressions During Incremental Port
+### Risk 5: Regressions During the Compatibility Window
 
 Mitigation:
 
-- keep Prisma compatibility adapter during transition
-- run the same tests on both implementations where possible
+- keep the Prisma compatibility adapter during the transition
+- run the same behavior-focused tests across both implementations where possible
 
-## Recommended Initial Implementation Order
+## Recommended Initial Execution Order
 
-If work starts immediately, the order should be:
+If implementation starts now, the practical order should be:
 
-1. Add adapter contract types.
-2. Refactor `QueryBuilder` to compile internal specs instead of calling delegates directly.
-3. Create a Prisma compatibility adapter.
-4. Add table and primary key metadata support.
-5. Implement the Kysely adapter for CRUD and count/exists.
-6. Replace eager loading with batched relation loaders.
-7. Push `has`, `whereHas`, and aggregate methods into SQL.
-8. Deprecate delegate-first runtime APIs.
+1. Freeze the current architecture and document the exact delegate-only seams.
+2. Define adapter contract types and Arkorm query spec types.
+3. Build the Prisma compatibility adapter.
+4. Refactor `QueryBuilder` to target the adapter contract.
+5. Remove direct delegate access from relation classes.
+6. Add table, key, and relation metadata support.
+7. Implement the Kysely adapter for CRUD, count, exists, and transactions.
+8. Replace eager loading with set-based relation loaders.
+9. Push aggregates and relation filters into SQL.
+10. Deprecate delegate-first runtime APIs.
 
 ## Definition of Done
 
 The migration is complete when:
 
 - Arkorm no longer depends on Prisma delegate semantics internally
+- `Model` and `QueryBuilder` are adapter-first internally
+- relation classes no longer call delegates directly
 - Kysely is the primary backend implementation
 - eager loading for core relation types is batched and set-based
 - common relation aggregates and filters are SQL-backed
-- the existing public Arkorm API remains stable or only minimally changed
 - documentation and tests reflect adapter-first usage
 
-## Short-Term Next Step
+## Immediate Next Step
 
-The first implementation task should be to define the new adapter interfaces and query spec types, then refactor `QueryBuilder` to target that interface while preserving current behavior through a Prisma compatibility adapter.
+The first implementation task should be to define the Arkorm adapter interfaces and query spec types, then route current delegate-backed behavior through a Prisma compatibility adapter before attempting any Kysely CRUD or relation-loader work.

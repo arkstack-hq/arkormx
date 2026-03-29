@@ -288,6 +288,64 @@ describe('CLI command classes', () => {
         expect(successLines.some(line => line.includes('Processed'))).toBe(true)
     })
 
+    it('ModelsSyncCommand includes json, enum imports, and list declarations', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-json-enum-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+
+        writeFileSync(schemaPath, readFileSync(schemaPath, 'utf-8') + [
+            'enum UserStatus {',
+            '  ACTIVE @map("active")',
+            '  SUSPENDED @map("suspended")',
+            '  @@map("user_status")',
+            '}',
+            '',
+            'model User {',
+            '  id Int @id @default(autoincrement())',
+            '  metadata Json',
+            '  preferences Json?',
+            '  snapshots Json[]',
+            '  status UserStatus',
+            '  tags UserStatus[]',
+            '  @@map("users")',
+            '}',
+            '',
+        ].join('\n'))
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model<\'users\'> {',
+            '    protected static override delegate = \'users\'',
+            '}',
+            '',
+        ].join('\n'))
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            schema: schemaPath,
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        const updatedSource = readFileSync(userModelPath, 'utf-8')
+        expect(updatedSource).toContain('import type { UserStatus } from \'@prisma/client\'')
+        expect(updatedSource).toContain('declare metadata: Record<string, unknown> | unknown[]')
+        expect(updatedSource).toContain('declare preferences: Record<string, unknown> | unknown[] | null')
+        expect(updatedSource).toContain('declare snapshots: Array<Record<string, unknown> | unknown[]>')
+        expect(updatedSource).toContain('declare status: UserStatus')
+        expect(updatedSource).toContain('declare tags: Array<UserStatus>')
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('SUCCESS: Model sync completed'))).toBe(true)
+    })
+
     it('SeedCommand loads and runs all seeder classes from configured directory', async () => {
         const workspace = makeTempDir('arkormx-cmd-seed-')
         process.chdir(workspace)

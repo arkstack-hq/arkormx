@@ -45,6 +45,13 @@ For static TypeScript field completion on direct properties, sync declarations w
 npx arkorm models:sync
 ```
 
+The generated declarations follow Prisma schema types closely:
+
+- Prisma enums are referenced through `@prisma/client` type imports.
+- `Json` fields use `Record<string, unknown> | unknown[]`.
+- Prisma list fields use `Array<...>`.
+- If you manually narrow a generated declaration to a compatible subtype, a later sync leaves it untouched.
+
 ## Untyped fallback
 
 If you omit generics, Arkormˣ still works but values become loosely typed:

@@ -1,5 +1,5 @@
 import { ArkormConfig, GetUserConfig } from 'src/types'
-import { applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
+import { PRISMA_ENUM_REGEX, applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { dirname, extname, join, relative } from 'path'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
@@ -8,6 +8,31 @@ import { Command } from '@h3ravel/musket'
 import { Logger } from '@h3ravel/shared'
 import { createRequire } from 'module'
 import { str } from '@h3ravel/support'
+
+type SyncedPrismaModelField = {
+    name: string
+    type: string
+    nullable: boolean
+}
+
+type SyncedPrismaModel = {
+    name: string
+    table: string
+    fields: SyncedPrismaModelField[]
+}
+
+type ParsedDeclarationNode =
+    | { kind: 'array', element: ParsedDeclarationNode }
+    | { kind: 'named', name: string }
+    | { kind: 'null' }
+    | { kind: 'string-literal', value: string }
+    | { kind: 'union', types: ParsedDeclarationNode[] }
+
+type ExistingDeclaration = {
+    name: string
+    raw: string
+    type: string
+}
 
 /**
  * Main application class for the Arkormˣ CLI.
@@ -449,11 +474,367 @@ export class CliApp {
         if (value === 'DateTime')
             return 'Date'
         if (value === 'Json')
-            return 'Record<string, unknown>'
+            return 'Record<string, unknown> | unknown[]'
         if (value === 'Bytes')
             return 'Buffer'
 
         return 'unknown'
+    }
+
+    private splitTopLevel (value: string, delimiter: string): string[] {
+        const parts: string[] = []
+        let start = 0
+        let angleDepth = 0
+        let parenthesisDepth = 0
+        let quote: string | null = null
+
+        for (let index = 0; index < value.length; index += 1) {
+            const character = value[index]
+            const previous = index > 0 ? value[index - 1] : ''
+
+            if (quote) {
+                if (character === quote && previous !== '\\')
+                    quote = null
+
+                continue
+            }
+
+            if (character === '\'' || character === '"') {
+                quote = character
+                continue
+            }
+
+            if (character === '<') {
+                angleDepth += 1
+                continue
+            }
+
+            if (character === '>') {
+                angleDepth = Math.max(0, angleDepth - 1)
+                continue
+            }
+
+            if (character === '(') {
+                parenthesisDepth += 1
+                continue
+            }
+
+            if (character === ')') {
+                parenthesisDepth = Math.max(0, parenthesisDepth - 1)
+                continue
+            }
+
+            if (character === delimiter && angleDepth === 0 && parenthesisDepth === 0) {
+                parts.push(value.slice(start, index).trim())
+                start = index + 1
+            }
+        }
+
+        parts.push(value.slice(start).trim())
+
+        return parts.filter(Boolean)
+    }
+
+    private hasWrappedParentheses (value: string): boolean {
+        if (!value.startsWith('(') || !value.endsWith(')'))
+            return false
+
+        let depth = 0
+        let quote: string | null = null
+
+        for (let index = 0; index < value.length; index += 1) {
+            const character = value[index]
+            const previous = index > 0 ? value[index - 1] : ''
+
+            if (quote) {
+                if (character === quote && previous !== '\\')
+                    quote = null
+
+                continue
+            }
+
+            if (character === '\'' || character === '"') {
+                quote = character
+                continue
+            }
+
+            if (character === '(')
+                depth += 1
+
+            if (character === ')') {
+                depth -= 1
+
+                if (depth === 0 && index < value.length - 1)
+                    return false
+            }
+        }
+
+        return depth === 0
+    }
+
+    private stripWrappedParentheses (value: string): string {
+        let nextValue = value.trim()
+
+        while (this.hasWrappedParentheses(nextValue))
+            nextValue = nextValue.slice(1, -1).trim()
+
+        return nextValue
+    }
+
+    private parseDeclarationType (value: string): ParsedDeclarationNode | null {
+        const trimmed = this.stripWrappedParentheses(value.trim())
+        if (!trimmed)
+            return null
+
+        const unionParts = this.splitTopLevel(trimmed, '|')
+        if (unionParts.length > 1) {
+            const types = unionParts
+                .map(part => this.parseDeclarationType(part))
+                .filter((part): part is ParsedDeclarationNode => part !== null)
+
+            if (types.length !== unionParts.length)
+                return null
+
+            return {
+                kind: 'union',
+                types: types.flatMap(type => type.kind === 'union' ? type.types : [type]),
+            }
+        }
+
+        if (trimmed.endsWith('[]')) {
+            const element = this.parseDeclarationType(trimmed.slice(0, -2))
+            if (!element)
+                return null
+
+            return { kind: 'array', element }
+        }
+
+        const arrayMatch = trimmed.match(/^(Array|ReadonlyArray)<([\s\S]+)>$/)
+        if (arrayMatch) {
+            const element = this.parseDeclarationType(arrayMatch[2])
+            if (!element)
+                return null
+
+            return { kind: 'array', element }
+        }
+
+        if (trimmed === 'null')
+            return { kind: 'null' }
+
+        if (
+            (trimmed.startsWith('\'') && trimmed.endsWith('\''))
+            || (trimmed.startsWith('"') && trimmed.endsWith('"'))
+        ) {
+            return {
+                kind: 'string-literal',
+                value: trimmed.slice(1, -1),
+            }
+        }
+
+        if (trimmed === 'Record<string, unknown>')
+            return { kind: 'named', name: trimmed }
+
+        if (/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(trimmed))
+            return { kind: 'named', name: trimmed }
+
+        return null
+    }
+
+    private expandUnion (node: ParsedDeclarationNode): ParsedDeclarationNode[] {
+        return node.kind === 'union' ? node.types : [node]
+    }
+
+    private isEnumTypeName (value: string, enums: Map<string, string[]>): boolean {
+        return enums.has(value)
+    }
+
+    private isDeclarationNodeAssignable (
+        actual: ParsedDeclarationNode,
+        expected: ParsedDeclarationNode,
+        enums: Map<string, string[]>
+    ): boolean {
+        if (expected.kind === 'named') {
+            if (expected.name === 'unknown')
+                return true
+
+            if (actual.kind === 'named') {
+                if (actual.name === expected.name)
+                    return true
+
+                if (expected.name === 'string' && this.isEnumTypeName(actual.name, enums))
+                    return true
+            }
+
+            if (actual.kind === 'string-literal') {
+                if (expected.name === 'string')
+                    return true
+
+                const enumValues = enums.get(expected.name)
+                if (enumValues?.includes(actual.value))
+                    return true
+            }
+
+            return false
+        }
+
+        if (expected.kind === 'array')
+            return actual.kind === 'array' && this.isDeclarationAssignable(actual.element, expected.element, enums)
+
+        if (expected.kind === 'null')
+            return actual.kind === 'null'
+
+        if (expected.kind === 'string-literal')
+            return actual.kind === 'string-literal' && actual.value === expected.value
+
+        return false
+    }
+
+    private isDeclarationAssignable (
+        actual: ParsedDeclarationNode,
+        expected: ParsedDeclarationNode,
+        enums: Map<string, string[]>
+    ): boolean {
+        const actualTypes = this.expandUnion(actual)
+        const expectedTypes = this.expandUnion(expected)
+
+        return actualTypes.every(actualType => {
+            return expectedTypes.some(expectedType => {
+                return this.isDeclarationNodeAssignable(actualType, expectedType, enums)
+            })
+        })
+    }
+
+    private isCompatibleDeclarationType (
+        actualType: string,
+        expectedType: string,
+        enums: Map<string, string[]>
+    ): boolean {
+        const actual = this.parseDeclarationType(actualType)
+        const expected = this.parseDeclarationType(expectedType)
+
+        if (!actual || !expected)
+            return actualType.replace(/\s+/g, ' ').trim() === expectedType.replace(/\s+/g, ' ').trim()
+
+        return this.isDeclarationAssignable(actual, expected, enums)
+    }
+
+    private collectEnumReferencesFromNode (
+        node: ParsedDeclarationNode,
+        enums: Map<string, string[]>,
+        collected: Set<string>
+    ): void {
+        if (node.kind === 'named' && enums.has(node.name)) {
+            collected.add(node.name)
+
+            return
+        }
+
+        if (node.kind === 'array') {
+            this.collectEnumReferencesFromNode(node.element, enums, collected)
+
+            return
+        }
+
+        if (node.kind === 'union')
+            node.types.forEach(type => this.collectEnumReferencesFromNode(type, enums, collected))
+    }
+
+    private collectEnumReferences (type: string, enums: Map<string, string[]>): string[] {
+        const parsed = this.parseDeclarationType(type)
+        if (!parsed)
+            return []
+
+        const collected = new Set<string>()
+        this.collectEnumReferencesFromNode(parsed, enums, collected)
+
+        return [...collected].sort((left, right) => left.localeCompare(right))
+    }
+
+    private syncPrismaEnumImports (modelSource: string, enumTypes: string[]): string {
+        if (enumTypes.length === 0)
+            return modelSource
+
+        const importRegex = /^import\s+type\s+\{([^}]+)\}\s+from\s+['"]@prisma\/client['"]\s*;?$/m
+        const existingImport = modelSource.match(importRegex)
+        if (existingImport) {
+            const existingTypes = existingImport[1]
+                .split(',')
+                .map(value => value.trim())
+                .filter(Boolean)
+
+            const mergedTypes = [...new Set([...existingTypes, ...enumTypes])]
+                .sort((left, right) => left.localeCompare(right))
+
+            return modelSource.replace(
+                importRegex,
+                `import type { ${mergedTypes.join(', ')} } from '@prisma/client'`
+            )
+        }
+
+        const lines = modelSource.split('\n')
+        let insertionIndex = 0
+
+        while (insertionIndex < lines.length && lines[insertionIndex].trim().startsWith('import '))
+            insertionIndex += 1
+
+        lines.splice(insertionIndex, 0, `import type { ${enumTypes.join(', ')} } from '@prisma/client'`)
+
+        return lines.join('\n')
+    }
+
+    /**
+     * Parse Prisma enum definitions from a schema and return their member names.
+     *
+     * @param schema The Prisma schema source.
+     * @returns      A map of enum names to their declared member names.
+     */
+    private parsePrismaEnums (schema: string): Map<string, string[]> {
+        const enums = new Map<string, string[]>()
+
+        for (const match of schema.matchAll(PRISMA_ENUM_REGEX)) {
+            const enumName = match[1]
+            const block = match[0]
+            const values = block
+                .split('\n')
+                .slice(1, -1)
+                .map(line => line.trim())
+                .filter(line => Boolean(line) && !line.startsWith('//'))
+                .map((line) => {
+                    const memberMatch = line.match(/^([A-Za-z][A-Za-z0-9_]*)\b/)
+
+                    return memberMatch?.[1]
+                })
+                .filter((value): value is string => Boolean(value))
+
+            enums.set(enumName, values)
+        }
+
+        return enums
+    }
+
+    /**
+     * Resolve the generated TypeScript declaration type for a Prisma field.
+     *
+     * @param fieldType  The Prisma field type token.
+     * @param isList     Whether the field is declared as a Prisma list.
+     * @param enums      Known Prisma enum definitions.
+     * @returns          The declaration type to emit, or null when unsupported.
+     */
+    private prismaFieldTypeToTs (
+        fieldType: string,
+        isList: boolean,
+        enums: Map<string, string[]>
+    ): string | null {
+        const baseType = enums.has(fieldType)
+            ? fieldType
+            : this.prismaTypeToTs(fieldType)
+
+        if (baseType === 'unknown' && !enums.has(fieldType))
+            return null
+
+        return isList
+            ? `Array<${baseType}>`
+            : baseType
     }
 
     /**
@@ -463,44 +844,47 @@ export class CliApp {
      * @param schema    The Prisma schema as a string.
      * @returns         An array of model definitions with their fields.
      */
-    private parsePrismaModels (schema: string): Array<{
-        name: string
-        table: string
-        fields: Array<{ name: string, type: string, nullable: boolean }>
-    }> {
-        const models: Array<{
-            name: string
-            table: string
-            fields: Array<{ name: string, type: string, nullable: boolean }>
-        }> = []
+    private parsePrismaModels (schema: string): SyncedPrismaModel[] {
+        const models: SyncedPrismaModel[] = []
 
+        const enumDefinitions = this.parsePrismaEnums(schema)
         const modelRegex = /model\s+(\w+)\s*\{([\s\S]*?)\n\}/g
-        const scalarTypes = new Set(['Int', 'Float', 'Decimal', 'BigInt', 'String', 'Boolean', 'DateTime', 'Json', 'Bytes'])
+        const scalarTypes = new Set([
+            'Int', 'Float', 'Decimal', 'BigInt', 'String', 'Boolean', 'DateTime', 'Json', 'Bytes'
+        ])
 
         for (const match of schema.matchAll(modelRegex)) {
             const name = match[1]
             const body = match[2]
             const mapped = body.match(/@@map\("([^"]+)"\)/)
             const table = mapped?.[1] ?? `${name.charAt(0).toLowerCase()}${name.slice(1)}s`
-            const fields: Array<{ name: string, type: string, nullable: boolean }> = []
+            const fields: SyncedPrismaModelField[] = []
 
             body.split('\n').forEach((rawLine) => {
                 const line = rawLine.trim()
                 if (!line || line.startsWith('@@') || line.startsWith('//'))
                     return
 
-                const fieldMatch = line.match(/^(\w+)\s+([A-Za-z]+)(\?)?(?:\s|$)/)
+                const fieldMatch = line.match(/^(\w+)\s+([A-Za-z][A-Za-z0-9_]*)(\[\])?(\?)?(?:\s|$)/)
                 if (!fieldMatch)
                     return
 
                 const fieldType = fieldMatch[2]
-                if (!scalarTypes.has(fieldType))
+                if (!scalarTypes.has(fieldType) && !enumDefinitions.has(fieldType))
+                    return
+
+                const declarationType = this.prismaFieldTypeToTs(
+                    fieldType,
+                    Boolean(fieldMatch[3]),
+                    enumDefinitions
+                )
+                if (!declarationType)
                     return
 
                 fields.push({
                     name: fieldMatch[1],
-                    type: this.prismaTypeToTs(fieldType),
-                    nullable: Boolean(fieldMatch[3]),
+                    type: declarationType,
+                    nullable: Boolean(fieldMatch[4]),
                 })
             })
 
@@ -522,7 +906,8 @@ export class CliApp {
      */
     private syncModelDeclarations (
         modelSource: string,
-        declarations: string[]
+        declarations: SyncedPrismaModelField[],
+        enums: Map<string, string[]>
     ): { content: string, updated: boolean } {
         const lines = modelSource.split('\n')
         const classIndex = lines.findIndex(line => /export\s+class\s+\w+\s+extends\s+Model<.+>\s*\{/.test(line))
@@ -546,8 +931,36 @@ export class CliApp {
             return { content: modelSource, updated: false }
 
         const withinClass = lines.slice(classIndex + 1, classEndIndex)
+        const existingDeclarations = new Map<string, ExistingDeclaration>()
+
+        withinClass.forEach((line) => {
+            const declarationMatch = line.match(/^\s*declare\s+(\w+)\??:\s*([^;\n]+);?\s*$/)
+            if (!declarationMatch)
+                return
+
+            existingDeclarations.set(declarationMatch[1], {
+                name: declarationMatch[1],
+                raw: line.trim(),
+                type: declarationMatch[2].trim(),
+            })
+        })
+
         const withoutDeclares = withinClass.filter(line => !/^\s*declare\s+\w+\??:\s*[^\n]+$/.test(line))
-        const declarationLines = declarations.map(declaration => `    ${declaration}`)
+        const chosenDeclarations = declarations.map((declaration) => {
+            const expectedType = `${declaration.type}${declaration.nullable ? ' | null' : ''}`
+            const existingDeclaration = existingDeclarations.get(declaration.name)
+
+            if (
+                existingDeclaration
+                && this.isCompatibleDeclarationType(existingDeclaration.type, expectedType, enums)
+            ) {
+                return existingDeclaration.raw
+            }
+
+            return `declare ${declaration.name}: ${expectedType}`
+        })
+
+        const declarationLines = chosenDeclarations.map(declaration => `    ${declaration}`)
         const rebuiltClass = [...declarationLines, ...withoutDeclares]
         const content = [
             ...lines.slice(0, classIndex + 1),
@@ -555,7 +968,18 @@ export class CliApp {
             ...lines.slice(classEndIndex),
         ].join('\n')
 
-        return { content, updated: content !== modelSource }
+        const enumImports = [...new Set(chosenDeclarations.flatMap((declaration) => {
+            const type = declaration.replace(/^declare\s+\w+\??:\s*/, '').replace(/;$/, '').trim()
+
+            return this.collectEnumReferences(type, enums)
+        }))].sort((left, right) => left.localeCompare(right))
+
+        const contentWithImports = this.syncPrismaEnumImports(content, enumImports)
+
+        return {
+            content: contentWithImports,
+            updated: contentWithImports !== modelSource,
+        }
     }
 
     /**
@@ -588,6 +1012,7 @@ export class CliApp {
             throw new Error(`Models directory not found: ${modelsDir}`)
 
         const schema = readFileSync(schemaPath, 'utf-8')
+        const prismaEnums = this.parsePrismaEnums(schema)
         const prismaModels = this.parsePrismaModels(schema)
 
         const modelFiles = readdirSync(modelsDir)
@@ -615,8 +1040,7 @@ export class CliApp {
                 return
             }
 
-            const declarations = prismaModel.fields.map(field => `declare ${field.name}: ${field.type}${field.nullable ? ' | null' : ''}`)
-            const synced = this.syncModelDeclarations(source, declarations)
+            const synced = this.syncModelDeclarations(source, prismaModel.fields, prismaEnums)
             if (!synced.updated) {
                 skipped.push(filePath)
 

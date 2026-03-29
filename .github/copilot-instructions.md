@@ -43,3 +43,7 @@
 - When adding query features, preserve fluent chaining and current safety checks (e.g. update/delete requiring resolvable unique where).
 - When adding model features, back them with tests in `tests/core.spec.ts` or create a new suite in scenarios where necessary; for DB-specific behavior, add/extend `tests/postgres.spec.ts`.
 - Match current lint style: no semicolons, single quotes, explicit return paths, and strict TypeScript types.
+
+## Arkorm Migration Plan: Delegate Runtime to Adapter-First SQL
+
+-
