@@ -25,6 +25,8 @@ import type {
     QueryRawCondition,
     QuerySelectColumn,
     QueryTarget,
+    RelationAggregateSpec,
+    RelationFilterSpec,
     RelationLoadPlan,
     SelectSpec,
     UpdateManySpec,
@@ -971,6 +973,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async get (): Promise<ArkormCollection<TModel>> {
+        const useAdapterRelationFeatures = this.canExecuteRelationFeaturesInAdapter()
         const relationCache: RelationResultCache = new WeakMap()
         const rows = await this.executeReadRows()
         const normalizedRows = this.randomOrderEnabled
@@ -979,7 +982,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const models = await this.model.hydrateManyRetrieved(normalizedRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateManyRetrieved']>[0])
 
         let filteredModels = models
-        if (this.hasRelationFilters()) {
+        if (this.hasRelationFilters() && !useAdapterRelationFeatures) {
             if (this.hasOrRelationFilters() && this.hasBaseWhereConstraints()) {
                 const baseIds = new Set(models
                     .map(model => this.getModelId(model))
@@ -995,7 +998,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             }
         }
 
-        if (this.hasRelationAggregates())
+        if (this.hasRelationAggregates() && !useAdapterRelationFeatures)
             await this.applyRelationAggregates(filteredModels, relationCache)
 
         await this.eagerLoadModels(filteredModels)
@@ -1010,7 +1013,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async first (): Promise<TModel | null> {
-        if (this.hasRelationFilters() || this.hasRelationAggregates()) {
+        if ((this.hasRelationFilters() || this.hasRelationAggregates()) && !this.canExecuteRelationFeaturesInAdapter()) {
             const models = await this.get()
 
             return models.all()[0] ?? null
@@ -1489,7 +1492,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async count (): Promise<number> {
-        if (this.hasRelationFilters())
+        if (this.hasRelationFilters() && !this.canExecuteRelationFeaturesInAdapter())
             return (await this.get()).all().length
 
         return this.executeReadCount()
@@ -1501,7 +1504,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async exists (): Promise<boolean> {
-        if (this.hasRelationFilters())
+        if (this.hasRelationFilters() && !this.canExecuteRelationFeaturesInAdapter())
             return (await this.count()) > 0
 
         return await this.executeReadExists()
@@ -1768,7 +1771,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     ): Promise<LengthAwarePaginator<TModel>> {
         const currentPage = this.resolvePaginationPage(page, options)
 
-        if (this.hasRelationFilters() || this.hasRelationAggregates()) {
+        if ((this.hasRelationFilters() || this.hasRelationAggregates()) && !this.canExecuteRelationFeaturesInAdapter()) {
             const pageSize = Math.max(1, perPage)
             const all = await this.get()
             const rows = all.all()
@@ -1802,7 +1805,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     ): Promise<Paginator<TModel>> {
         const currentPage = this.resolvePaginationPage(page, options)
 
-        if (this.hasRelationFilters() || this.hasRelationAggregates()) {
+        if ((this.hasRelationFilters() || this.hasRelationAggregates()) && !this.canExecuteRelationFeaturesInAdapter()) {
             const pageSize = Math.max(1, perPage)
             const all = await this.get()
             const rows = all.all()
@@ -2343,8 +2346,16 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const columns = this.tryBuildQuerySelectColumns()
         const orderBy = this.tryBuildQueryOrderBy()
         const condition = this.buildQueryWhereCondition(softDeleteOnly)
+        const relationFilters = this.tryBuildRelationFilterSpecs()
+        const relationAggregates = this.tryBuildRelationAggregateSpecs()
 
         if (columns === null || orderBy === null || condition === null)
+            return null
+
+        if (this.hasRelationFilters() && this.canExecuteRelationFiltersInAdapter() && relationFilters === null)
+            return null
+
+        if (this.hasRelationAggregates() && this.canExecuteRelationAggregatesInAdapter() && relationAggregates === null)
             return null
 
         return {
@@ -2355,17 +2366,24 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             limit: this.limitValue,
             offset: this.offsetValue,
             relationLoads: this.queryRelationLoads,
+            relationFilters: this.canExecuteRelationFiltersInAdapter() ? relationFilters ?? undefined : undefined,
+            relationAggregates: this.canExecuteRelationAggregatesInAdapter() ? relationAggregates ?? undefined : undefined,
         }
     }
 
     private tryBuildAggregateSpec (): AggregateSpec<TModel> | null {
         const condition = this.buildQueryWhereCondition(false)
+        const relationFilters = this.tryBuildRelationFilterSpecs()
         if (condition === null)
+            return null
+
+        if (this.hasRelationFilters() && this.canExecuteRelationFiltersInAdapter() && relationFilters === null)
             return null
 
         return {
             target: this.buildQueryTarget(),
             where: condition,
+            relationFilters: this.canExecuteRelationFiltersInAdapter() ? relationFilters ?? undefined : undefined,
             aggregate: { type: 'count' },
         }
     }
@@ -2664,6 +2682,126 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
     private hasRelationAggregates (): boolean {
         return this.relationAggregates.length > 0
+    }
+
+    private canExecuteRelationFiltersInAdapter (): boolean {
+        const adapter = this.adapter
+        if (!this.hasRelationFilters())
+            return false
+
+        return adapter?.capabilities?.relationFilters === true
+            && this.tryBuildRelationFilterSpecs() !== null
+    }
+
+    private canExecuteRelationAggregatesInAdapter (): boolean {
+        const adapter = this.adapter
+        if (!this.hasRelationAggregates())
+            return false
+
+        return adapter?.capabilities?.relationAggregates === true
+            && this.tryBuildRelationAggregateSpecs() !== null
+    }
+
+    private canExecuteRelationFeaturesInAdapter (): boolean {
+        const filtersSupported = !this.hasRelationFilters() || this.canExecuteRelationFiltersInAdapter()
+        const aggregatesSupported = !this.hasRelationAggregates() || this.canExecuteRelationAggregatesInAdapter()
+
+        return filtersSupported && aggregatesSupported
+    }
+
+    private tryBuildRelationFilterSpecs (): RelationFilterSpec[] | null {
+        return this.relationFilters.reduce<RelationFilterSpec[] | null>((specs, filter) => {
+            if (!specs)
+                return null
+
+            const metadata = this.model.getRelationMetadata(filter.relation)
+            if (!this.isSqlRelationFeatureMetadata(metadata))
+                return null
+
+            const where = this.tryBuildRelationConstraintWhere(filter.relation, filter.callback)
+            if (where === null)
+                return null
+
+            specs.push({
+                relation: filter.relation,
+                operator: filter.operator,
+                count: filter.count,
+                boolean: filter.boolean,
+                where,
+            })
+
+            return specs
+        }, [])
+    }
+
+    private tryBuildRelationAggregateSpecs (): RelationAggregateSpec[] | null {
+        return this.relationAggregates.reduce<RelationAggregateSpec[] | null>((specs, aggregate) => {
+            if (!specs)
+                return null
+
+            const metadata = this.model.getRelationMetadata(aggregate.relation)
+            if (!this.isSqlRelationFeatureMetadata(metadata))
+                return null
+
+            const where = this.tryBuildRelationConstraintWhere(aggregate.relation)
+            if (where === null)
+                return null
+
+            specs.push({
+                relation: aggregate.relation,
+                type: aggregate.type,
+                column: aggregate.column,
+                alias: this.buildAggregateAttributeKey(aggregate),
+                where,
+            })
+
+            return specs
+        }, [])
+    }
+
+    private tryBuildRelationConstraintWhere (
+        relation: string,
+        callback?: (query: QueryBuilder<any, any>) => unknown,
+    ): QueryCondition | undefined | null {
+        const metadata = this.model.getRelationMetadata(relation)
+        if (!this.isSqlRelationFeatureMetadata(metadata))
+            return null
+
+        const relatedQuery = metadata?.relatedModel.query()
+
+        if (!relatedQuery) {
+            return null
+        }
+
+        if (callback) {
+            const constrained = callback(relatedQuery)
+            if (constrained && constrained !== relatedQuery)
+                return null
+        }
+
+        if (
+            relatedQuery.hasRelationFilters()
+            || relatedQuery.hasRelationAggregates()
+            || relatedQuery.queryRelationLoads
+            || relatedQuery.querySelect
+            || relatedQuery.queryOrderBy
+            || relatedQuery.offsetValue !== undefined
+            || relatedQuery.limitValue !== undefined
+            || relatedQuery.randomOrderEnabled
+        ) {
+            return null
+        }
+
+        return relatedQuery.buildQueryWhereCondition(false)
+    }
+
+    private isSqlRelationFeatureMetadata (metadata: ReturnType<ModelStatic<TModel, TDelegate>['getRelationMetadata']>): boolean {
+        if (!metadata)
+            return false
+
+        return metadata.type === 'hasMany'
+            || metadata.type === 'hasOne'
+            || metadata.type === 'belongsTo'
     }
 
     private async filterModelsByRelationConstraints (

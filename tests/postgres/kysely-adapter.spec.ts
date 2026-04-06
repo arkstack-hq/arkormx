@@ -24,7 +24,10 @@ describe('PostgreSQL Kysely adapter', () => {
         dialect: new PostgresDialect({ pool }),
     })
 
-    const kyselyAdapter = createKyselyAdapter(db)
+    const kyselyAdapter = createKyselyAdapter(db, {
+        userProfile: 'profiles',
+        roleUsers: 'role_users',
+    })
     const prismaAdapter = createPrismaDatabaseAdapter(prisma)
 
     beforeAll(async () => {
@@ -191,6 +194,37 @@ describe('PostgreSQL Kysely adapter', () => {
 
         const trashedArticles = await DbArticle.query().onlyTrashed().get()
         expect(trashedArticles.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
+    })
+
+    it('supports SQL-backed direct relation filters and aggregates through QueryBuilder', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const hasManyPosts = await DbUser.query().has('posts', '>=', 2).orderBy({ id: 'asc' }).get()
+        expect(hasManyPosts.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const whereHasA = await DbUser.query().whereHas('posts', query => query.where({ title: 'A' })).get()
+        expect(whereHasA.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const withCounts = await DbUser.query()
+            .withCount('posts')
+            .withExists('profile')
+            .orderBy({ id: 'asc' })
+            .get()
+        expect(withCounts.all()[0]?.getAttribute('postsCount')).toBe(2)
+        expect(withCounts.all()[0]?.getAttribute('profileExists')).toBe(true)
+
+        const withAggregates = await DbUser.query()
+            .withSum('posts', 'id')
+            .withAvg('posts', 'id')
+            .withMin('posts', 'id')
+            .withMax('posts', 'id')
+            .whereKey('id', 1)
+            .firstOrFail()
+
+        expect(withAggregates.getAttribute('postsSumId')).toBe(3)
+        expect(Number(withAggregates.getAttribute('postsAvgId'))).toBe(1.5)
+        expect(withAggregates.getAttribute('postsMinId')).toBe(1)
+        expect(withAggregates.getAttribute('postsMaxId')).toBe(2)
     })
 
     it('runs adapter transactions against Postgres', async () => {

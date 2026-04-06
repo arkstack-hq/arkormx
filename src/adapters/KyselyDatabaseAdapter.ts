@@ -18,18 +18,30 @@ import type {
     QueryRawCondition,
     QuerySelectColumn,
     QueryTarget,
+    RelationAggregateSpec,
+    RelationFilterSpec,
     RelationLoadSpec,
     SelectSpec,
     UpdateManySpec,
     UpdateSpec,
 } from '../types/adapter'
+import type { BelongsToRelationMetadata, HasManyRelationMetadata, HasOneRelationMetadata, ModelStatic } from '../types'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { sql } from 'kysely'
 
 type KyselyExecutor = Kysely<any> | Transaction<any>
+type KyselyTableMapping = Record<string, string>
+type DirectRelationMetadata = HasManyRelationMetadata | HasOneRelationMetadata | BelongsToRelationMetadata
 
+/**
+ * Database adapter implementation for Kysely, allowing Arkorm to execute queries using Kysely 
+ * as the underlying query builder and executor.
+ * 
+ * @author Legacy (3m1n3nc3)
+ * @since 2.0.0-next.0
+ */
 export class KyselyDatabaseAdapter implements DatabaseAdapter {
     public readonly capabilities: AdapterCapabilities = {
         transactions: true,
@@ -39,18 +51,19 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         deleteMany: true,
         exists: true,
         relationLoads: false,
-        relationAggregates: false,
-        relationFilters: false,
+        relationAggregates: true,
+        relationFilters: true,
         rawWhere: false,
     }
 
     public constructor(
         private readonly db: KyselyExecutor,
+        private readonly mapping: KyselyTableMapping = {},
     ) { }
 
     private resolveTable (target: QueryTarget<any>): string {
         if (target.table && target.table.trim().length > 0)
-            return target.table
+            return this.mapping[target.table] ?? target.table
 
         throw new ArkormException('Kysely adapter requires a concrete target table.', {
             operation: 'adapter.table',
@@ -234,6 +247,183 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return sql.join(clauses, sql``)
     }
 
+    private buildColumnReference (table: string, column: string): RawBuilder<unknown> {
+        return sql`${sql.table(table)}.${sql.id(column)}`
+    }
+
+    private buildRelatedTargetFromRelation (target: QueryTarget<any>, relation: string): {
+        metadata: DirectRelationMetadata
+        relatedTarget: QueryTarget<any>
+    } {
+        const metadata = target.model?.getRelationMetadata(relation)
+        if (!metadata)
+            throw new UnsupportedAdapterFeatureException(`Relation [${relation}] could not be resolved for SQL-backed relation execution.`, {
+                operation: 'adapter.relation.metadata',
+                model: target.modelName,
+                relation,
+            })
+
+        if (metadata.type !== 'hasMany' && metadata.type !== 'hasOne' && metadata.type !== 'belongsTo') {
+            throw new UnsupportedAdapterFeatureException(`Relation [${relation}] is not supported for SQL-backed relation execution by the Kysely adapter yet.`, {
+                operation: 'adapter.relation.metadata',
+                model: target.modelName,
+                relation,
+                meta: {
+                    feature: 'relationFilters',
+                    relationType: metadata.type,
+                },
+            })
+        }
+
+        const relatedMetadata = metadata.relatedModel.getModelMetadata()
+
+        return {
+            metadata,
+            relatedTarget: {
+                model: metadata.relatedModel as unknown as ModelStatic<any, any>,
+                modelName: metadata.relatedModel.name,
+                table: relatedMetadata.table,
+                primaryKey: relatedMetadata.primaryKey,
+                columns: relatedMetadata.columns,
+                softDelete: relatedMetadata.softDelete,
+            },
+        }
+    }
+
+    private buildRelatedJoinCondition (
+        outerTarget: QueryTarget<any>,
+        relation: string,
+    ): { relatedTarget: QueryTarget<any>, condition: RawBuilder<boolean> } {
+        const { metadata, relatedTarget } = this.buildRelatedTargetFromRelation(outerTarget, relation)
+        const outerTable = this.resolveTable(outerTarget)
+        const relatedTable = this.resolveTable(relatedTarget)
+
+        if (metadata.type === 'hasMany' || metadata.type === 'hasOne') {
+            return {
+                relatedTarget,
+                condition: sql<boolean>`
+                    ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.foreignKey))}
+                    =
+                    ${this.buildColumnReference(outerTable, this.mapColumn(outerTarget, metadata.localKey))}
+                `,
+            }
+        }
+
+        return {
+            relatedTarget,
+            condition: sql<boolean>`
+                ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.ownerKey))}
+                =
+                ${this.buildColumnReference(outerTable, this.mapColumn(outerTarget, metadata.foreignKey))}
+            `,
+        }
+    }
+
+    private combineConditions (conditions: Array<RawBuilder<boolean> | null | undefined>): RawBuilder<boolean> {
+        const filtered = conditions.filter((condition): condition is RawBuilder<boolean> => Boolean(condition))
+        if (filtered.length === 0)
+            return sql<boolean>`1 = 1`
+
+        if (filtered.length === 1)
+            return filtered[0] as RawBuilder<boolean>
+
+        return sql<boolean>`(${sql.join(filtered, sql` and `)})`
+    }
+
+    private buildRelationFilterExpression (target: QueryTarget<any>, filter: RelationFilterSpec): RawBuilder<boolean> {
+        const { relatedTarget, condition } = this.buildRelatedJoinCondition(target, filter.relation)
+        const relatedTable = this.resolveTable(relatedTarget)
+        const whereCondition = this.combineConditions([
+            condition,
+            filter.where ? this.buildWhereCondition(relatedTarget, filter.where) : undefined,
+        ])
+        const operator = filter.operator === '!=' ? sql.raw('!=') : sql.raw(filter.operator)
+
+        return sql<boolean>`(
+            select count(*)::int
+            from ${sql.table(relatedTable)}
+            where ${whereCondition}
+        ) ${operator} ${filter.count}`
+    }
+
+    private buildRelationFilterCondition (target: QueryTarget<any>, relationFilters?: RelationFilterSpec[]): RawBuilder<boolean> {
+        if (!relationFilters || relationFilters.length === 0)
+            return sql<boolean>`1 = 1`
+
+        let expression: RawBuilder<boolean> | null = null
+        relationFilters.forEach((filter) => {
+            const next = this.buildRelationFilterExpression(target, filter)
+            if (!expression) {
+                expression = next
+
+                return
+            }
+
+            expression = filter.boolean === 'OR'
+                ? sql<boolean>`(${expression} or ${next})`
+                : sql<boolean>`(${expression} and ${next})`
+        })
+
+        return expression ?? sql<boolean>`1 = 1`
+    }
+
+    private buildRelationAggregateSelectList (target: QueryTarget<any>, relationAggregates?: RelationAggregateSpec[]): RawBuilder<unknown> {
+        if (!relationAggregates || relationAggregates.length === 0)
+            return sql``
+
+        return sql.join(relationAggregates.map((aggregate) => {
+            const { relatedTarget, condition } = this.buildRelatedJoinCondition(target, aggregate.relation)
+            const relatedTable = this.resolveTable(relatedTarget)
+            const whereCondition = this.combineConditions([
+                condition,
+                aggregate.where ? this.buildWhereCondition(relatedTarget, aggregate.where) : undefined,
+            ])
+
+            if (aggregate.type === 'exists') {
+                return sql`, exists(
+                    select 1
+                    from ${sql.table(relatedTable)}
+                    where ${whereCondition}
+                ) as ${sql.id(aggregate.alias ?? `${aggregate.relation}Exists`)}`
+            }
+
+            const selectedColumn = aggregate.column
+                ? this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, aggregate.column))
+                : sql.raw('*')
+            const aggregateExpression = aggregate.type === 'count'
+                ? sql`count(*)::int`
+                : aggregate.type === 'sum'
+                    ? sql`sum(${selectedColumn})::double precision`
+                    : aggregate.type === 'avg'
+                        ? sql`avg(${selectedColumn})::double precision`
+                        : aggregate.type === 'min'
+                            ? sql`min(${selectedColumn})`
+                            : sql`max(${selectedColumn})`
+
+            return sql`, (
+                select ${aggregateExpression}
+                from ${sql.table(relatedTable)}
+                where ${whereCondition}
+            ) as ${sql.id(aggregate.alias ?? `${aggregate.relation}${aggregate.type}`)}`
+        }), sql``)
+    }
+
+    private buildCombinedWhereClause (
+        target: QueryTarget<any>,
+        condition?: QueryCondition,
+        relationFilters?: RelationFilterSpec[],
+    ): RawBuilder<unknown> {
+        const combined = this.combineConditions([
+            condition ? this.buildWhereCondition(target, condition) : undefined,
+            relationFilters && relationFilters.length > 0 ? this.buildRelationFilterCondition(target, relationFilters) : undefined,
+        ])
+
+        if (!condition && (!relationFilters || relationFilters.length === 0))
+            return sql``
+
+        return sql` where ${combined}`
+    }
+
     private assertNoRelationLoads (spec: SelectSpec<any> | RelationLoadSpec<any>) {
         if ('relationLoads' in spec && spec.relationLoads && spec.relationLoads.length > 0) {
             throw new UnsupportedAdapterFeatureException('Kysely adapter relation-load execution is planned for a later phase.', {
@@ -245,13 +435,21 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
+    /**
+     * Selects records from the database matching the specified criteria and returns 
+     * them as an array of database rows.
+     * 
+     * @param spec  The specification defining the selection criteria.
+     * @returns     A promise that resolves to an array of database rows.
+     */
     public async select<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow[]> {
         this.assertNoRelationLoads(spec)
 
         const result = await sql<Record<string, unknown>>`
             select ${this.buildSelectList(spec.target, spec.columns)}
+            ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)}
             from ${sql.table(this.resolveTable(spec.target))}
-            ${this.buildWhereClause(spec.target, spec.where)}
+            ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
             ${this.buildOrderBy(spec.target, spec.orderBy)}
             ${this.buildPaginationClause(spec)}
         `.execute(this.db)
@@ -259,6 +457,14 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return this.mapRows(spec.target, result.rows as unknown as Record<string, unknown>[])
     }
 
+    /**
+     * Selects a single record from the database matching the specified criteria and returns it as 
+     * a database row. If multiple records match the criteria, only the first one is returned. 
+     * If no records match, null is returned.
+     * 
+     * @param spec  The specification defining the selection criteria.
+     * @returns     A promise that resolves to a database row or null if no records match.
+     */
     public async selectOne<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow | null> {
         const rows = await this.select({
             ...spec,
@@ -268,6 +474,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return rows[0] ?? null
     }
 
+    /**
+     * Inserts a new record into the database with the specified values and returns the 
+     * inserted record as a database row.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async insert<TModel = unknown> (spec: InsertSpec<TModel>): Promise<DatabaseRow> {
         const values = this.mapValues(spec.target, spec.values)
         const columns = Object.keys(values)
@@ -287,6 +500,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>) as DatabaseRow
     }
 
+    /**
+     * Inserts multiple records into the database with the specified values and returns the number 
+     * of records successfully inserted. 
+     * 
+     * @param spec  The specification defining the values to be inserted.
+     * @returns     A promise that resolves to the number of records successfully inserted.
+     */
     public async insertMany<TModel = unknown> (spec: InsertManySpec<TModel>): Promise<number> {
         if (spec.values.length === 0)
             return 0
@@ -319,6 +539,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return result.rows.length
     }
 
+    /**
+     * Updates records in the database matching the specified criteria with the given values 
+     * and returns the updated record as a database row. 
+     * 
+     * @param spec  The specification defining the update criteria and values.
+     * @returns     A promise that resolves to the updated record as a database row, or null if no records match the criteria.  
+     */
     public async update<TModel = unknown> (spec: UpdateSpec<TModel>): Promise<DatabaseRow | null> {
         const values = this.mapValues(spec.target, spec.values)
         const assignments = Object.entries(values).map(([column, value]) => {
@@ -338,6 +565,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
     }
 
+    /**
+     * Updates multiple records in the database matching the specified criteria with the 
+     * given values and returns the number of records successfully updated.
+     * 
+     * @param spec  The specification defining the update criteria and values.
+     * @returns     A promise that resolves to the number of records successfully updated.
+     */
     public async updateMany<TModel = unknown> (spec: UpdateManySpec<TModel>): Promise<number> {
         const values = this.mapValues(spec.target, spec.values)
         const assignments = Object.entries(values).map(([column, value]) => {
@@ -357,6 +591,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return result.rows.length
     }
 
+    /**
+     * Deletes records from the database matching the specified criteria and returns the 
+     * deleted record as a database row.
+     * 
+     * @param spec  The specification defining the delete criteria.
+     * @returns     A promise that resolves to the deleted record as a database row, or null if no records match the criteria.
+     */
     public async delete<TModel = unknown> (spec: DeleteSpec<TModel>): Promise<DatabaseRow | null> {
         const result = await sql<Record<string, unknown>>`
             delete from ${sql.table(this.resolveTable(spec.target))}
@@ -367,6 +608,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
     }
 
+    /**
+     * Deletes multiple records from the database matching the specified criteria and 
+     * returns the number of records successfully deleted.
+     * 
+     * @param spec  The specification defining the delete criteria.
+     * @returns     A promise that resolves to the number of records successfully deleted.
+     */
     public async deleteMany<TModel = unknown> (spec: DeleteManySpec<TModel>): Promise<number> {
         const result = await sql<Record<string, unknown>>`
             delete from ${sql.table(this.resolveTable(spec.target))}
@@ -377,22 +625,35 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return result.rows.length
     }
 
+    /**
+     * Counts the number of records in the database matching the specified criteria and returns 
+     * the count as a number.
+     * 
+     * @param spec  The specification defining the count criteria.
+     * @returns     A promise that resolves to the number of records matching the criteria.
+     */
     public async count<TModel = unknown> (spec: AggregateSpec<TModel>): Promise<number> {
         const result = await sql<{ count: number | string }>`
             select count(*)::int as count
             from ${sql.table(this.resolveTable(spec.target))}
-            ${this.buildWhereClause(spec.target, spec.where)}
+            ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
         `.execute(this.db)
 
         return Number((result.rows[0] as { count?: number | string } | undefined)?.count ?? 0)
     }
 
+    /**
+     * Checks for the existence of records matching the specified criteria.
+     * 
+     * @param spec  The specification defining the existence criteria.
+     * @returns     A promise that resolves to a boolean indicating whether any records match the criteria.
+     */
     public async exists<TModel = unknown> (spec: SelectSpec<TModel>): Promise<boolean> {
         const result = await sql<{ exists: boolean }>`
             select exists(
                 select 1
                 from ${sql.table(this.resolveTable(spec.target))}
-                ${this.buildWhereClause(spec.target, spec.where)}
+                ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
                 limit 1
             ) as exists
         `.execute(this.db)
@@ -400,6 +661,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return Boolean((result.rows[0] as { exists?: boolean } | undefined)?.exists)
     }
 
+    /**
+     * Executes a series of database operations within a transaction. 
+     * The provided callback function is called with a new instance of the 
+     * KyselyDatabaseAdapter that is bound to the transaction context.
+     * 
+     * @param callback  The callback function containing the database operations to be executed within the transaction.
+     * @param context   The transaction context specifying options such as read-only mode and isolation level.
+     * @returns         A promise that resolves to the result of the callback function.
+     */
     public async transaction<TResult = unknown> (
         callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
         context: AdapterTransactionContext = {},
@@ -419,13 +689,22 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
 
         return await transactionBuilder.execute(async (transaction) => {
-            return await callback(new KyselyDatabaseAdapter(transaction))
+            return await callback(new KyselyDatabaseAdapter(transaction, this.mapping))
         })
     }
 }
 
+/**
+ * Factory function to create a KyselyDatabaseAdapter instance with the given Kysely executor 
+ * and optional table name mapping.
+ * 
+ * @param db        The Kysely executor to be used by the adapter.
+ * @param mapping   Optional table name mapping for the adapter.
+ * @returns         A new instance of KyselyDatabaseAdapter.   
+ */
 export const createKyselyAdapter = (
     db: KyselyExecutor,
+    mapping: KyselyTableMapping = {},
 ): KyselyDatabaseAdapter => {
-    return new KyselyDatabaseAdapter(db)
+    return new KyselyDatabaseAdapter(db, mapping)
 }
