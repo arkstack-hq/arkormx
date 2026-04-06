@@ -1312,6 +1312,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 model: this.model.name,
             })
 
+        const directSpec = this.tryBuildUpdateSpec(where, data)
+        const adapter = this.requireAdapter()
+        if (!this.isUniqueWhere(where as Record<string, unknown>) && directSpec && typeof adapter.updateFirst === 'function') {
+            const updated = await adapter.updateFirst(directSpec)
+            if (!updated)
+                throw new ModelNotFoundException(this.model.name, 'Record not found for update operation.', {
+                    operation: 'update',
+                })
+
+            return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+        }
+
         const uniqueWhere = await this.resolveUniqueWhere(where)
         const updated = await this.executeUpdateRow(uniqueWhere, data)
 
@@ -1434,6 +1446,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 operation: 'delete',
                 model: this.model.name,
             })
+
+        const directSpec = this.tryBuildDeleteSpec(where)
+        const adapter = this.requireAdapter()
+        if (!this.isUniqueWhere(where as Record<string, unknown>) && directSpec && typeof adapter.deleteFirst === 'function') {
+            const deleted = await adapter.deleteFirst(directSpec)
+            if (!deleted)
+                throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
+                    operation: 'delete',
+                })
+
+            return this.model.hydrate(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+        }
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
         const deleted = await this.executeDeleteRow(uniqueWhere)

@@ -603,7 +603,7 @@ Deliverables:
 Implementation checklist:
 
 - [ ] identify which eager-load or nested graph cases materially benefit from JSON aggregation
-- [ ] add `RETURNING`-aware implementations where Postgres can avoid extra round trips
+- [x] add `RETURNING`-aware implementations where Postgres can avoid extra round trips
 - [x] implement conflict-handling helpers for upsert and insert-ignore style flows
 - [ ] benchmark representative Postgres-heavy workloads before and after optimizations
 - [ ] keep Postgres-specific behavior behind adapter or dialect-specific seams
@@ -615,6 +615,9 @@ Completed in code:
 - `KyselyDatabaseAdapter` now executes native Postgres `ON CONFLICT DO NOTHING` and `ON CONFLICT ... DO UPDATE` flows for `insertOrIgnore`, object-based `updateOrInsert`, and `upsert`
 - `QueryBuilder` now routes `upsert` and non-callback `updateOrInsert` through adapter-native conflict handling when the active adapter advertises `upsert`
 - `tests/postgres/kysely-adapter.spec.ts` now verifies SQL-backed conflict-handling write helpers and asserts the emitted `ON CONFLICT` query shape
+- `KyselyDatabaseAdapter` now also uses Postgres `WITH ... UPDATE/DELETE ... RETURNING` single-row mutation paths so non-unique `update()` and `delete()` no longer require a pre-select id lookup round trip
+- `QueryBuilder` now routes non-unique single-row `update()` and `delete()` through adapter-native `updateFirst` / `deleteFirst` when available
+- `tests/postgres/kysely-adapter.spec.ts` now verifies the emitted `RETURNING`-aware single-row mutation SQL shape for non-unique QueryBuilder writes
 
 Success criteria:
 
