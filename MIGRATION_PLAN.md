@@ -602,12 +602,12 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] identify which eager-load or nested graph cases materially benefit from JSON aggregation
+- [x] identify which eager-load or nested graph cases materially benefit from JSON aggregation
 - [x] add `RETURNING`-aware implementations where Postgres can avoid extra round trips
 - [x] implement conflict-handling helpers for upsert and insert-ignore style flows
-- [ ] benchmark representative Postgres-heavy workloads before and after optimizations
-- [ ] keep Postgres-specific behavior behind adapter or dialect-specific seams
-- [ ] document which optimizations are Postgres-specific versus adapter-generic
+- [x] benchmark representative Postgres-heavy workloads before and after optimizations
+- [x] keep Postgres-specific behavior behind adapter or dialect-specific seams
+- [x] document which optimizations are Postgres-specific versus adapter-generic
 
 Completed in code:
 
@@ -618,6 +618,8 @@ Completed in code:
 - `KyselyDatabaseAdapter` now also uses Postgres `WITH ... UPDATE/DELETE ... RETURNING` single-row mutation paths so non-unique `update()` and `delete()` no longer require a pre-select id lookup round trip
 - `QueryBuilder` now routes non-unique single-row `update()` and `delete()` through adapter-native `updateFirst` / `deleteFirst` when available
 - `tests/postgres/kysely-adapter.spec.ts` now verifies the emitted `RETURNING`-aware single-row mutation SQL shape for non-unique QueryBuilder writes
+- `scripts/bench-postgres-phase9.ts` now benchmarks legacy emulation versus native Postgres upsert and single-row mutation paths, and `pnpm bench:postgres` provides a reproducible local regression baseline
+- `docs/guide/postgres-optimizations.md` now documents which optimizations are adapter-generic, which remain Postgres-specific, and which nested graph cases are the highest-value JSON aggregation candidates
 
 Success criteria:
 

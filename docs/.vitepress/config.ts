@@ -64,6 +64,7 @@ export default defineConfig({
                 text: 'Production',
                 items: [
                     { text: 'Production', link: '/guide/production' },
+                    { text: 'Postgres Optimizations', link: '/guide/postgres-optimizations' },
                 ],
             },
         ],
