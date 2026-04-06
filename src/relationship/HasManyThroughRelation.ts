@@ -30,7 +30,15 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
      */
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const localValue = this.parent.getAttribute(this.localKey)
-        const intermediates = await this.related.getDelegate(this.throughDelegate).findMany({ where: { [this.firstKey]: localValue } }) as Record<string, unknown>[]
+        const intermediates = await this.selectRelationRows({
+            table: this.throughDelegate,
+            where: {
+                type: 'comparison',
+                column: this.firstKey,
+                operator: '=',
+                value: localValue as never,
+            },
+        }) as Record<string, unknown>[]
         const keys = intermediates.map(row => row[this.secondLocalKey])
 
         return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: keys } }))

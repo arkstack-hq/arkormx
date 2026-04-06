@@ -20,5 +20,6 @@ export interface RelationshipModelStatic {
     new(attributes?: Record<string, unknown>): any
     query: () => QueryBuilder<any, any>
     hydrate: (attributes: Record<string, unknown>) => any
+    getAdapter: () => DatabaseAdapter | undefined
     getDelegate: (delegate?: string) => PrismaDelegateLike
 }

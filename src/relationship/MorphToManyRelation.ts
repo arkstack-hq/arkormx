@@ -30,10 +30,25 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const parentValue = this.parent.getAttribute(this.parentKey)
         const morphType = (this.parent as { constructor: { name: string } }).constructor.name
-        const pivots = await this.related.getDelegate(this.throughDelegate).findMany({
+        const pivots = await this.selectRelationRows({
+            table: this.throughDelegate,
             where: {
-                [`${this.morphName}Id`]: parentValue,
-                [`${this.morphName}Type`]: morphType,
+                type: 'group',
+                operator: 'and',
+                conditions: [
+                    {
+                        type: 'comparison',
+                        column: `${this.morphName}Id`,
+                        operator: '=',
+                        value: parentValue as never,
+                    },
+                    {
+                        type: 'comparison',
+                        column: `${this.morphName}Type`,
+                        operator: '=',
+                        value: morphType,
+                    },
+                ],
             },
         }) as Record<string, unknown>[]
         const ids = pivots.map(row => row[this.relatedPivotKey])
