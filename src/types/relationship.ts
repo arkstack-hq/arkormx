@@ -1,4 +1,5 @@
 import type { QueryCondition, QueryOrderBy, QuerySelectColumn } from './adapter'
+
 import { ModelAttributes } from './model'
 import { QueryBuilder } from 'src/QueryBuilder'
 

@@ -2,8 +2,8 @@ import type { DatabaseAdapter, ModelAttributes } from '../types'
 
 import { ArkormCollection } from '../Collection'
 import { QueryBuilder } from '../QueryBuilder'
-import { RelationTableLoader } from './RelationTableLoader'
 import type { RelationConstraint } from '../types/relationship'
+import { RelationTableLoader } from './RelationTableLoader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 
 /**
