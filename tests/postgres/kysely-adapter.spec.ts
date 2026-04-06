@@ -284,25 +284,74 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('sum("roles"."id")::double precision')
     })
 
+    it('supports SQL-backed through relation filters and aggregates through QueryBuilder', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const hasPostImages = await DbUser.query().has('postImages', '>=', 2).orderBy({ id: 'asc' }).get()
+        expect(hasPostImages.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const whereHasImageA = await DbUser.query().whereHas('postImages', query => query.where({ url: 'a.png' })).get()
+        expect(whereHasImageA.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const hasAvatar = await DbUser.query().has('avatar').orderBy({ id: 'asc' }).get()
+        expect(hasAvatar.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const withoutAvatarA = await DbUser.query().whereDoesntHave('avatar', query => query.where({ url: 'a.png' })).orderBy({ id: 'asc' }).get()
+        expect(withoutAvatarA.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const withCounts = await DbUser.query()
+            .withCount('postImages')
+            .withExists('avatar')
+            .orderBy({ id: 'asc' })
+            .get()
+        expect(withCounts.all()[0]?.getAttribute('postImagesCount')).toBe(2)
+        expect(withCounts.all()[0]?.getAttribute('avatarExists')).toBe(true)
+        expect(withCounts.all()[1]?.getAttribute('postImagesCount')).toBe(0)
+        expect(withCounts.all()[1]?.getAttribute('avatarExists')).toBe(false)
+
+        const withAggregates = await DbUser.query()
+            .withSum('postImages', 'id')
+            .withAvg('postImages', 'id')
+            .withMin('postImages', 'id')
+            .withMax('postImages', 'id')
+            .whereKey('id', 1)
+            .firstOrFail()
+
+        expect(withAggregates.getAttribute('postImagesSumId')).toBe(3)
+        expect(Number(withAggregates.getAttribute('postImagesAvgId'))).toBe(1.5)
+        expect(withAggregates.getAttribute('postImagesMinId')).toBe(1)
+        expect(withAggregates.getAttribute('postImagesMaxId')).toBe(2)
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('from "images" inner join "posts"')
+        expect(normalizedSql).toContain('"images"."postId" = "posts"."id"')
+        expect(normalizedSql).toContain('"posts"."userId" = "users"."id"')
+        expect(normalizedSql).toContain('from "images" inner join "profiles"')
+        expect(normalizedSql).toContain('"images"."profileId" = "profiles"."id"')
+        expect(normalizedSql).toContain('"profiles"."userId" = "users"."id"')
+        expect(normalizedSql).toContain('and "url" = $1')
+        expect(normalizedSql).toContain('sum("images"."id")::double precision')
+    })
+
     it('falls back for unsupported relation helpers while preserving count and pagination semantics', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 
-        const filtered = await DbUser.query().has('postImages', '>=', 2).orderBy({ id: 'asc' }).get()
+        const filtered = await DbUser.query().has('comments', '>=', 1).orderBy({ id: 'asc' }).get()
         expect(filtered.all().map(user => user.getAttribute('id'))).toEqual([1])
 
-        const total = await DbUser.query().has('postImages', '>=', 2).count()
+        const total = await DbUser.query().has('comments', '>=', 1).count()
         expect(total).toBe(1)
 
-        const page = await DbUser.query().has('postImages', '>=', 2).orderBy({ id: 'asc' }).paginate(1, 1)
+        const page = await DbUser.query().has('comments', '>=', 1).orderBy({ id: 'asc' }).paginate(1, 1)
         expect(page.meta.total).toBe(1)
         expect(page.data.all().map(user => user.getAttribute('id'))).toEqual([1])
 
         const withCounts = await DbUser.query()
-            .withCount('postImages')
+            .withCount('comments')
             .whereKey('id', 1)
             .firstOrFail()
 
-        expect(withCounts.getAttribute('postImagesCount')).toBe(2)
+        expect(withCounts.getAttribute('commentsCount')).toBe(1)
     })
 
     it('runs adapter transactions against Postgres', async () => {

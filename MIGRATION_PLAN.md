@@ -582,8 +582,8 @@ Implementation checklist:
 Completed in code:
 
 - `QueryBuilder` now compiles supported direct relation filters and relation aggregates into Arkorm specs when the active adapter advertises those capabilities
-- `KyselyDatabaseAdapter` now executes supported direct-relation and `belongsToMany` `has`/`whereHas` filters and `withCount`/`withExists`/`withSum`/`withAvg`/`withMin`/`withMax` aggregates through correlated SQL subqueries
-- `tests/postgres/kysely-adapter.spec.ts` now verifies SQL-backed direct-relation and `belongsToMany` relation filters and aggregates against PostgreSQL
+- `KyselyDatabaseAdapter` now executes supported direct-relation, `belongsToMany`, and through-relation `has`/`whereHas` filters and `withCount`/`withExists`/`withSum`/`withAvg`/`withMin`/`withMax` aggregates through correlated SQL subqueries
+- `tests/postgres/kysely-adapter.spec.ts` now verifies SQL-backed direct-relation, `belongsToMany`, and through-relation filters and aggregates against PostgreSQL
 - unsupported relation helpers now remain on the explicit QueryBuilder fallback path under Kysely, with count and pagination behavior covered by Postgres tests
 
 Success criteria:
