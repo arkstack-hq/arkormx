@@ -3,6 +3,17 @@
   "semi": false,
   "barrels": [
     {
+      "root": "src/adapters",
+      "name": "index.ts",
+      "include": [
+        "**/*.ts"
+      ],
+      "exclude": [
+        "**/*.test.ts",
+        "**/index.ts"
+      ]
+    },
+    {
       "root": "src/types",
       "name": "index.ts",
       "include": [
@@ -17,17 +28,30 @@
       "root": "src",
       "name": "index.ts",
       "include": [
-        "**/*.ts"
+        "*.ts",
+        "adapters/index.ts",
+        "cli/CliApp.ts",
+        "cli/logo.ts",
+        "cli/commands/*.ts",
+        "database/factories.ts",
+        "database/ForeignKeyBuilder.ts",
+        "database/Migration.ts",
+        "database/SchemaBuilder.ts",
+        "database/Seeder.ts",
+        "database/TableBuilder.ts",
+        "Exceptions/*.ts",
+        "helpers/*.ts",
+        "types/index.ts"
       ],
       "exclude": [
-        "../database/**",
-        "relationship/**",
-        "src/models/**",
-        "types/**",
-        "**/types.ts",
         "**/*.test.ts",
-        "**/index.ts"
-      ]
+        "index.ts",
+        "models/**",
+        "relationship/**"
+      ],
+      "replace": {
+        "/\\.ts$/": ""
+      }
     },
     {
       "root": "src/relationship",

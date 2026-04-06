@@ -1,5 +1,7 @@
-export * from './adapters/KyselyDatabaseAdapter'
-export * from './adapters/PrismaDatabaseAdapter'
+export * from './adapters'
+export * from './types'
+
+// barrelize-start
 export * from './Attribute'
 export * from './casts'
 export * from './cli/CliApp'
@@ -37,6 +39,5 @@ export * from './helpers/runtime-module-loader'
 export * from './Model'
 export * from './Paginator'
 export * from './QueryBuilder'
-export * from './types'
-export type { DatabaseAdapter } from './types/adapter'
 export * from './URLDriver'
+// barrelize-end
