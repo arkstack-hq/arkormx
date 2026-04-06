@@ -53,6 +53,7 @@
     "test:postgres": "vitest run --project=postgres",
     "test:watch": "vitest --project=!postgres",
     "test:coverage": "vitest run --coverage --config vitest.config.ci.ts",
+    "bench:postgres": "tsx scripts/bench-postgres-phase9.ts",
     "prisma:generate": "prisma generate",
     "db:migrate:test": "prisma migrate deploy",
     "build": "tsdown",
