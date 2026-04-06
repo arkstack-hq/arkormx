@@ -446,6 +446,29 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return expression ?? sql<boolean>`1 = 1`
     }
 
+    private buildQueryFilterCondition (
+        target: QueryTarget<any>,
+        condition?: QueryCondition,
+        relationFilters?: RelationFilterSpec[],
+    ): RawBuilder<boolean> {
+        let expression = condition ? this.buildWhereCondition(target, condition) : null
+
+        relationFilters?.forEach((filter) => {
+            const next = this.buildRelationFilterExpression(target, filter)
+            if (!expression) {
+                expression = next
+
+                return
+            }
+
+            expression = filter.boolean === 'OR'
+                ? sql<boolean>`(${expression} or ${next})`
+                : sql<boolean>`(${expression} and ${next})`
+        })
+
+        return expression ?? sql<boolean>`1 = 1`
+    }
+
     private buildRelationAggregateSelectList (target: QueryTarget<any>, relationAggregates?: RelationAggregateSpec[]): RawBuilder<unknown> {
         if (!relationAggregates || relationAggregates.length === 0)
             return sql``
@@ -492,15 +515,10 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         condition?: QueryCondition,
         relationFilters?: RelationFilterSpec[],
     ): RawBuilder<unknown> {
-        const combined = this.combineConditions([
-            condition ? this.buildWhereCondition(target, condition) : undefined,
-            relationFilters && relationFilters.length > 0 ? this.buildRelationFilterCondition(target, relationFilters) : undefined,
-        ])
-
         if (!condition && (!relationFilters || relationFilters.length === 0))
             return sql``
 
-        return sql` where ${combined}`
+        return sql` where ${this.buildQueryFilterCondition(target, condition, relationFilters)}`
     }
 
     private assertNoRelationLoads (spec: SelectSpec<any> | RelationLoadSpec<any>) {
