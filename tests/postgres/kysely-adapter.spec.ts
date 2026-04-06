@@ -411,6 +411,57 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(missingAggregates.getAttribute('commentsCount')).toBe(0)
     })
 
+    it('supports SQL-backed conflict-handling write helpers through QueryBuilder', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const ignored = await DbUser.query().insertOrIgnore([
+            {
+                name: 'Ignored Jane',
+                email: 'jane@example.com',
+                isActive: 1,
+            },
+            {
+                name: 'Lia',
+                email: 'lia@example.com',
+                isActive: 1,
+            },
+        ])
+        expect(ignored).toBe(1)
+
+        await expect(DbUser.query().updateOrInsert(
+            { email: 'john@example.com' },
+            { name: 'John Conflict Updated', isActive: 1 }
+        )).resolves.toBe(true)
+
+        await expect(DbUser.query().upsert(
+            [
+                {
+                    name: 'Jane Conflict Updated',
+                    email: 'jane@example.com',
+                    isActive: 0,
+                },
+                {
+                    name: 'Mira',
+                    email: 'mira@example.com',
+                    isActive: 1,
+                },
+            ],
+            'email',
+            ['name', 'isActive']
+        )).resolves.toBe(2)
+
+        await expect(DbUser.query().where({ email: 'john@example.com' }).value('name')).resolves.toBe('John Conflict Updated')
+        await expect(DbUser.query().where({ email: 'jane@example.com' }).value('name')).resolves.toBe('Jane Conflict Updated')
+        await expect(DbUser.query().where({ email: 'mira@example.com' }).exists()).resolves.toBe(true)
+        await expect(DbUser.query().where({ email: 'lia@example.com' }).exists()).resolves.toBe(true)
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('on conflict do nothing')
+        expect(normalizedSql).toContain('on conflict ("email") do update set')
+        expect(normalizedSql).toContain('excluded."name"')
+        expect(normalizedSql).toContain('excluded."isActive"')
+    })
+
     it('runs adapter transactions against Postgres', async () => {
         await kyselyAdapter.transaction(async (transactionAdapter) => {
             await transactionAdapter.insert({

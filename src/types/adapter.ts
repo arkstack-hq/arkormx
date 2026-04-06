@@ -16,6 +16,7 @@ export type AdapterCapability =
     | 'transactions'
     | 'returning'
     | 'insertMany'
+    | 'upsert'
     | 'updateMany'
     | 'deleteMany'
     | 'exists'
@@ -157,6 +158,13 @@ export interface InsertManySpec<TModel = unknown> {
     ignoreDuplicates?: boolean
 }
 
+export interface UpsertSpec<TModel = unknown> {
+    target: QueryTarget<TModel>
+    values: DatabaseRow[]
+    uniqueBy: string[]
+    updateColumns?: string[]
+}
+
 export interface UpdateSpec<TModel = unknown> {
     target: QueryTarget<TModel>
     where: QueryCondition
@@ -208,6 +216,7 @@ export interface DatabaseAdapter {
     selectOne: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<DatabaseRow | null>
     insert: <TModel = unknown>(spec: InsertSpec<TModel>) => Promise<DatabaseRow>
     insertMany?: <TModel = unknown>(spec: InsertManySpec<TModel>) => Promise<number>
+    upsert?: <TModel = unknown>(spec: UpsertSpec<TModel>) => Promise<number>
     update: <TModel = unknown>(spec: UpdateSpec<TModel>) => Promise<DatabaseRow | null>
     updateMany?: <TModel = unknown>(spec: UpdateManySpec<TModel>) => Promise<number>
     delete: <TModel = unknown>(spec: DeleteSpec<TModel>) => Promise<DatabaseRow | null>

@@ -10,6 +10,7 @@ import type {
     DeleteSpec,
     InsertManySpec,
     InsertSpec,
+    UpsertSpec,
     QueryComparisonCondition,
     QueryCondition,
     QueryGroupCondition,
@@ -56,6 +57,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         transactions: true,
         returning: true,
         insertMany: true,
+        upsert: true,
         updateMany: true,
         deleteMany: true,
         exists: true,
@@ -634,6 +636,44 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         `.execute(this.db)
 
         return result.rows.length
+    }
+
+    public async upsert<TModel = unknown> (spec: UpsertSpec<TModel>): Promise<number> {
+        if (spec.values.length === 0)
+            return 0
+
+        const rows = spec.values.map(row => this.mapValues(spec.target, row))
+        const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))))
+        const uniqueColumns = spec.uniqueBy.map(column => this.mapColumn(spec.target, column))
+        const updateColumns = (spec.updateColumns ?? [])
+            .map(column => this.mapColumn(spec.target, column))
+            .filter(column => !uniqueColumns.includes(column))
+        const conflictTarget = sql.join(uniqueColumns.map(column => sql.id(column)), sql`, `)
+
+        if (columns.length === 0) {
+            await sql<Record<string, unknown>>`
+                insert into ${sql.table(this.resolveTable(spec.target))}
+                default values
+                on conflict (${conflictTarget}) do nothing
+            `.execute(this.db)
+
+            return spec.values.length
+        }
+
+        const values = sql.join(rows.map(row => {
+            return sql`(${sql.join(columns.map(column => row[column] ?? null), sql`, `)})`
+        }), sql`, `)
+        const conflictAction = updateColumns.length === 0
+            ? sql`do nothing`
+            : sql`do update set ${sql.join(updateColumns.map(column => sql`${sql.id(column)} = excluded.${sql.id(column)}`), sql`, `)}`
+
+        await sql<Record<string, unknown>>`
+            insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(columns.map(column => sql.id(column)), sql`, `)})
+            values ${values}
+            on conflict (${conflictTarget}) ${conflictAction}
+        `.execute(this.db)
+
+        return spec.values.length
     }
 
     /**
