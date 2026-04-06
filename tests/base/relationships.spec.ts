@@ -334,6 +334,62 @@ describe('Model relationships', () => {
         }
     })
 
+    it('batches belongsToMany eager loads across parent models', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+        User.setAdapter(adapter)
+        Role.setAdapter(adapter)
+
+        try {
+            const users = await User.query()
+                .with('roles')
+                .orderBy({ id: 'asc' })
+                .get()
+
+            expect(users.all()).toHaveLength(2)
+            expect(selectSpy).toHaveBeenCalledTimes(3)
+            expect(selectOneSpy).not.toHaveBeenCalled()
+
+            const firstUser = users.all()[0] as User
+            expect(firstUser.getAttribute('roles')).toBeInstanceOf(ArkormCollection)
+            expect((firstUser.getAttribute('roles') as ArkormCollection<Role>).all()).toHaveLength(2)
+        } finally {
+            User.setAdapter(undefined)
+            Role.setAdapter(undefined)
+        }
+    })
+
+    it('batches through eager loads across parent models', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+        User.setAdapter(adapter)
+        Image.setAdapter(adapter)
+
+        try {
+            const users = await User.query()
+                .with(['avatar', 'postImages'])
+                .orderBy({ id: 'asc' })
+                .get()
+
+            expect(users.all()).toHaveLength(2)
+            expect(selectSpy).toHaveBeenCalledTimes(5)
+            expect(selectOneSpy).not.toHaveBeenCalled()
+
+            const firstUser = users.all()[0] as User
+            expect(firstUser.getAttribute('avatar')).toBeInstanceOf(Image)
+            expect((firstUser.getAttribute('postImages') as ArkormCollection<Image>).all()).toHaveLength(2)
+        } finally {
+            User.setAdapter(undefined)
+            Image.setAdapter(undefined)
+        }
+    })
+
     it('loads relations by string and list syntax', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
