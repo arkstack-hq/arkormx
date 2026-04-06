@@ -39,6 +39,13 @@ import { str } from '@h3ravel/support'
 
 export type PrismaDelegateNameMapping = Record<string, string>
 
+/**
+ * Database adapter implementation for Prisma, allowing Arkorm to execute queries using Prisma 
+ * as the underlying query builder and executor.
+ * 
+ * @author Legacy (3m1n3nc3)
+ * @since 2.0.0-next.0
+ */
 export class PrismaDatabaseAdapter implements DatabaseAdapter {
     public readonly capabilities: AdapterCapabilities
     private readonly delegates: Record<string, PrismaDelegateLike>
@@ -270,24 +277,50 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         })
     }
 
+    /**
+     * @todo Implement relationLoads by performing separate queries and merging results 
+     * in-memory, since Prisma does not support nested reads with constraints, ordering, or
+     * pagination on related models as of now.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async select<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow[]> {
         const delegate = this.resolveDelegate(spec.target)
 
         return await delegate.findMany(this.buildFindArgs(spec)) as DatabaseRow[]
     }
 
+    /**
+     * Selects a single record matching the specified criteria. 
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async selectOne<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow | null> {
         const delegate = this.resolveDelegate(spec.target)
 
         return await delegate.findFirst(this.buildFindArgs(spec)) as DatabaseRow | null
     }
 
+    /**
+     * Inserts a single record into the database and returns the created record.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async insert<TModel = unknown> (spec: InsertSpec<TModel>): Promise<DatabaseRow> {
         const delegate = this.resolveDelegate(spec.target)
 
         return await delegate.create({ data: spec.values }) as DatabaseRow
     }
 
+    /**
+     * Inserts multiple records into the database. 
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async insertMany<TModel = unknown> (spec: InsertManySpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target) as PrismaDelegateLike & {
             createMany?: (args: { data: DatabaseRow[], skipDuplicates?: boolean }) => Promise<{ count?: number } | number>
@@ -318,6 +351,12 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         return spec.ignoreDuplicates ? inserted : spec.values.length
     }
 
+    /**
+     * Updates a single record matching the specified criteria and returns the updated record.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async update<TModel = unknown> (spec: UpdateSpec<TModel>): Promise<DatabaseRow | null> {
         const delegate = this.resolveDelegate(spec.target)
         const where = this.toQueryWhere(spec.where)
@@ -327,6 +366,12 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         return await delegate.update({ where, data: spec.values }) as DatabaseRow
     }
 
+    /**
+     * Updates multiple records matching the specified criteria. 
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async updateMany<TModel = unknown> (spec: UpdateManySpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target) as PrismaDelegateLike & {
             updateMany?: (args: { where?: PrismaLikeWhereInput, data: DatabaseRow }) => Promise<{ count?: number } | number>
@@ -349,6 +394,12 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         return rows.length
     }
 
+    /**
+     * Deletes a single record matching the specified criteria and returns the deleted record.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async delete<TModel = unknown> (spec: DeleteSpec<TModel>): Promise<DatabaseRow | null> {
         const delegate = this.resolveDelegate(spec.target)
         const where = this.toQueryWhere(spec.where)
@@ -358,6 +409,12 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         return await delegate.delete({ where }) as DatabaseRow
     }
 
+    /**
+     * Deletes multiple records matching the specified criteria. 
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async deleteMany<TModel = unknown> (spec: DeleteManySpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target)
         const where = this.toQueryWhere(spec.where)
@@ -370,12 +427,24 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         return rows.length
     }
 
+    /**
+     * Counts the number of records matching the specified criteria.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async count<TModel = unknown> (spec: AggregateSpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target)
 
         return await delegate.count({ where: this.toQueryWhere(spec.where) })
     }
 
+    /**
+     * Checks for the existence of records matching the specified criteria.
+     * 
+     * @param spec 
+     * @returns 
+     */
     public async exists<TModel = unknown> (spec: SelectSpec<TModel>): Promise<boolean> {
         const row = await this.selectOne({
             ...spec,
@@ -385,6 +454,11 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         return row != null
     }
 
+    /**
+     * Loads related models for a batch of parent records based on the specified relation load plans.
+     * 
+     * @param _spec 
+     */
     public async loadRelations<TModel = unknown> (_spec: RelationLoadSpec<TModel>): Promise<void> {
         throw new UnsupportedAdapterFeatureException('Relation batch loading is not supported by the Prisma compatibility adapter yet.', {
             operation: 'adapter.loadRelations',
@@ -394,6 +468,14 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         })
     }
 
+    /**
+     * Executes a series of database operations within a transaction. 
+     * If the underlying Prisma client does not support transactions, an exception is thrown.
+     * 
+     * @param callback 
+     * @param context 
+     * @returns 
+     */
     public async transaction<TResult = unknown> (
         callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
         context: AdapterTransactionContext = {},
@@ -419,6 +501,14 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     }
 }
 
+/**
+ * Factory function to create a PrismaDatabaseAdapter instance with the given 
+ * Prisma client and optional delegate name mapping.
+ * 
+ * @param prisma    The Prisma client instance to be used by the adapter.
+ * @param mapping   Optional mapping of delegate names.
+ * @returns         A new instance of PrismaDatabaseAdapter.
+ */
 export const createPrismaDatabaseAdapter = (
     prisma: PrismaClientLike,
     mapping: PrismaDelegateNameMapping = {},
@@ -426,4 +516,12 @@ export const createPrismaDatabaseAdapter = (
     return new PrismaDatabaseAdapter(prisma, mapping)
 }
 
+/**
+ * Alias for createPrismaDatabaseAdapter to maintain backward compatibility with 
+ * previous versions of Arkorm that exported the adapter factory under a different name.
+ * 
+ * @param prisma    The Prisma client instance to be used by the adapter.
+ * @param mapping   Optional mapping of delegate names.
+ * @returns         A new instance of PrismaDatabaseAdapter.
+ */
 export const createPrismaCompatibilityAdapter = createPrismaDatabaseAdapter

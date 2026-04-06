@@ -184,6 +184,7 @@ export interface DeleteManySpec<TModel = unknown> {
 export interface AggregateSpec<TModel = unknown> {
     target: QueryTarget<TModel>
     where?: QueryCondition
+    relationFilters?: RelationFilterSpec[]
     aggregate: AggregateSelection
     softDeleteMode?: SoftDeleteQueryMode
 }
