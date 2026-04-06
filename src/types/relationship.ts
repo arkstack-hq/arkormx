@@ -2,6 +2,7 @@ import type { QueryCondition, QueryOrderBy, QuerySelectColumn } from './adapter'
 
 import { ModelAttributes } from './model'
 import { QueryBuilder } from 'src/QueryBuilder'
+import type { RelationMetadata } from './metadata'
 
 export type RelationConstraint<TModel> = (
     query: QueryBuilder<TModel>
@@ -29,4 +30,8 @@ export interface RelationTableLookupSpec {
 export interface RelationColumnLookupSpec {
     lookup: RelationTableLookupSpec
     column: string
+}
+
+export interface RelationMetadataProvider {
+    getMetadata: () => RelationMetadata
 }

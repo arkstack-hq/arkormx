@@ -1,7 +1,8 @@
+import type { BelongsToManyRelationMetadata, RelationshipModelStatic } from 'src/types'
+
 import { ArkormCollection } from '../Collection'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
 
 /**
  * Defines a many-to-many relationship.
@@ -43,6 +44,18 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
         })
 
         return this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
+    }
+
+    public getMetadata (): BelongsToManyRelationMetadata {
+        return {
+            type: 'belongsToMany',
+            relatedModel: this.related,
+            throughTable: this.throughDelegate,
+            foreignPivotKey: this.foreignPivotKey,
+            relatedPivotKey: this.relatedPivotKey,
+            parentKey: this.parentKey,
+            relatedKey: this.relatedKey,
+        }
     }
 
     /**

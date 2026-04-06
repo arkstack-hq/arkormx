@@ -1,7 +1,8 @@
+import type { MorphToManyRelationMetadata, RelationshipModelStatic } from 'src/types'
+
 import { ArkormCollection } from '../Collection'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
 
 /**
  * Defines a polymorphic many-to-many relationship.  
@@ -56,6 +57,20 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
         })
 
         return this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
+    }
+
+    public getMetadata (): MorphToManyRelationMetadata {
+        return {
+            type: 'morphToMany',
+            relatedModel: this.related,
+            throughTable: this.throughDelegate,
+            morphName: this.morphName,
+            morphIdColumn: `${this.morphName}Id`,
+            morphTypeColumn: `${this.morphName}Type`,
+            relatedPivotKey: this.relatedPivotKey,
+            parentKey: this.parentKey,
+            relatedKey: this.relatedKey,
+        }
     }
 
     /**

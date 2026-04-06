@@ -497,12 +497,12 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] define table and primary-key metadata APIs on `Model`
-- [ ] add optional column mapping support for attribute-to-column translation
-- [ ] formalize relation metadata structures that loaders and adapters can consume
-- [ ] ensure soft delete metadata is represented explicitly instead of inferred ad hoc
-- [ ] add fallback behavior so existing models without explicit metadata still work
-- [ ] document the metadata APIs and naming-convention fallback rules
+- [x] define table and primary-key metadata APIs on `Model`
+- [x] add optional column mapping support for attribute-to-column translation
+- [x] formalize relation metadata structures that loaders and adapters can consume
+- [x] ensure soft delete metadata is represented explicitly instead of inferred ad hoc
+- [x] add fallback behavior so existing models without explicit metadata still work
+- [x] document the metadata APIs and naming-convention fallback rules
 
 Success criteria:
 

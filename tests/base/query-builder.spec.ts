@@ -2,6 +2,7 @@ import { ArkormCollection, LengthAwarePaginator, Paginator, UnsupportedAdapterFe
 import { Article, User } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
+import { Model } from '../../src'
 
 describe('QueryBuilder', () => {
     beforeEach(() => {
@@ -251,6 +252,101 @@ describe('QueryBuilder', () => {
             }))
         } finally {
             User.setAdapter(undefined)
+        }
+    })
+
+    it('applies explicit model metadata with convention fallback', async () => {
+        class MetadataUser extends Model {
+            protected static override delegate = 'users'
+            protected static override table = 'app_users'
+            protected static override primaryKey = 'uuid'
+            protected static override columns = {
+                displayName: 'display_name',
+            }
+        }
+
+        const selectSpy = vi.fn(async () => ([{ uuid: 'user-1', displayName: 'Jane' }]))
+        const updateSpy = vi.fn(async () => ({ uuid: 'user-1', displayName: 'Updated' }))
+        const deleteSpy = vi.fn(async () => ({ uuid: 'user-1', displayName: 'Updated' }))
+        const insertSpy = vi.fn(async () => ({ uuid: 'user-2', displayName: 'Created' }))
+
+        const transaction: DatabaseAdapter['transaction'] = async <TResult> (callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>): Promise<TResult> => await callback(adapter)
+
+        const adapter: DatabaseAdapter = {
+            select: selectSpy,
+            selectOne: async () => ({ uuid: 'user-1' }),
+            insert: insertSpy,
+            insertMany: async () => 0,
+            update: updateSpy,
+            updateMany: async () => 0,
+            delete: deleteSpy,
+            deleteMany: async () => 0,
+            count: async () => 0,
+            exists: async () => false,
+            transaction,
+        }
+
+        MetadataUser.setAdapter(adapter)
+
+        try {
+            expect(User.getModelMetadata()).toMatchObject({
+                table: 'users',
+                primaryKey: 'id',
+                columns: {},
+                softDelete: { enabled: false, column: 'deletedAt' },
+            })
+            expect(MetadataUser.getModelMetadata()).toMatchObject({
+                table: 'app_users',
+                primaryKey: 'uuid',
+                columns: { displayName: 'display_name' },
+                softDelete: { enabled: false, column: 'deletedAt' },
+            })
+            expect(MetadataUser.getColumnName('displayName')).toBe('display_name')
+            expect(MetadataUser.getColumnName('email')).toBe('email')
+
+            const found = await MetadataUser.query().find('user-1')
+            expect(found).not.toBeNull()
+            expect(selectSpy).not.toHaveBeenCalled()
+
+            await MetadataUser.query().get()
+            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
+                target: expect.objectContaining({
+                    table: 'app_users',
+                    primaryKey: 'uuid',
+                    columns: { displayName: 'display_name' },
+                }),
+            }))
+
+            const saved = new MetadataUser({ uuid: 'user-1', displayName: 'Updated' })
+            await saved.save()
+            expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
+                where: {
+                    type: 'comparison',
+                    column: 'uuid',
+                    operator: '=',
+                    value: 'user-1',
+                },
+            }))
+
+            await saved.delete()
+            expect(deleteSpy).toHaveBeenCalledWith(expect.objectContaining({
+                where: {
+                    type: 'comparison',
+                    column: 'uuid',
+                    operator: '=',
+                    value: 'user-1',
+                },
+            }))
+
+            const insertedId = await MetadataUser.query().insertGetId({ displayName: 'Created' } as never)
+            expect(insertedId).toBe('user-2')
+            expect(insertSpy).toHaveBeenCalled()
+
+            const left = new MetadataUser({ uuid: 'same-user' })
+            const right = new MetadataUser({ uuid: 'same-user' })
+            expect(left.is(right)).toBe(true)
+        } finally {
+            MetadataUser.setAdapter(undefined)
         }
     })
 

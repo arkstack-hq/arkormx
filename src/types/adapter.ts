@@ -1,4 +1,5 @@
 import type { ModelStatic } from './ModelStatic'
+import type { SoftDeleteConfig } from './core'
 
 export type DatabasePrimitive = string | number | boolean | bigint | Date | null
 
@@ -52,6 +53,9 @@ export interface QueryTarget<TModel = unknown> {
     model?: ModelStatic<TModel, any>
     modelName?: string
     table?: string
+    primaryKey?: string
+    columns?: Record<string, string>
+    softDelete?: SoftDeleteConfig
     alias?: string
 }
 

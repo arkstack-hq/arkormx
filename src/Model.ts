@@ -7,7 +7,8 @@ import {
     HasOneThroughRelation,
     MorphManyRelation,
     MorphOneRelation,
-    MorphToManyRelation
+    MorphToManyRelation,
+    Relation,
 } from './relationship'
 import { createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
 import type { ModelFactory } from './database/factories'
@@ -31,7 +32,7 @@ import {
     runArkormTransaction,
 } from './helpers/runtime-config'
 
-import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, RelatedModelClass } from './types'
+import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, RelatedModelClass, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
@@ -58,6 +59,9 @@ export abstract class Model<
     protected static adapter?: DatabaseAdapter
     protected static client: Record<string, unknown>
     protected static delegate: string
+    protected static table?: string
+    protected static primaryKey = 'id'
+    protected static columns: Record<string, string> = {}
     protected static softDeletes = false
     protected static deletedAtColumn = 'deletedAt'
     protected static globalScopes: Record<string, GlobalScope> = {}
@@ -120,6 +124,44 @@ export abstract class Model<
 
     public static setAdapter (adapter?: DatabaseAdapter): void {
         this.adapter = adapter
+    }
+
+    public static getTable (): string {
+        return this.table || this.delegate || `${str(this.name).camel().plural()}`
+    }
+
+    public static getPrimaryKey (): string {
+        return this.primaryKey || 'id'
+    }
+
+    public static getColumnMap (): Record<string, string> {
+        return { ...this.columns }
+    }
+
+    public static getColumnName (attribute: string): string {
+        return this.getColumnMap()[attribute] ?? attribute
+    }
+
+    public static getModelMetadata (): ModelMetadata {
+        return {
+            table: this.getTable(),
+            primaryKey: this.getPrimaryKey(),
+            columns: this.getColumnMap(),
+            softDelete: this.getSoftDeleteConfig(),
+        }
+    }
+
+    public static getRelationMetadata (name: string): RelationMetadata | null {
+        const resolver = (this.prototype as unknown as Record<string, unknown>)[name]
+        if (typeof resolver !== 'function')
+            return null
+
+        const instance = new (this as unknown as new (attributes?: Record<string, unknown>) => Model)({})
+        const relation = (resolver as (this: Model) => unknown).call(instance)
+        if (!(relation instanceof Relation))
+            return null
+
+        return relation.getMetadata()
     }
 
     public static setFactory<TFactory extends ModelFactory<any, any>> (
@@ -350,7 +392,7 @@ export abstract class Model<
     ): TDelegate {
         ensureArkormConfigLoading()
 
-        const key = delegate || this.delegate || `${str(this.name).camel().plural()}`
+        const key = delegate || this.delegate || this.getTable()
         const candidates = [
             key,
             `${str(key).camel()}`,
@@ -669,11 +711,11 @@ export abstract class Model<
      * @returns 
      */
     public async save (): Promise<this> {
-        const identifier = this.getAttribute('id') as string | number | undefined
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey) as string | number | undefined
         const payload = this.getRawAttributes()
         const previousOriginal = this.getOriginal()
-
-        const constructor = this.constructor as unknown as ModelStatic<this>
         if (identifier == null) {
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
@@ -692,7 +734,7 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
 
-        const model = await constructor.query().where({ id: identifier }).update(payload)
+        const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -721,17 +763,20 @@ export abstract class Model<
      * @returns 
      */
     public async delete (): Promise<this> {
-        const identifier = this.getAttribute('id')
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
         if (identifier == null)
-            throw new ArkormException('Cannot delete a model without an id.')
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot delete a model without an id.'
+                : `Cannot delete a model without a [${primaryKey}] value.`)
 
         const previousOriginal = this.getOriginal()
-        const constructor = this.constructor as unknown as ModelStatic<this>
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
         const softDeleteConfig = constructor.getSoftDeleteConfig()
         if (softDeleteConfig.enabled) {
             const model = await constructor.query()
-                .where({ id: identifier })
+                .where({ [primaryKey]: identifier })
                 .update({ [softDeleteConfig.column]: new Date() })
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
@@ -742,7 +787,7 @@ export abstract class Model<
             return this
         }
 
-        const deleted = await constructor.query().where({ id: identifier }).delete()
+        const deleted = await constructor.query().where({ [primaryKey]: identifier }).delete()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -767,16 +812,19 @@ export abstract class Model<
      * @returns 
      */
     public async forceDelete (): Promise<this> {
-        const identifier = this.getAttribute('id')
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
         if (identifier == null)
-            throw new ArkormException('Cannot force delete a model without an id.')
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot force delete a model without an id.'
+                : `Cannot force delete a model without a [${primaryKey}] value.`)
 
         const previousOriginal = this.getOriginal()
-        const constructor = this.constructor as unknown as ModelStatic<this>
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleting', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
 
-        const deleted = await constructor.query().withTrashed().where({ id: identifier }).delete()
+        const deleted = await constructor.query().withTrashed().where({ [primaryKey]: identifier }).delete()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -802,11 +850,14 @@ export abstract class Model<
      * @returns 
      */
     public async restore (): Promise<this> {
-        const identifier = this.getAttribute('id')
-        if (identifier == null)
-            throw new ArkormException('Cannot restore a model without an id.')
-
         const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
+        if (identifier == null)
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot restore a model without an id.'
+                : `Cannot restore a model without a [${primaryKey}] value.`)
+
         const softDeleteConfig = constructor.getSoftDeleteConfig()
         if (!softDeleteConfig.enabled)
             return this
@@ -815,7 +866,7 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'restoring', this)
 
         const model = await constructor.query().withTrashed()
-            .where({ id: identifier })
+            .where({ [primaryKey]: identifier })
             .update({ [softDeleteConfig.column]: null })
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
@@ -974,8 +1025,10 @@ export abstract class Model<
         if (this.constructor !== model.constructor)
             return false
 
-        const identifier = this.getAttribute('id')
-        const otherIdentifier = model.getAttribute('id')
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
+        const otherIdentifier = model.getAttribute(primaryKey)
 
         if (identifier == null || otherIdentifier == null)
             return false
@@ -1024,9 +1077,11 @@ export abstract class Model<
     protected hasOne<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         foreignKey: string,
-        localKey = 'id'
+        localKey?: string
     ): HasOneRelation<this, InstanceType<TRelatedClass>> {
-        return new HasOneRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new HasOneRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey ?? constructor.getPrimaryKey())
     }
 
     /**
@@ -1040,9 +1095,11 @@ export abstract class Model<
     protected hasMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         foreignKey: string,
-        localKey = 'id'
+        localKey?: string
     ): HasManyRelation<this, InstanceType<TRelatedClass>> {
-        return new HasManyRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new HasManyRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey ?? constructor.getPrimaryKey())
     }
 
     /**
@@ -1056,9 +1113,9 @@ export abstract class Model<
     protected belongsTo<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         foreignKey: string,
-        ownerKey = 'id'
+        ownerKey?: string
     ): BelongsToRelation<this, InstanceType<TRelatedClass>> {
-        return new BelongsToRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, ownerKey)
+        return new BelongsToRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, ownerKey ?? related.getPrimaryKey())
     }
 
     /**
@@ -1077,10 +1134,20 @@ export abstract class Model<
         throughDelegate: string,
         foreignPivotKey: string,
         relatedPivotKey: string,
-        parentKey = 'id',
-        relatedKey = 'id'
+        parentKey?: string,
+        relatedKey?: string
     ): BelongsToManyRelation<this, InstanceType<TRelatedClass>> {
-        return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(this, related, throughDelegate, foreignPivotKey, relatedPivotKey, parentKey, relatedKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(
+            this,
+            related,
+            throughDelegate,
+            foreignPivotKey,
+            relatedPivotKey,
+            parentKey ?? constructor.getPrimaryKey(),
+            relatedKey ?? related.getPrimaryKey(),
+        )
     }
 
     /**
@@ -1099,10 +1166,12 @@ export abstract class Model<
         throughDelegate: string,
         firstKey: string,
         secondKey: string,
-        localKey = 'id',
+        localKey?: string,
         secondLocalKey = 'id'
     ): HasOneThroughRelation<this, InstanceType<TRelatedClass>> {
-        return new HasOneThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey, secondLocalKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new HasOneThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
     }
 
     /**
@@ -1121,10 +1190,12 @@ export abstract class Model<
         throughDelegate: string,
         firstKey: string,
         secondKey: string,
-        localKey = 'id',
+        localKey?: string,
         secondLocalKey = 'id'
     ): HasManyThroughRelation<this, InstanceType<TRelatedClass>> {
-        return new HasManyThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey, secondLocalKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new HasManyThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
     }
 
     /**
@@ -1138,9 +1209,11 @@ export abstract class Model<
     protected morphOne<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         morphName: string,
-        localKey = 'id'
+        localKey?: string
     ): MorphOneRelation<this, InstanceType<TRelatedClass>> {
-        return new MorphOneRelation(this, related, morphName, localKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new MorphOneRelation(this, related, morphName, localKey ?? constructor.getPrimaryKey())
     }
 
     /**
@@ -1154,9 +1227,11 @@ export abstract class Model<
     protected morphMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         morphName: string,
-        localKey = 'id'
+        localKey?: string
     ): MorphManyRelation<this, InstanceType<TRelatedClass>> {
-        return new MorphManyRelation(this, related, morphName, localKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new MorphManyRelation(this, related, morphName, localKey ?? constructor.getPrimaryKey())
     }
 
     /**
@@ -1175,10 +1250,20 @@ export abstract class Model<
         throughDelegate: string,
         morphName: string,
         relatedPivotKey: string,
-        parentKey = 'id',
-        relatedKey = 'id'
+        parentKey?: string,
+        relatedKey?: string
     ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
-        return new MorphToManyRelation(this, related, throughDelegate, morphName, relatedPivotKey, parentKey, relatedKey)
+        const constructor = this.constructor as unknown as typeof Model
+
+        return new MorphToManyRelation(
+            this,
+            related,
+            throughDelegate,
+            morphName,
+            relatedPivotKey,
+            parentKey ?? constructor.getPrimaryKey(),
+            relatedKey ?? related.getPrimaryKey(),
+        )
     }
 
     /**
