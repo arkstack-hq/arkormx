@@ -38,6 +38,7 @@ import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
 import { QueryConstraintException } from './Exceptions/QueryConstraintException'
 import { RelationResolutionException } from './Exceptions/RelationResolutionException'
 import { ScopeNotDefinedException } from './Exceptions/ScopeNotDefinedException'
+import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
 import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
 import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
 import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
@@ -997,10 +998,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (this.hasRelationAggregates())
             await this.applyRelationAggregates(filteredModels, relationCache)
 
-        await Promise.all(filteredModels.map(async (model: TModel) => {
-            const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
-            await loadable.load(this.eagerLoads)
-        }))
+        await this.eagerLoadModels(filteredModels)
 
         return new ArkormCollection(filteredModels)
     }
@@ -1029,8 +1027,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 return null
 
             const model = await this.model.hydrateRetrieved(row as Parameters<ModelStatic<TModel, TDelegate>['hydrateRetrieved']>[0])
-            const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
-            await loadable.load(this.eagerLoads)
+            await this.eagerLoadModels([model])
 
             return model
         }
@@ -1040,8 +1037,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return null
 
         const model = await this.model.hydrateRetrieved(row as Parameters<ModelStatic<TModel, TDelegate>['hydrateRetrieved']>[0])
-        const loadable = model as unknown as { load: (relations: EagerLoadMap) => Promise<void> }
-        await loadable.load(this.eagerLoads)
+        await this.eagerLoadModels([model])
 
         return model
     }
@@ -1958,6 +1954,19 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                     : undefined,
             }
         })
+    }
+
+    private async eagerLoadModels (models: TModel[]): Promise<void> {
+        if (models.length === 0 || Object.keys(this.eagerLoads).length === 0)
+            return
+
+        await new SetBasedEagerLoader(
+            models as unknown as Array<{
+                getAttribute: (key: string) => unknown
+                setLoadedRelation: (name: string, value: unknown) => void
+            }>,
+            this.eagerLoads,
+        ).load()
     }
 
     private normalizeRelationLoadSelect (select: unknown): QuerySelectColumn[] | null {

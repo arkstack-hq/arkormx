@@ -277,6 +277,63 @@ describe('Model relationships', () => {
         expect(posts.all().length).toBe(1)
     })
 
+    it('batches hasOne and hasMany eager loads across parent models', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+        User.setAdapter(adapter)
+        Profile.setAdapter(adapter)
+        Post.setAdapter(adapter)
+
+        try {
+            const users = await User.query()
+                .with(['profile', 'posts'])
+                .orderBy({ id: 'asc' })
+                .get()
+
+            expect(users.all()).toHaveLength(2)
+            expect(selectSpy).toHaveBeenCalledTimes(3)
+            expect(selectOneSpy).not.toHaveBeenCalled()
+
+            const firstUser = users.all()[0] as User
+            expect(firstUser.getAttribute('profile')).toBeInstanceOf(Profile)
+            expect((firstUser.getAttribute('posts') as ArkormCollection<Post>).all()).toHaveLength(2)
+        } finally {
+            User.setAdapter(undefined)
+            Profile.setAdapter(undefined)
+            Post.setAdapter(undefined)
+        }
+    })
+
+    it('batches belongsTo eager loads across parent models', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+        User.setAdapter(adapter)
+        Profile.setAdapter(adapter)
+
+        try {
+            const profiles = await Profile.query()
+                .with('user')
+                .orderBy({ id: 'asc' })
+                .get()
+
+            expect(profiles.all()).toHaveLength(2)
+            expect(selectSpy).toHaveBeenCalledTimes(2)
+            expect(selectOneSpy).not.toHaveBeenCalled()
+
+            const firstProfile = profiles.all()[0] as Profile
+            expect(firstProfile.getAttribute('user')).toBeInstanceOf(User)
+        } finally {
+            User.setAdapter(undefined)
+            Profile.setAdapter(undefined)
+        }
+    })
+
     it('loads relations by string and list syntax', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()

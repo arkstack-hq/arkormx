@@ -531,6 +531,8 @@ Success criteria:
 
 ### Phase 7: Rewrite Eager Loading as Set-Based Loaders
 
+Status: in progress
+
 Deliverables:
 
 - batch `belongsTo`, `hasOne`, and `hasMany`
@@ -540,12 +542,18 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] design a shared eager-load planner that groups parent models by relation request
-- [ ] implement batched loaders for `belongsTo`, `hasMany`, and `hasOne`
+- [x] design a shared eager-load planner that groups parent models by relation request
+- [x] implement batched loaders for `belongsTo`, `hasMany`, and `hasOne`
 - [ ] implement pivot-aware batching for `belongsToMany`
 - [ ] implement through-relation loading without nested per-parent round trips
-- [ ] integrate the loaders into `Model.load()` and `QueryBuilder.with()`
-- [ ] add query-count assertions so eager loading regressions are caught by tests
+- [x] integrate the loaders into `Model.load()` and `QueryBuilder.with()`
+- [x] add query-count assertions so eager loading regressions are caught by tests
+
+Completed in code:
+
+- `src/relationship/SetBasedEagerLoader.ts` now batches eager loading for `belongsTo`, `hasMany`, and `hasOne`
+- `Model.load()` and `QueryBuilder` read paths now route eager loading through the shared batched loader instead of per-model loops
+- regression coverage in `tests/base/relationships.spec.ts` now asserts bounded query counts for batched eager loads
 
 Success criteria:
 

@@ -1,6 +1,13 @@
 import type { DatabaseAdapter, DatabaseRow } from '../types'
 import type { RelationColumnLookupSpec, RelationTableLookupSpec } from '../types/relationship'
 
+/**
+ * Utility class responsible for loading data from relation tables, which are used to 
+ * manage relationships between models in Arkorm. 
+ * 
+ * @author Legacy (3m1n3nc3)
+ * @since 2.0.0-next.0
+ */
 export class RelationTableLoader {
     public constructor(
         private readonly adapter: DatabaseAdapter,

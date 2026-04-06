@@ -39,6 +39,7 @@ import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
 import { MissingDelegateException } from './Exceptions/MissingDelegateException'
+import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
 
 /**
  * Base model class that all models should extend. 
@@ -895,18 +896,18 @@ export abstract class Model<
     public async load (relations: string | string[] | EagerLoadMap): Promise<this> {
         const relationMap = this.normalizeRelationMap(relations)
 
-        await Promise.all(Object.entries(relationMap).map(async ([name, constraint]) => {
-            const resolver = (this as unknown as Record<string, unknown>)[name]
-            if (typeof resolver !== 'function')
-                return
+        await new SetBasedEagerLoader([
+            this as unknown as {
+                getAttribute: (key: string) => unknown
+                setLoadedRelation: (name: string, value: unknown) => void
+            },
+        ], relationMap).load()
 
-            const relation = (resolver as () => { constrain: (constraint: EagerLoadConstraint) => unknown, getResults: () => Promise<unknown> }).call(this)
-            if (constraint)
-                relation.constrain(constraint)
+        return this
+    }
 
-            const results = await relation.getResults()
-            this.attributes[name] = results
-        }))
+    public setLoadedRelation (name: string, value: unknown): this {
+        this.attributes[name] = value
 
         return this
     }
