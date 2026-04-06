@@ -29,7 +29,15 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
      */
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const localValue = this.parent.getAttribute(this.localKey)
-        const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null
+        const intermediate = await this.selectRelationRow({
+            table: this.throughDelegate,
+            where: {
+                type: 'comparison',
+                column: this.firstKey,
+                operator: '=',
+                value: localValue as never,
+            },
+        }) as Record<string, unknown> | null
 
         if (!intermediate)
             return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: [] } }))

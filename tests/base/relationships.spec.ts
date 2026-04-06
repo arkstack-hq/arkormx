@@ -1,6 +1,8 @@
-import { ArkormCollection, QueryBuilder } from '../../src'
+import { ArkormCollection, QueryBuilder, createPrismaDatabaseAdapter } from '../../src'
 import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
-import { beforeEach, describe, expect, expectTypeOf, it } from 'vitest'
+import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
+
+import { createCoreClient } from './helpers/core-fixtures'
 
 describe('Model relationships', () => {
     beforeEach(() => {
@@ -43,6 +45,46 @@ describe('Model relationships', () => {
         expect((roles as ArkormCollection<Role>).all().length).toBe(2)
         expect(avatar).not.toBeNull()
         expect((postImages as ArkormCollection<Image>).all().length).toBe(2)
+    })
+
+    it('routes pivot and through table reads through the adapter seam', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+        User.setAdapter(adapter)
+        Role.setAdapter(adapter)
+        Image.setAdapter(adapter)
+        Tag.setAdapter(adapter)
+
+        try {
+            const user = await User.query().find(1)
+            expect(user).not.toBeNull()
+
+            await user?.roles().getResults()
+            await user?.postImages().getResults()
+            await user?.avatar().getResults()
+            await user?.tags().getResults()
+
+            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
+                target: expect.objectContaining({ table: 'roleUsers' }),
+            }))
+            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
+                target: expect.objectContaining({ table: 'posts' }),
+            }))
+            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
+                target: expect.objectContaining({ table: 'taggables' }),
+            }))
+            expect(selectOneSpy).toHaveBeenCalledWith(expect.objectContaining({
+                target: expect.objectContaining({ table: 'profiles' }),
+            }))
+        } finally {
+            User.setAdapter(undefined)
+            Role.setAdapter(undefined)
+            Image.setAdapter(undefined)
+            Tag.setAdapter(undefined)
+        }
     })
 
     it('supports polymorphic relations', async () => {

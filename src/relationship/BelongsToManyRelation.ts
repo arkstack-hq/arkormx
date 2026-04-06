@@ -29,8 +29,14 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
      */
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const parentValue = this.parent.getAttribute(this.parentKey)
-        const pivotRows = await this.related.getDelegate(this.throughDelegate).findMany({
-            where: { [this.foreignPivotKey]: parentValue },
+        const pivotRows = await this.selectRelationRows({
+            table: this.throughDelegate,
+            where: {
+                type: 'comparison',
+                column: this.foreignPivotKey,
+                operator: '=',
+                value: parentValue as never,
+            },
         }) as Record<string, unknown>[]
         const ids = pivotRows.map(row => row[this.relatedPivotKey])
 

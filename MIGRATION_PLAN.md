@@ -457,6 +457,8 @@ Success criteria:
 
 ### Phase 4: Remove Direct Delegate Access from Relation Classes
 
+Status: in progress
+
 Deliverables:
 
 - replace direct `getDelegate()` calls inside through and pivot relations
@@ -465,12 +467,24 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] inventory every relation class that bypasses `QueryBuilder` or the future adapter
+- [x] inventory every relation class that bypasses `QueryBuilder` or the future adapter
 - [ ] define relation-load plan types for direct, pivot, through, and morph relations
-- [ ] move pivot and through query execution out of relation classes and into shared loader utilities
-- [ ] ensure relation classes still own relation metadata and mapping logic but no longer own backend execution
-- [ ] add focused tests for belongs-to-many and through relations before removing direct delegate access
-- [ ] confirm that no relation class still reaches into `getDelegate()` after the refactor
+- [~] move pivot and through query execution out of relation classes and into shared loader utilities
+- [~] ensure relation classes still own relation metadata and mapping logic but no longer own backend execution
+- [x] add focused tests for belongs-to-many and through relations before removing direct delegate access
+- [x] confirm that no relation class still reaches into `getDelegate()` after the refactor
+
+Completed in code:
+
+- `Relation` now provides shared adapter-backed helpers for through and pivot table lookups
+- `BelongsToManyRelation`, `HasManyThroughRelation`, `HasOneThroughRelation`, and `MorphToManyRelation` no longer call delegates directly; they resolve intermediate rows through the adapter seam
+- `RelationshipModelStatic` now exposes `getAdapter()` for relation-side adapter access
+- focused verification lives in `tests/base/relationships.spec.ts`
+
+Remaining before Phase 4 can be marked complete:
+
+- formalize relation-load plan types for relation-side execution instead of using ad hoc through-table selects
+- move the remaining relation-side execution details out of the relation classes and into dedicated shared planner or loader utilities
 
 Success criteria:
 

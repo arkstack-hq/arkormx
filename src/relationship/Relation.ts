@@ -1,7 +1,9 @@
+import type { DatabaseAdapter, DatabaseRow, ModelAttributes, QueryCondition, QueryOrderBy, QuerySelectColumn } from '../types'
+
 import { ArkormCollection } from '../Collection'
-import type { ModelAttributes } from '../types'
 import { QueryBuilder } from '../QueryBuilder'
 import type { RelationConstraint } from '../types/relationship'
+import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 
 /**
  * Base class for all relationship types. Not meant to be used directly.
@@ -11,6 +13,60 @@ import type { RelationConstraint } from '../types/relationship'
  */
 export abstract class Relation<TModel> {
     protected constraint: RelationConstraint<TModel> | null = null
+
+    protected getRelationAdapter (): DatabaseAdapter {
+        const model = this.getRelatedModel()
+        const adapter = model.getAdapter()
+
+        if (!adapter) {
+            throw new UnsupportedAdapterFeatureException('Relationship resolution requires a configured adapter.', {
+                operation: 'relation.adapter',
+            })
+        }
+
+        return adapter
+    }
+
+    protected getRelatedModel (): { getAdapter: () => DatabaseAdapter | undefined, query: () => QueryBuilder<TModel> } {
+        return (this as unknown as {
+            related: { getAdapter: () => DatabaseAdapter | undefined, query: () => QueryBuilder<TModel> }
+        }).related
+    }
+
+    protected async selectRelationRows (options: {
+        table: string
+        where?: QueryCondition
+        columns?: QuerySelectColumn[]
+        orderBy?: QueryOrderBy[]
+        limit?: number
+        offset?: number
+    }): Promise<DatabaseRow[]> {
+        return await this.getRelationAdapter().select({
+            target: { table: options.table },
+            where: options.where,
+            columns: options.columns,
+            orderBy: options.orderBy,
+            limit: options.limit,
+            offset: options.offset,
+        })
+    }
+
+    protected async selectRelationRow (options: {
+        table: string
+        where?: QueryCondition
+        columns?: QuerySelectColumn[]
+        orderBy?: QueryOrderBy[]
+        offset?: number
+    }): Promise<DatabaseRow | null> {
+        return await this.getRelationAdapter().selectOne({
+            target: { table: options.table },
+            where: options.where,
+            columns: options.columns,
+            orderBy: options.orderBy,
+            limit: 1,
+            offset: options.offset,
+        })
+    }
 
     /**
      * Apply a constraint to the relationship query.
