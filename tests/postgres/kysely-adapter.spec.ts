@@ -333,11 +333,37 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('sum("images"."id")::double precision')
     })
 
-    it('falls back for unsupported relation helpers while preserving count and pagination semantics', async () => {
+    it('supports SQL-backed OR and negative relation helper variants through QueryBuilder', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const withoutAvatar = await DbUser.query().doesntHave('avatar').orderBy({ id: 'asc' }).get()
+        expect(withoutAvatar.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const orHasPosts = await DbUser.query().whereKey('id', 2).orHas('posts', '>=', 2).orderBy({ id: 'asc' }).get()
+        expect(orHasPosts.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const orWhereHasPosts = await DbUser.query().whereKey('id', 2).orWhereHas('posts', query => query.where({ title: 'A' })).orderBy({ id: 'asc' }).get()
+        expect(orWhereHasPosts.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const orDoesntHaveAvatar = await DbUser.query().whereKey('id', 1).orDoesntHave('avatar').orderBy({ id: 'asc' }).get()
+        expect(orDoesntHaveAvatar.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const orWhereDoesntHaveAvatar = await DbUser.query().whereKey('id', 1).orWhereDoesntHave('avatar', query => query.where({ url: 'a.png' })).orderBy({ id: 'asc' }).get()
+        expect(orWhereDoesntHaveAvatar.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain(' or ')
+        expect(normalizedSql).toContain(') < $')
+    })
+
+    it('falls back for unsupported relation helpers while preserving correctness, aggregates, and pagination semantics', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 
         const filtered = await DbUser.query().has('comments', '>=', 1).orderBy({ id: 'asc' }).get()
         expect(filtered.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const noComments = await DbUser.query().doesntHave('comments').orderBy({ id: 'asc' }).get()
+        expect(noComments.all().map(user => user.getAttribute('id'))).toEqual([2])
 
         const total = await DbUser.query().has('comments', '>=', 1).count()
         expect(total).toBe(1)
@@ -346,12 +372,43 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(page.meta.total).toBe(1)
         expect(page.data.all().map(user => user.getAttribute('id'))).toEqual([1])
 
-        const withCounts = await DbUser.query()
+        const orHasComments = await DbUser.query().whereKey('id', 2).orHas('comments').orderBy({ id: 'asc' }).get()
+        expect(orHasComments.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const orWhereHasComments = await DbUser.query().whereKey('id', 2).orWhereHas('comments', query => query.where({ body: 'Hi user' })).orderBy({ id: 'asc' }).get()
+        expect(orWhereHasComments.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const orDoesntHaveComments = await DbUser.query().whereKey('id', 1).orDoesntHave('comments').orderBy({ id: 'asc' }).get()
+        expect(orDoesntHaveComments.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const orWhereDoesntHaveComments = await DbUser.query().whereKey('id', 1).orWhereDoesntHave('comments', query => query.where({ body: 'Hi user' })).orderBy({ id: 'asc' }).get()
+        expect(orWhereDoesntHaveComments.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const withAggregates = await DbUser.query()
             .withCount('comments')
+            .withExists('comments')
+            .withSum('comments', 'id')
+            .withAvg('comments', 'id')
+            .withMin('comments', 'id')
+            .withMax('comments', 'id')
             .whereKey('id', 1)
             .firstOrFail()
 
-        expect(withCounts.getAttribute('commentsCount')).toBe(1)
+        expect(withAggregates.getAttribute('commentsCount')).toBe(1)
+        expect(withAggregates.getAttribute('commentsExists')).toBe(true)
+        expect(withAggregates.getAttribute('commentsSumId')).toBe(1)
+        expect(Number(withAggregates.getAttribute('commentsAvgId'))).toBe(1)
+        expect(withAggregates.getAttribute('commentsMinId')).toBe(1)
+        expect(withAggregates.getAttribute('commentsMaxId')).toBe(1)
+
+        const missingAggregates = await DbUser.query()
+            .withExists('comments')
+            .withCount('comments')
+            .whereKey('id', 2)
+            .firstOrFail()
+
+        expect(missingAggregates.getAttribute('commentsExists')).toBe(false)
+        expect(missingAggregates.getAttribute('commentsCount')).toBe(0)
     })
 
     it('runs adapter transactions against Postgres', async () => {
