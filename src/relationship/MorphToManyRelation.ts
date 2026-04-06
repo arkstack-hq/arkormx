@@ -30,28 +30,30 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const parentValue = this.parent.getAttribute(this.parentKey)
         const morphType = (this.parent as { constructor: { name: string } }).constructor.name
-        const pivots = await this.selectRelationRows({
-            table: this.throughDelegate,
-            where: {
-                type: 'group',
-                operator: 'and',
-                conditions: [
-                    {
-                        type: 'comparison',
-                        column: `${this.morphName}Id`,
-                        operator: '=',
-                        value: parentValue as never,
-                    },
-                    {
-                        type: 'comparison',
-                        column: `${this.morphName}Type`,
-                        operator: '=',
-                        value: morphType,
-                    },
-                ],
+        const ids = await this.createRelationTableLoader().selectColumnValues({
+            lookup: {
+                table: this.throughDelegate,
+                where: {
+                    type: 'group',
+                    operator: 'and',
+                    conditions: [
+                        {
+                            type: 'comparison',
+                            column: `${this.morphName}Id`,
+                            operator: '=',
+                            value: parentValue as never,
+                        },
+                        {
+                            type: 'comparison',
+                            column: `${this.morphName}Type`,
+                            operator: '=',
+                            value: morphType,
+                        },
+                    ],
+                },
             },
-        }) as Record<string, unknown>[]
-        const ids = pivots.map(row => row[this.relatedPivotKey])
+            column: this.relatedPivotKey,
+        })
 
         return this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } }))
     }
