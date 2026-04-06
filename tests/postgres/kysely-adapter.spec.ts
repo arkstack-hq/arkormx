@@ -17,11 +17,16 @@ import {
 import { Pool } from 'pg'
 
 describe('PostgreSQL Kysely adapter', () => {
+    const executedQueries: string[] = []
     const pool = new Pool({
         connectionString: process.env.DATABASE_URL,
     })
     const db = new Kysely<Record<string, never>>({
         dialect: new PostgresDialect({ pool }),
+        log (event) {
+            if (event.level === 'query')
+                executedQueries.push(event.query.sql)
+        },
     })
 
     const kyselyAdapter = createKyselyAdapter(db, {
@@ -41,6 +46,7 @@ describe('PostgreSQL Kysely adapter', () => {
     })
 
     beforeEach(async () => {
+        executedQueries.length = 0
         await seedPostgresFixtures()
     })
 
@@ -225,6 +231,78 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(Number(withAggregates.getAttribute('postsAvgId'))).toBe(1.5)
         expect(withAggregates.getAttribute('postsMinId')).toBe(1)
         expect(withAggregates.getAttribute('postsMaxId')).toBe(2)
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('select count(*)::int from "posts"')
+        expect(normalizedSql).toContain('exists( select 1 from "profiles"')
+        expect(normalizedSql).toContain('and "title" = $1')
+        expect(normalizedSql).toContain('sum("posts"."id")::double precision')
+        expect(normalizedSql).toContain('avg("posts"."id")::double precision')
+    })
+
+    it('supports SQL-backed belongsToMany relation filters and aggregates through QueryBuilder', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const hasRoles = await DbUser.query().has('roles', '>=', 2).orderBy({ id: 'asc' }).get()
+        expect(hasRoles.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const whereHasAdminRole = await DbUser.query().whereHas('roles', query => query.where({ name: 'admin' })).get()
+        expect(whereHasAdminRole.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const withoutAdminRole = await DbUser.query().whereDoesntHave('roles', query => query.where({ name: 'admin' })).get()
+        expect(withoutAdminRole.all().map(user => user.getAttribute('id'))).toEqual([2])
+
+        const withCounts = await DbUser.query()
+            .withCount('roles')
+            .withExists('roles')
+            .orderBy({ id: 'asc' })
+            .get()
+        expect(withCounts.all()[0]?.getAttribute('rolesCount')).toBe(2)
+        expect(withCounts.all()[0]?.getAttribute('rolesExists')).toBe(true)
+        expect(withCounts.all()[1]?.getAttribute('rolesCount')).toBe(0)
+        expect(withCounts.all()[1]?.getAttribute('rolesExists')).toBe(false)
+
+        const withAggregates = await DbUser.query()
+            .withSum('roles', 'id')
+            .withAvg('roles', 'id')
+            .withMin('roles', 'id')
+            .withMax('roles', 'id')
+            .whereKey('id', 1)
+            .firstOrFail()
+
+        expect(withAggregates.getAttribute('rolesSumId')).toBe(3)
+        expect(Number(withAggregates.getAttribute('rolesAvgId'))).toBe(1.5)
+        expect(withAggregates.getAttribute('rolesMinId')).toBe(1)
+        expect(withAggregates.getAttribute('rolesMaxId')).toBe(2)
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('from "roles" inner join "role_users"')
+        expect(normalizedSql).toContain('"roles"."id" = "role_users"."roleId"')
+        expect(normalizedSql).toContain('"role_users"."userId" = "users"."id"')
+        expect(normalizedSql).toContain('and "name" = $1')
+        expect(normalizedSql).toContain('exists( select 1 from "roles" inner join "role_users"')
+        expect(normalizedSql).toContain('sum("roles"."id")::double precision')
+    })
+
+    it('falls back for unsupported relation helpers while preserving count and pagination semantics', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const filtered = await DbUser.query().has('postImages', '>=', 2).orderBy({ id: 'asc' }).get()
+        expect(filtered.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const total = await DbUser.query().has('postImages', '>=', 2).count()
+        expect(total).toBe(1)
+
+        const page = await DbUser.query().has('postImages', '>=', 2).orderBy({ id: 'asc' }).paginate(1, 1)
+        expect(page.meta.total).toBe(1)
+        expect(page.data.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const withCounts = await DbUser.query()
+            .withCount('postImages')
+            .whereKey('id', 1)
+            .firstOrFail()
+
+        expect(withCounts.getAttribute('postImagesCount')).toBe(2)
     })
 
     it('runs adapter transactions against Postgres', async () => {

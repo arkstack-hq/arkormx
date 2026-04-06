@@ -2802,6 +2802,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return metadata.type === 'hasMany'
             || metadata.type === 'hasOne'
             || metadata.type === 'belongsTo'
+            || metadata.type === 'belongsToMany'
     }
 
     private async filterModelsByRelationConstraints (
