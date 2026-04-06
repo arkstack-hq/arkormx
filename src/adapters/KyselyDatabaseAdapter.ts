@@ -28,7 +28,9 @@ import type {
 import type {
     BelongsToManyRelationMetadata,
     BelongsToRelationMetadata,
+    HasManyThroughRelationMetadata,
     HasManyRelationMetadata,
+    HasOneThroughRelationMetadata,
     HasOneRelationMetadata,
     ModelStatic,
 } from '../types'
@@ -39,7 +41,8 @@ import { sql } from 'kysely'
 
 type KyselyExecutor = Kysely<any> | Transaction<any>
 type KyselyTableMapping = Record<string, string>
-type SqlRelationMetadata = HasManyRelationMetadata | HasOneRelationMetadata | BelongsToRelationMetadata | BelongsToManyRelationMetadata
+type ThroughRelationMetadata = HasOneThroughRelationMetadata | HasManyThroughRelationMetadata
+type SqlRelationMetadata = HasManyRelationMetadata | HasOneRelationMetadata | BelongsToRelationMetadata | BelongsToManyRelationMetadata | ThroughRelationMetadata
 
 /**
  * Database adapter implementation for Kysely, allowing Arkorm to execute queries using Kysely 
@@ -274,6 +277,8 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             && metadata.type !== 'hasOne'
             && metadata.type !== 'belongsTo'
             && metadata.type !== 'belongsToMany'
+            && metadata.type !== 'hasOneThrough'
+            && metadata.type !== 'hasManyThrough'
         ) {
             throw new UnsupportedAdapterFeatureException(`Relation [${relation}] is not supported for SQL-backed relation execution by the Kysely adapter yet.`, {
                 operation: 'adapter.relation.metadata',
@@ -324,6 +329,25 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
+    private buildThroughJoinSource (
+        outerTarget: QueryTarget<any>,
+        relatedTarget: QueryTarget<any>,
+        metadata: ThroughRelationMetadata,
+    ): { from: RawBuilder<unknown>, condition: RawBuilder<boolean> } {
+        const outerTable = this.resolveTable(outerTarget)
+        const relatedTable = this.resolveTable(relatedTarget)
+        const throughTable = this.resolveMappedTable(metadata.throughTable)
+
+        return {
+            from: sql`${sql.table(relatedTable)} inner join ${sql.table(throughTable)} on ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.secondKey))} = ${this.buildColumnReference(throughTable, metadata.secondLocalKey)}`,
+            condition: sql<boolean>`
+                ${this.buildColumnReference(throughTable, metadata.firstKey)}
+                =
+                ${this.buildColumnReference(outerTable, this.mapColumn(outerTarget, metadata.localKey))}
+            `,
+        }
+    }
+
     private buildRelatedJoinCondition (
         outerTarget: QueryTarget<any>,
         relation: string,
@@ -334,6 +358,16 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
         if (metadata.type === 'belongsToMany') {
             const joinSource = this.buildBelongsToManyJoinSource(outerTarget, relatedTarget, metadata)
+
+            return {
+                relatedTarget,
+                from: joinSource.from,
+                condition: joinSource.condition,
+            }
+        }
+
+        if (metadata.type === 'hasOneThrough' || metadata.type === 'hasManyThrough') {
+            const joinSource = this.buildThroughJoinSource(outerTarget, relatedTarget, metadata)
 
             return {
                 relatedTarget,
