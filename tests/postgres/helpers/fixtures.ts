@@ -1,5 +1,6 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
+import type { DatabaseAdapter } from '../../../src'
 import { configureArkormRuntime, Model, QueryBuilder } from '../../../src'
 
 export class DbUser extends Model<'user'> {
@@ -187,4 +188,15 @@ export async function acquirePostgresTestLock () {
 
 export async function releasePostgresTestLock () {
     await prisma.$executeRawUnsafe(`SELECT pg_advisory_unlock(${TEST_LOCK_ID})`)
+}
+
+export function setPostgresModelAdapter (adapter?: DatabaseAdapter) {
+    DbUser.setAdapter(adapter)
+    DbProfile.setAdapter(adapter)
+    DbPost.setAdapter(adapter)
+    DbRole.setAdapter(adapter)
+    DbImage.setAdapter(adapter)
+    DbComment.setAdapter(adapter)
+    DbTag.setAdapter(adapter)
+    DbArticle.setAdapter(adapter)
 }

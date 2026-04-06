@@ -518,12 +518,12 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] add Kysely and the chosen Postgres driver dependencies
-- [ ] create a Kysely adapter module and its runtime factory
-- [ ] implement select-one and select-many execution from Arkorm read specs
-- [ ] implement insert, update, delete, count, and exists from Arkorm specs
-- [ ] preserve soft delete semantics without changing the public query API
-- [ ] add CRUD parity tests that run against both the Prisma compatibility adapter and Kysely adapter
+- [x] add Kysely and the chosen Postgres driver dependencies
+- [x] create a Kysely adapter module and its runtime factory
+- [x] implement select-one and select-many execution from Arkorm read specs
+- [x] implement insert, update, delete, count, and exists from Arkorm specs
+- [x] preserve soft delete semantics without changing the public query API
+- [x] add CRUD parity tests that run against both the Prisma compatibility adapter and Kysely adapter
 
 Success criteria:
 

@@ -29,6 +29,12 @@ importers:
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
+      kysely:
+        specifier: ^0.28.15
+        version: 0.28.15
+      pg:
+        specifier: ^8.19.0
+        version: 8.19.0
     devDependencies:
       '@eslint/js':
         specifier: ^10.0.1
@@ -45,6 +51,9 @@ importers:
       '@types/node':
         specifier: ^20.10.6
         version: 20.19.35
+      '@types/pg':
+        specifier: ^8.15.5
+        version: 8.20.0
       '@vitest/coverage-v8':
         specifier: 4.1.2
         version: 4.1.2(vitest@4.1.2(@types/node@20.19.35)(vite@7.3.1(@types/node@20.19.35)(jiti@2.6.1)(tsx@4.21.0)))
@@ -54,9 +63,6 @@ importers:
       eslint:
         specifier: ^10.0.0
         version: 10.0.2(jiti@2.6.1)
-      pg:
-        specifier: ^8.19.0
-        version: 8.19.0
       prisma:
         specifier: ^7.6.0
         version: 7.6.0(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)(typescript@5.9.3)
@@ -2054,6 +2060,10 @@ packages:
 
   keyv@4.5.4:
     resolution: {integrity: sha512-oxVHkHR/EJf2CNXnWxRLW6mg7JyCCUcG0DtEGmL2ctUo1PNTin1PUil+r/+4r5MpVgC/fn1kjsx7mjSujKqIpw==}
+
+  kysely@0.28.15:
+    resolution: {integrity: sha512-r2clcf7HLWvDXaVUEvQymXJY4i3bSOIV3xsL/Upy3ZfSv5HeKsk9tsqbBptLvth5qHEIhxeHTA2jNLyQABkLBA==}
+    engines: {node: '>=20.0.0'}
 
   levn@0.4.1:
     resolution: {integrity: sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfoa/5QBGBhxDix1dMt2kQKQ==}
@@ -4816,6 +4826,8 @@ snapshots:
   keyv@4.5.4:
     dependencies:
       json-buffer: 3.0.1
+
+  kysely@0.28.15: {}
 
   levn@0.4.1:
     dependencies:

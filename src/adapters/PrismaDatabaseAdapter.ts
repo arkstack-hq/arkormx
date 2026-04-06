@@ -31,11 +31,11 @@ import type {
     PrismaLikeWhereInput,
 } from '../types/core'
 
-import { ArkormException } from '../Exceptions/ArkormException'
 import { MissingDelegateException } from '../Exceptions/MissingDelegateException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { inferDelegateName } from '../helpers/prisma'
 import { isDelegateLike } from '../helpers/runtime-config'
+import { str } from '@h3ravel/support'
 
 export type PrismaDelegateNameMapping = Record<string, string>
 
@@ -232,9 +232,20 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     }
 
     private resolveDelegate (target: QueryTarget<any>): PrismaDelegateLike {
+        const tableName = target.table ? this.normalizeCandidate(target.table) : ''
+        const singularTableName = tableName ? `${str(tableName).singular()}` : ''
+        const camelTableName = tableName ? `${str(tableName).camel()}` : ''
+        const camelSingularTableName = tableName ? `${str(tableName).camel().singular()}` : ''
+
         const candidates = this.unique([
             target.table ? this.mapping[target.table] : '',
-            target.table ? this.normalizeCandidate(target.table) : '',
+            tableName,
+            singularTableName ? this.mapping[singularTableName] : '',
+            singularTableName,
+            camelTableName ? this.mapping[camelTableName] : '',
+            camelTableName,
+            camelSingularTableName ? this.mapping[camelSingularTableName] : '',
+            camelSingularTableName,
             target.modelName ? this.mapping[target.modelName] : '',
             target.modelName ? this.normalizeCandidate(target.modelName) : '',
             target.modelName ? inferDelegateName(target.modelName) : '',
