@@ -155,10 +155,31 @@ jobs:
       - name: Build project
         run: pnpm build
 
+      - name: Detect release channel
+        id: release_channel
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "$VERSION" == *-* ]]; then
+            echo "is_preview=true" >> $GITHUB_OUTPUT
+            echo "Detected preview version: $VERSION"
+          else
+            echo "is_preview=false" >> $GITHUB_OUTPUT
+            echo "Detected stable version: $VERSION"
+          fi
+
       - name: Publish to NPM
+        if: steps.release_channel.outputs.is_preview != 'true'
         run: pnpm publish --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Skip preview publish
+        if: steps.release_channel.outputs.is_preview == 'true'
+        run: |
+          echo "Skipping npm publish for preview version ${{ steps.release_channel.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Preview releases are validated by this workflow but are not published to npm." >> $GITHUB_STEP_SUMMARY
 
       - name: Create release notes
         if: steps.version_check.outputs.version_bumped == 'true'
