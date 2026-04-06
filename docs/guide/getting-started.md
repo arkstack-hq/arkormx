@@ -4,10 +4,18 @@ Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It b
 
 ## 1. Install dependencies
 
+Use the default package name for stable releases. If you want the current preview
+line, install `arkormx@next` instead.
+
 ::: code-group
 
 ```bash [pnpm]
 pnpm add arkormx @prisma/client
+pnpm add -D prisma
+```
+
+```bash [pnpm next]
+pnpm add arkormx@next @prisma/client
 pnpm add -D prisma
 ```
 
@@ -16,8 +24,18 @@ npm install arkormx @prisma/client
 npm install -D prisma
 ```
 
+```bash [npm next]
+npm install arkormx@next @prisma/client
+npm install -D prisma
+```
+
 ```bash [yarn]
 yarn add arkormx @prisma/client
+yarn add -D prisma
+```
+
+```bash [yarn next]
+yarn add arkormx@next @prisma/client
 yarn add -D prisma
 ```
 

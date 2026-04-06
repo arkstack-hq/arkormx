@@ -23,8 +23,17 @@ Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It b
 
 ### Installation
 
+Stable release:
+
 ```sh
 pnpm add arkormx @prisma/client
+pnpm add -D prisma
+```
+
+Preview release (`next`):
+
+```sh
+pnpm add arkormx@next @prisma/client
 pnpm add -D prisma
 ```
 
