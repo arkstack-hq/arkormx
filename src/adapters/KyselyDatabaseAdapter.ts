@@ -25,7 +25,13 @@ import type {
     UpdateManySpec,
     UpdateSpec,
 } from '../types/adapter'
-import type { BelongsToRelationMetadata, HasManyRelationMetadata, HasOneRelationMetadata, ModelStatic } from '../types'
+import type {
+    BelongsToManyRelationMetadata,
+    BelongsToRelationMetadata,
+    HasManyRelationMetadata,
+    HasOneRelationMetadata,
+    ModelStatic,
+} from '../types'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
@@ -33,7 +39,7 @@ import { sql } from 'kysely'
 
 type KyselyExecutor = Kysely<any> | Transaction<any>
 type KyselyTableMapping = Record<string, string>
-type DirectRelationMetadata = HasManyRelationMetadata | HasOneRelationMetadata | BelongsToRelationMetadata
+type SqlRelationMetadata = HasManyRelationMetadata | HasOneRelationMetadata | BelongsToRelationMetadata | BelongsToManyRelationMetadata
 
 /**
  * Database adapter implementation for Kysely, allowing Arkorm to execute queries using Kysely 
@@ -252,7 +258,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     }
 
     private buildRelatedTargetFromRelation (target: QueryTarget<any>, relation: string): {
-        metadata: DirectRelationMetadata
+        metadata: SqlRelationMetadata
         relatedTarget: QueryTarget<any>
     } {
         const metadata = target.model?.getRelationMetadata(relation)
@@ -263,7 +269,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
                 relation,
             })
 
-        if (metadata.type !== 'hasMany' && metadata.type !== 'hasOne' && metadata.type !== 'belongsTo') {
+        if (
+            metadata.type !== 'hasMany'
+            && metadata.type !== 'hasOne'
+            && metadata.type !== 'belongsTo'
+            && metadata.type !== 'belongsToMany'
+        ) {
             throw new UnsupportedAdapterFeatureException(`Relation [${relation}] is not supported for SQL-backed relation execution by the Kysely adapter yet.`, {
                 operation: 'adapter.relation.metadata',
                 model: target.modelName,
@@ -290,17 +301,51 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
+    private resolveMappedTable (table: string): string {
+        return this.mapping[table] ?? table
+    }
+
+    private buildBelongsToManyJoinSource (
+        outerTarget: QueryTarget<any>,
+        relatedTarget: QueryTarget<any>,
+        metadata: BelongsToManyRelationMetadata,
+    ): { from: RawBuilder<unknown>, condition: RawBuilder<boolean> } {
+        const outerTable = this.resolveTable(outerTarget)
+        const relatedTable = this.resolveTable(relatedTarget)
+        const pivotTable = this.resolveMappedTable(metadata.throughTable)
+
+        return {
+            from: sql`${sql.table(relatedTable)} inner join ${sql.table(pivotTable)} on ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.relatedKey))} = ${this.buildColumnReference(pivotTable, metadata.relatedPivotKey)}`,
+            condition: sql<boolean>`
+                ${this.buildColumnReference(pivotTable, metadata.foreignPivotKey)}
+                =
+                ${this.buildColumnReference(outerTable, this.mapColumn(outerTarget, metadata.parentKey))}
+            `,
+        }
+    }
+
     private buildRelatedJoinCondition (
         outerTarget: QueryTarget<any>,
         relation: string,
-    ): { relatedTarget: QueryTarget<any>, condition: RawBuilder<boolean> } {
+    ): { relatedTarget: QueryTarget<any>, from: RawBuilder<unknown>, condition: RawBuilder<boolean> } {
         const { metadata, relatedTarget } = this.buildRelatedTargetFromRelation(outerTarget, relation)
         const outerTable = this.resolveTable(outerTarget)
         const relatedTable = this.resolveTable(relatedTarget)
 
+        if (metadata.type === 'belongsToMany') {
+            const joinSource = this.buildBelongsToManyJoinSource(outerTarget, relatedTarget, metadata)
+
+            return {
+                relatedTarget,
+                from: joinSource.from,
+                condition: joinSource.condition,
+            }
+        }
+
         if (metadata.type === 'hasMany' || metadata.type === 'hasOne') {
             return {
                 relatedTarget,
+                from: sql`${sql.table(relatedTable)}`,
                 condition: sql<boolean>`
                     ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.foreignKey))}
                     =
@@ -311,6 +356,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
         return {
             relatedTarget,
+            from: sql`${sql.table(relatedTable)}`,
             condition: sql<boolean>`
                 ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.ownerKey))}
                 =
@@ -331,8 +377,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     }
 
     private buildRelationFilterExpression (target: QueryTarget<any>, filter: RelationFilterSpec): RawBuilder<boolean> {
-        const { relatedTarget, condition } = this.buildRelatedJoinCondition(target, filter.relation)
-        const relatedTable = this.resolveTable(relatedTarget)
+        const { relatedTarget, from, condition } = this.buildRelatedJoinCondition(target, filter.relation)
         const whereCondition = this.combineConditions([
             condition,
             filter.where ? this.buildWhereCondition(relatedTarget, filter.where) : undefined,
@@ -341,7 +386,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
         return sql<boolean>`(
             select count(*)::int
-            from ${sql.table(relatedTable)}
+            from ${from}
             where ${whereCondition}
         ) ${operator} ${filter.count}`
     }
@@ -372,7 +417,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             return sql``
 
         return sql.join(relationAggregates.map((aggregate) => {
-            const { relatedTarget, condition } = this.buildRelatedJoinCondition(target, aggregate.relation)
+            const { relatedTarget, from, condition } = this.buildRelatedJoinCondition(target, aggregate.relation)
             const relatedTable = this.resolveTable(relatedTarget)
             const whereCondition = this.combineConditions([
                 condition,
@@ -382,7 +427,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             if (aggregate.type === 'exists') {
                 return sql`, exists(
                     select 1
-                    from ${sql.table(relatedTable)}
+                    from ${from}
                     where ${whereCondition}
                 ) as ${sql.id(aggregate.alias ?? `${aggregate.relation}Exists`)}`
             }
@@ -402,7 +447,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
             return sql`, (
                 select ${aggregateExpression}
-                from ${sql.table(relatedTable)}
+                from ${from}
                 where ${whereCondition}
             ) as ${sql.id(aggregate.alias ?? `${aggregate.relation}${aggregate.type}`)}`
         }), sql``)

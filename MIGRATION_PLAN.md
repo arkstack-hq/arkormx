@@ -576,14 +576,15 @@ Implementation checklist:
 - [x] compile `has` and `whereHas` into SQL-friendly existence or count predicates for supported direct relations in the Kysely adapter
 - [x] compile `withCount` and `withExists` into select-list subqueries or equivalent SQL for supported direct relations in the Kysely adapter
 - [x] compile sum, avg, min, and max relation aggregates into SQL-backed expressions for supported direct relations in the Kysely adapter
-- [ ] keep edge-case fallback behavior explicit and adapter-capability-aware
+- [x] keep edge-case fallback behavior explicit and adapter-capability-aware
 - [ ] add correctness tests and query-shape tests for all aggregate and relation-filter helpers
 
 Completed in code:
 
 - `QueryBuilder` now compiles supported direct relation filters and relation aggregates into Arkorm specs when the active adapter advertises those capabilities
-- `KyselyDatabaseAdapter` now executes supported direct-relation `has`/`whereHas` filters and `withCount`/`withExists`/`withSum`/`withAvg`/`withMin`/`withMax` aggregates through correlated SQL subqueries
-- `tests/postgres/kysely-adapter.spec.ts` now verifies SQL-backed direct relation filters and aggregates against PostgreSQL
+- `KyselyDatabaseAdapter` now executes supported direct-relation and `belongsToMany` `has`/`whereHas` filters and `withCount`/`withExists`/`withSum`/`withAvg`/`withMin`/`withMax` aggregates through correlated SQL subqueries
+- `tests/postgres/kysely-adapter.spec.ts` now verifies SQL-backed direct-relation and `belongsToMany` relation filters and aggregates against PostgreSQL
+- unsupported relation helpers now remain on the explicit QueryBuilder fallback path under Kysely, with count and pagination behavior covered by Postgres tests
 
 Success criteria:
 
