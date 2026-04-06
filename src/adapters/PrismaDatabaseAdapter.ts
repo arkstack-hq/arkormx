@@ -32,6 +32,7 @@ import type {
 } from '../types/core'
 
 import { ArkormException } from '../Exceptions/ArkormException'
+import { MissingDelegateException } from '../Exceptions/MissingDelegateException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { inferDelegateName } from '../helpers/prisma'
 import { isDelegateLike } from '../helpers/runtime-config'
@@ -247,9 +248,10 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         if (resolved)
             return resolved
 
-        throw new ArkormException('Prisma delegate could not be resolved for adapter target.', {
-            code: 'DELEGATE_NOT_RESOLVED',
-            operation: 'adapter.resolveDelegate',
+        throw new MissingDelegateException('Prisma delegate could not be resolved for adapter target.', {
+            operation: 'getDelegate',
+            model: target.modelName,
+            delegate: target.table,
             meta: {
                 target,
                 candidates,

@@ -1,4 +1,4 @@
-import { ArkormCollection, LengthAwarePaginator, Paginator, createPrismaDatabaseAdapter, type DatabaseAdapter } from '../../src'
+import { ArkormCollection, LengthAwarePaginator, Paginator, UnsupportedAdapterFeatureException, createPrismaDatabaseAdapter, type DatabaseAdapter } from '../../src'
 import { Article, User } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
@@ -372,6 +372,20 @@ describe('QueryBuilder', () => {
 
         const pipedCount = await User.query().pipe(query => query.count())
         expect(pipedCount).toBe(2)
+    })
+
+    it('rejects non-normalizable top-level select and order clauses', () => {
+        expect(() => User.query().select({
+            posts: {
+                select: { id: true },
+            },
+        } as never)).toThrow(UnsupportedAdapterFeatureException)
+
+        expect(() => User.query().orderBy({
+            posts: {
+                _count: 'desc',
+            },
+        } as never)).toThrow(UnsupportedAdapterFeatureException)
     })
 
     it('supports aggregate and advanced query helpers', async () => {

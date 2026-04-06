@@ -4,10 +4,8 @@ import type {
     DatabaseRow,
     DatabaseValue,
     DelegateCreateData,
-    DelegateFindManyArgs,
     DelegateInclude,
     DelegateOrderBy,
-    DelegateRow,
     DelegateSelect,
     DelegateUniqueWhere,
     DelegateUpdateData,
@@ -60,9 +58,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     private legacyWhere?: DelegateWhere<TDelegate>
     private queryRelationLoads?: RelationLoadPlan[]
     private queryOrderBy?: QueryOrderBy[]
-    private legacyOrderBy?: DelegateOrderBy<TDelegate>
     private querySelect?: QuerySelectColumn[]
-    private legacySelect?: DelegateSelect<TDelegate>
     private offsetValue?: number
     private limitValue?: number
     private readonly eagerLoads: EagerLoadMap = {}
@@ -85,11 +81,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     /**
      * Creates a new QueryBuilder instance.
      * 
-     * @param delegate 
      * @param model 
      */
     public constructor(
-        private readonly delegate: TDelegate,
         private readonly model: ModelStatic<TModel, TDelegate>,
         private readonly adapter?: DatabaseAdapter,
     ) { }
@@ -441,15 +435,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public orderBy (orderBy: DelegateOrderBy<TDelegate>): this {
         this.randomOrderEnabled = false
         const normalized = this.normalizeQueryOrderBy(orderBy)
-        if (normalized) {
-            this.queryOrderBy = normalized
-            this.legacyOrderBy = undefined
+        if (!normalized)
+            throw new UnsupportedAdapterFeatureException('Order clauses must use Arkorm-normalizable column directions.', {
+                operation: 'orderBy',
+                model: this.model.name,
+            })
 
-            return this
-        }
-
-        this.queryOrderBy = undefined
-        this.legacyOrderBy = orderBy
+        this.queryOrderBy = normalized
 
         return this
     }
@@ -474,7 +466,6 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public reorder (column?: string, direction: 'asc' | 'desc' = 'asc'): this {
         this.queryOrderBy = undefined
-        this.legacyOrderBy = undefined
         this.randomOrderEnabled = false
 
         if (!column)
@@ -903,15 +894,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public select (select: DelegateSelect<TDelegate>): this {
         const normalized = this.normalizeQuerySelect(select)
-        if (normalized) {
-            this.querySelect = normalized
-            this.legacySelect = undefined
+        if (normalized === null)
+            throw new UnsupportedAdapterFeatureException('Select clauses must use Arkorm-normalizable column projections.', {
+                operation: 'select',
+                model: this.model.name,
+            })
 
-            return this
-        }
-
-        this.querySelect = undefined
-        this.legacySelect = select
+        this.querySelect = normalized
 
         return this
     }
@@ -1216,31 +1205,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (payloads.length === 0)
             return true
 
-        if (this.adapter) {
-            if (payloads.length === 1) {
-                await this.executeInsertRow(payloads[0] as DelegateCreateData<TDelegate>)
-
-                return true
-            }
-
-            const inserted = await this.executeInsertManyRows(payloads)
-            if (inserted != null)
-                return true
-        }
-
-        const delegate = this.delegate as unknown as {
-            createMany?: (args: { data: DelegateCreateData<TDelegate>[] }) => Promise<unknown>
-        }
-
-        if (typeof delegate.createMany === 'function') {
-            await delegate.createMany({ data: payloads })
+        if (payloads.length === 1) {
+            await this.executeInsertRow(payloads[0] as DelegateCreateData<TDelegate>)
 
             return true
         }
 
-        await Promise.all(payloads.map(async payload => {
-            await this.delegate.create({ data: payload } as Parameters<TDelegate['create']>[0])
-        }))
+        await this.executeInsertManyRows(payloads)
 
         return true
     }
@@ -1258,36 +1229,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (payloads.length === 0)
             return 0
 
-        if (this.adapter) {
-            const inserted = await this.executeInsertManyRows(payloads, true)
-            if (inserted != null)
-                return inserted
-        }
-
-        const delegate = this.delegate as unknown as {
-            createMany?: (args: { data: DelegateCreateData<TDelegate>[], skipDuplicates?: boolean }) => Promise<unknown>
-        }
-
-        if (typeof delegate.createMany === 'function') {
-            const result = await delegate.createMany({
-                data: payloads,
-                skipDuplicates: true,
-            })
-
-            return this.resolveAffectedCount(result, payloads.length)
-        }
-
-        let inserted = 0
-        for (const payload of payloads) {
-            try {
-                await this.delegate.create({ data: payload } as Parameters<TDelegate['create']>[0])
-                inserted += 1
-            } catch {
-                continue
-            }
-        }
-
-        return inserted
+        return await this.executeInsertManyRows(payloads, true)
     }
 
     /**
@@ -1388,25 +1330,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 model: this.model.name,
             })
 
-        if (this.adapter) {
-            const updated = await this.executeUpdateManyRows(where, data)
-            if (updated != null)
-                return updated
-        }
-
-        const delegate = this.delegate as unknown as {
-            updateMany?: (args: { where: DelegateWhere<TDelegate>, data: DelegateUpdateData<TDelegate> }) => Promise<unknown>
-        }
-
-        if (typeof delegate.updateMany === 'function') {
-            const result = await delegate.updateMany({ where, data })
-
-            return this.resolveAffectedCount(result, 0)
-        }
-
-        await this.update(data)
-
-        return 1
+        return await this.executeUpdateManyRows(where, data)
     }
 
     /**
@@ -1911,16 +1835,14 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public clone (): QueryBuilder<TModel, TDelegate> {
-        const builder = new QueryBuilder<TModel, TDelegate>(this.delegate, this.model, this.adapter)
+        const builder = new QueryBuilder<TModel, TDelegate>(this.model, this.adapter)
         builder.queryWhere = this.queryWhere
         builder.legacyWhere = this.legacyWhere
         builder.queryRelationLoads = this.queryRelationLoads
             ? this.cloneRelationLoads(this.queryRelationLoads)
             : undefined
         builder.queryOrderBy = this.queryOrderBy ? [...this.queryOrderBy] : undefined
-        builder.legacyOrderBy = this.legacyOrderBy
         builder.querySelect = this.querySelect ? [...this.querySelect] : undefined
-        builder.legacySelect = this.legacySelect
         builder.offsetValue = this.offsetValue
         builder.limitValue = this.limitValue
         builder.includeTrashed = this.includeTrashed
@@ -2205,63 +2127,6 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return undefined
     }
 
-    private buildDelegateOrderBy (): DelegateOrderBy<TDelegate> | undefined {
-        if (this.legacyOrderBy)
-            return this.legacyOrderBy
-
-        if (!this.queryOrderBy || this.queryOrderBy.length === 0)
-            return undefined
-
-        return this.queryOrderBy.map(entry => ({ [entry.column]: entry.direction })) as DelegateOrderBy<TDelegate>
-    }
-
-    private buildDelegateSelect (): DelegateSelect<TDelegate> | undefined {
-        if (this.legacySelect)
-            return this.legacySelect
-
-        if (!this.querySelect)
-            return undefined
-
-        return this.querySelect.reduce<Record<string, true>>((select, column) => {
-            select[column.column] = true
-
-            return select
-        }, {}) as DelegateSelect<TDelegate>
-    }
-
-    private buildDelegateIncludeFromRelationLoads (plans?: RelationLoadPlan[]): DelegateInclude<TDelegate> | undefined {
-        if (!plans || plans.length === 0)
-            return undefined
-
-        return plans.reduce<Record<string, unknown>>((include, plan) => {
-            const nestedInclude = this.buildDelegateIncludeFromRelationLoads(plan.relationLoads)
-            const nestedSelect = plan.columns?.reduce<Record<string, true>>((select, column) => {
-                select[column.column] = true
-
-                return select
-            }, {})
-            const nestedWhere = this.toDelegateWhere(plan.constraint)
-            const nestedOrderBy = plan.orderBy?.map(entry => ({ [entry.column]: entry.direction }))
-
-            if (!nestedInclude && !nestedSelect && !nestedWhere && !nestedOrderBy && plan.offset === undefined && plan.limit === undefined) {
-                include[plan.relation] = true
-
-                return include
-            }
-
-            include[plan.relation] = {
-                where: nestedWhere,
-                orderBy: nestedOrderBy,
-                select: nestedSelect,
-                include: nestedInclude,
-                skip: plan.offset,
-                take: plan.limit,
-            }
-
-            return include
-        }, {}) as DelegateInclude<TDelegate>
-    }
-
     private buildSoftDeleteQueryCondition (): QueryCondition | undefined {
         const softDeleteConfig = this.model.getSoftDeleteConfig()
         if (!softDeleteConfig.enabled || this.includeTrashed)
@@ -2301,16 +2166,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     private tryBuildQuerySelectColumns (): QuerySelectColumn[] | undefined | null {
-        if (this.legacySelect)
-            return null
-
         return this.querySelect
     }
 
     private tryBuildQueryOrderBy (): QueryOrderBy[] | undefined | null {
-        if (this.legacyOrderBy)
-            return null
-
         return this.queryOrderBy
     }
 
@@ -2500,129 +2359,179 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
     }
 
-    private buildFindArgsWithWhere (where: DelegateWhere<TDelegate> | undefined): DelegateFindManyArgs<TDelegate> {
-        return {
-            include: this.buildDelegateIncludeFromRelationLoads(this.queryRelationLoads),
-            orderBy: this.buildDelegateOrderBy(),
-            select: this.buildDelegateSelect(),
-            skip: this.offsetValue,
-            take: this.limitValue,
-            where,
-        } as DelegateFindManyArgs<TDelegate>
+    private requireAdapter (): DatabaseAdapter {
+        if (!this.adapter)
+            throw new UnsupportedAdapterFeatureException('Query execution requires a configured database adapter.', {
+                operation: 'query.execute',
+                model: this.model.name,
+                meta: {
+                    feature: 'adapter',
+                },
+            })
+
+        return this.adapter
     }
 
     private async executeReadRows (
         whereOverride?: DelegateWhere<TDelegate>,
         useWhereOverride = false,
     ): Promise<DatabaseRow[]> {
-        const where = useWhereOverride
-            ? whereOverride
-            : this.buildWhere()
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildSelectSpec(useWhereOverride ? whereOverride : this.buildWhere(), useWhereOverride)
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Query shape could not be compiled into an Arkorm select specification.', {
+                operation: 'query.select',
+                model: this.model.name,
+            })
 
-        if (this.adapter) {
-            const spec = this.tryBuildSelectSpec(where, useWhereOverride)
-            if (spec)
-                return await this.adapter.select(spec)
-        }
-
-        return await this.delegate.findMany(this.buildFindArgsWithWhere(where)) as DatabaseRow[]
+        return await adapter.select(spec)
     }
 
     private async executeReadRow (): Promise<DatabaseRow | null> {
-        if (this.adapter) {
-            const spec = this.tryBuildSelectSpec(this.buildWhere())
-            if (spec)
-                return await this.adapter.selectOne(spec)
-        }
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildSelectSpec(this.buildWhere())
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Query shape could not be compiled into an Arkorm select specification.', {
+                operation: 'query.selectOne',
+                model: this.model.name,
+            })
 
-        return await this.delegate.findFirst(this.buildFindArgs()) as DatabaseRow | null
+        return await adapter.selectOne(spec)
     }
 
     private async executeReadCount (): Promise<number> {
-        if (this.adapter) {
-            const spec = this.tryBuildAggregateSpec()
-            if (spec)
-                return await this.adapter.count(spec)
-        }
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildAggregateSpec()
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Query shape could not be compiled into an Arkorm aggregate specification.', {
+                operation: 'query.count',
+                model: this.model.name,
+            })
 
-        return await this.delegate.count({ where: this.buildWhere() })
+        return await adapter.count(spec)
     }
 
     private async executeReadExists (): Promise<boolean> {
-        if (this.adapter) {
-            const spec = this.tryBuildSelectSpec(this.buildWhere())
-            if (spec) {
-                if (typeof this.adapter.exists === 'function')
-                    return await this.adapter.exists({ ...spec, limit: 1 })
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildSelectSpec(this.buildWhere())
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Query shape could not be compiled into an Arkorm select specification.', {
+                operation: 'query.exists',
+                model: this.model.name,
+            })
 
-                return (await this.adapter.selectOne({ ...spec, limit: 1 })) != null
-            }
-        }
+        if (typeof adapter.exists === 'function')
+            return await adapter.exists({ ...spec, limit: 1 })
 
-        return (await this.delegate.findFirst(this.buildFindArgs())) != null
+        return (await adapter.selectOne({ ...spec, limit: 1 })) != null
     }
     private async executeInsertRow (values: DelegateCreateData<TDelegate>): Promise<DatabaseRow> {
-        if (this.adapter)
-            return await this.adapter.insert(this.tryBuildInsertSpec(values))
-
-        return await this.delegate.create({ data: values } as Parameters<TDelegate['create']>[0]) as DatabaseRow
+        return await this.requireAdapter().insert(this.tryBuildInsertSpec(values))
     }
 
     private async executeInsertManyRows (
         values: DelegateCreateData<TDelegate>[],
         ignoreDuplicates = false,
-    ): Promise<number | null> {
-        if (this.adapter && typeof this.adapter.insertMany === 'function') {
-            return await this.adapter.insertMany(
+    ): Promise<number> {
+        const adapter = this.requireAdapter()
+
+        if (typeof adapter.insertMany === 'function') {
+            return await adapter.insertMany(
                 ignoreDuplicates
                     ? this.tryBuildInsertOrIgnoreManySpec(values)
                     : this.tryBuildInsertManySpec(values)
             )
         }
 
-        return null
+        let inserted = 0
+        for (const value of values) {
+            try {
+                await adapter.insert(this.tryBuildInsertSpec(value))
+                inserted += 1
+            } catch (error) {
+                if (!ignoreDuplicates)
+                    throw error
+            }
+        }
+
+        return inserted
     }
 
     private async executeUpdateRow (
         where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
         values: DelegateUpdateData<TDelegate>
     ): Promise<DatabaseRow> {
-        if (this.adapter) {
-            const spec = this.tryBuildUpdateSpec(where, values)
-            if (spec) {
-                const updated = await this.adapter.update(spec)
-                if (updated)
-                    return updated
-            }
-        }
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildUpdateSpec(where, values)
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Update could not be compiled into an Arkorm update specification.', {
+                operation: 'query.update',
+                model: this.model.name,
+            })
 
-        return await this.delegate.update({ where, data: values } as Parameters<TDelegate['update']>[0]) as DatabaseRow
+        const updated = await adapter.update(spec)
+        if (!updated)
+            throw new ModelNotFoundException(this.model.name, 'Record not found for update operation.', {
+                operation: 'update',
+            })
+
+        return updated
     }
 
     private async executeUpdateManyRows (
         where: DelegateWhere<TDelegate> | undefined,
         values: DelegateUpdateData<TDelegate>
-    ): Promise<number | null> {
-        if (this.adapter && typeof this.adapter.updateMany === 'function') {
-            const spec = this.tryBuildUpdateManySpec(where, values)
-            if (spec)
-                return await this.adapter.updateMany(spec)
+    ): Promise<number> {
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildUpdateManySpec(where, values)
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Update-many could not be compiled into an Arkorm update specification.', {
+                operation: 'query.updateMany',
+                model: this.model.name,
+            })
+
+        if (typeof adapter.updateMany === 'function')
+            return await adapter.updateMany(spec)
+
+        const rows = await adapter.select({
+            target: spec.target,
+            where: spec.where,
+        })
+
+        let updated = 0
+        for (const row of rows) {
+            const rowWhere = this.tryBuildQueryCondition(row)
+            if (!rowWhere)
+                continue
+
+            const result = await adapter.update({
+                target: spec.target,
+                where: rowWhere,
+                values: spec.values,
+            })
+            if (result)
+                updated += 1
         }
 
-        return null
+        return updated
     }
 
     private async executeDeleteRow (where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>): Promise<DatabaseRow> {
-        if (this.adapter) {
-            const spec = this.tryBuildDeleteSpec(where)
-            if (spec) {
-                const deleted = await this.adapter.delete(spec)
-                if (deleted)
-                    return deleted
-            }
-        }
+        const adapter = this.requireAdapter()
+        const spec = this.tryBuildDeleteSpec(where)
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Delete could not be compiled into an Arkorm delete specification.', {
+                operation: 'query.delete',
+                model: this.model.name,
+            })
 
-        return await this.delegate.delete({ where } as Parameters<TDelegate['delete']>[0]) as DatabaseRow
+        const deleted = await adapter.delete(spec)
+        if (!deleted)
+            throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
+                operation: 'delete',
+            })
+
+        return deleted
     }
 
     /**
@@ -2657,10 +2566,6 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * 
      * @returns 
      */
-    private buildFindArgs (): DelegateFindManyArgs<TDelegate> {
-        return this.buildFindArgsWithWhere(this.buildWhere())
-    }
-
     /**
      * Resolves a unique where clause for update and delete operations. 
      * 
@@ -2673,22 +2578,22 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (this.isUniqueWhere(where as Record<string, unknown>))
             return where as unknown as DelegateUniqueWhere<TDelegate>
 
-        let row: Record<string, unknown> | null = null
+        const condition = this.tryBuildQueryCondition(where)
+        if (!condition)
+            throw new UniqueConstraintResolutionException('Unable to resolve a unique identifier for update/delete operation from the current query shape.', {
+                operation: 'resolveUniqueWhere',
+                model: this.model.name,
+                meta: {
+                    where: where as Record<string, unknown>,
+                },
+            })
 
-        if (this.adapter) {
-            const condition = this.tryBuildQueryCondition(where)
-            if (condition) {
-                row = await this.adapter.selectOne({
-                    target: this.buildQueryTarget(),
-                    columns: [{ column: 'id' }],
-                    where: condition,
-                    limit: 1,
-                }) as Record<string, unknown> | null
-            }
-        }
-
-        if (!row)
-            row = await this.delegate.findFirst({ where } as DelegateFindManyArgs<TDelegate>) as DelegateRow<TDelegate> | null as Record<string, unknown> | null
+        const row = await this.requireAdapter().selectOne({
+            target: this.buildQueryTarget(),
+            columns: [{ column: 'id' }],
+            where: condition,
+            limit: 1,
+        }) as Record<string, unknown> | null
 
         if (!row)
             throw new ModelNotFoundException(this.model.name, 'Record not found for update/delete operation.', {

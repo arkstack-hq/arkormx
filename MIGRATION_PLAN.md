@@ -31,13 +31,13 @@ As of this revision, Arkorm is in an active transition from delegate-first execu
 What exists today:
 
 - `Model.query()` now resolves a runtime adapter and passes it into `QueryBuilder`.
-- `QueryBuilder` can compile core read and write operations into Arkorm-owned specs and route them through the adapter seam.
+- `QueryBuilder` now compiles its core read and write operations into Arkorm-owned specs and executes them through the adapter seam.
 - the Prisma compatibility adapter now handles the current Prisma-like runtime behind the Arkorm adapter contract.
 - several relation classes still call `getDelegate()` directly for through and pivot operations.
 - relation aggregates and relation filters are still constrained by transitional delegate-shaped execution and in-memory fallback behavior.
-- `UnsupportedAdapterFeatureException` now sits behind a real adapter boundary, but some builder paths still fall back to legacy delegate handling.
+- `UnsupportedAdapterFeatureException` now reflects explicit adapter capability boundaries rather than QueryBuilder-level delegate fallbacks.
 
-This means the adapter boundary now exists for core model operations, but relation execution and a few remaining builder paths still need to be migrated before Arkorm can be considered adapter-first end to end.
+This means the adapter boundary now exists for core model operations and QueryBuilder execution, but relation execution and SQL-backed relation planning still need to be migrated before Arkorm can be considered adapter-first end to end.
 
 ## Concrete Code Hotspots
 
@@ -418,7 +418,7 @@ Success criteria:
 
 ### Phase 3: Refactor QueryBuilder to Emit Arkorm Specs
 
-Status: in progress
+Status: completed
 
 Deliverables:
 
@@ -429,11 +429,11 @@ Deliverables:
 Implementation checklist:
 
 - [x] identify all methods in `QueryBuilder` that currently build Prisma-shaped args objects
-- [~] replace internal delegate-arg state with Arkorm-owned query state structures
+- [x] replace internal delegate-arg state with Arkorm-owned query state structures
 - [x] add one or more internal spec-builder methods for read, write, and aggregate paths
-- [~] route execution methods through the adapter instead of calling delegate methods directly
+- [x] route execution methods through the adapter instead of calling delegate methods directly
 - [x] preserve scope, pagination, eager-load intent, and soft-delete behavior during the refactor for current read-path coverage
-- [~] remove or isolate Prisma-specific type dependencies from `QueryBuilder` where practical
+- [x] remove or isolate Prisma-specific type dependencies from `QueryBuilder` where practical
 
 Completed in code:
 
@@ -446,14 +446,10 @@ Completed in code:
 - duplicate-ignore insert flows now also use the adapter seam via `InsertManySpec.ignoreDuplicates`: `insertOrIgnore` and `insertOrIgnoreUsing`
 - Arkorm eager-load intent (`with(...)`) remains separate from explicit include planning, and `include(...)` now compiles into Arkorm-owned `relationLoads` plans instead of QueryBuilder-held delegate include state
 - raw where clauses now stay in Arkorm query state universally; unsupported adapters fail through adapter capability checks instead of QueryBuilder dropping back to delegate raw-where helpers
-- non-unique update and delete target resolution now prefers adapter-backed id lookup before falling back to direct delegate reads
-- delegate fallback remains in place for unsupported shapes and for the remaining transitional builder paths
+- non-unique update and delete target resolution now uses adapter-backed id lookup
+- top-level unsupported nested `select(...)` and `orderBy(...)` shapes now fail fast instead of silently falling back to delegate-shaped argument state
+- core QueryBuilder execution now requires a configured adapter and no longer issues direct delegate reads or writes itself
 - focused regression coverage was added to `tests/base/query-builder.spec.ts`
-
-Remaining before Phase 3 can be marked complete:
-
-- remove the remaining fallback-only Prisma argument helpers in `QueryBuilder`, now mainly legacy top-level `select(...)` and `orderBy(...)` normalization fallbacks plus the no-adapter `findMany`/`findFirst` compatibility path
-- decide whether no-adapter delegate fallback remains a supported compatibility mode or should be moved entirely behind a dedicated compatibility shim
 
 Success criteria:
 

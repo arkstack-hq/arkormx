@@ -411,7 +411,6 @@ export abstract class Model<
         const modelStatic = this as unknown as ModelStatic<TModel, TDelegate>
 
         let builder = new QueryBuilder<TModel, TDelegate>(
-            modelStatic.getDelegate(),
             modelStatic,
             modelStatic.getAdapter()
         )
