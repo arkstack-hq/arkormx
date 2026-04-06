@@ -1,4 +1,5 @@
 import { configureArkormRuntime, defineConfig, isDelegateLike } from './runtime-config'
+import { createPrismaCompatibilityAdapter, createPrismaDatabaseAdapter, type PrismaDelegateNameMapping } from '../adapters/PrismaDatabaseAdapter'
 
 import type { PrismaClientLike, PrismaDelegateLike } from '../types/core'
 
@@ -38,9 +39,23 @@ export function createPrismaAdapter (
  * @returns A delegate map keyed by Arkormˣ delegate names.
  */
 export function createPrismaDelegateMap (
-    prisma: PrismaClientLike
+    prisma: PrismaClientLike,
+    mapping: PrismaDelegateNameMapping = {}
 ): Record<string, PrismaDelegateLike> {
-    return createPrismaAdapter(prisma)
+    const delegates = createPrismaAdapter(prisma)
+
+    if (Object.keys(mapping).length === 0)
+        return delegates
+
+    return Object.entries(mapping).reduce<Record<string, PrismaDelegateLike>>((accumulator, [arkormDelegate, prismaDelegate]) => {
+        const resolved = delegates[prismaDelegate]
+        if (!resolved)
+            return accumulator
+
+        accumulator[arkormDelegate] = resolved
+
+        return accumulator
+    }, {})
 }
 
 /**
@@ -53,4 +68,9 @@ export function inferDelegateName (modelName: string): string {
     return `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}s`
 }
 
-export { configureArkormRuntime, defineConfig }
+export {
+    configureArkormRuntime,
+    createPrismaCompatibilityAdapter,
+    createPrismaDatabaseAdapter,
+    defineConfig,
+}

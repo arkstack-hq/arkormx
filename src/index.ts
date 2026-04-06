@@ -1,4 +1,5 @@
 export * from './Attribute'
+export * from './adapters'
 export * from './casts'
 export * from './cli/CliApp'
 export * from './cli/commands/InitCommand'
