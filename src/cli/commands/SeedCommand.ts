@@ -1,9 +1,10 @@
 import { existsSync, readdirSync } from 'node:fs'
-import { join, resolve } from 'node:path'
-import { pathToFileURL } from 'node:url'
+
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 import { SEEDER_BRAND } from '../../database/Seeder'
+import { join } from 'node:path'
 
 type SeederInstanceLike = {
     run: (...args: any[]) => Promise<void> | void
@@ -102,7 +103,7 @@ export class SeedCommand extends Command<CliApp> {
      * @returns An array of seeder classes.
      */
     private async loadSeederClassesFromFile (filePath: string): Promise<SeederClass[]> {
-        const imported = await import(`${pathToFileURL(resolve(filePath)).href}?arkorm_seed=${Date.now()}`)
+        const imported = await RuntimeModuleLoader.load<Record<string, unknown>>(filePath)
         const exports = Object.values(imported) as unknown[]
 
         return exports

@@ -10,13 +10,14 @@ import type {
     PrismaTransactionCapableClient,
     PrismaTransactionOptions
 } from '../types/core'
-import { fileURLToPath, pathToFileURL } from 'url'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { AsyncLocalStorage } from 'async_hooks'
+import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
+import { fileURLToPath } from 'url'
 import path from 'path'
 
 const resolveDefaultStubsPath = (): string => {
@@ -209,9 +210,7 @@ const resolveAndApplyConfig = (imported: unknown): void => {
  * @returns A promise that resolves to the imported configuration module.   
  */
 const importConfigFile = (configPath: string): Promise<unknown> => {
-    const configUrl = `${pathToFileURL(configPath).href}?arkorm_runtime=${Date.now()}`
-
-    return import(configUrl)
+    return RuntimeModuleLoader.load(configPath)
 }
 
 const loadRuntimeConfigSync = (): boolean => {

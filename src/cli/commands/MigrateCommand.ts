@@ -7,7 +7,7 @@ import { join, resolve } from 'node:path'
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
-import { pathToFileURL } from 'node:url'
+import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
 /**
  * The MigrateCommand class implements the CLI command for applying migration 
@@ -201,7 +201,7 @@ export class MigrateCommand extends Command<CliApp> {
     private async loadMigrationClassesFromFile (
         filePath: string
     ): Promise<MigrationClass[]> {
-        const imported = await import(`${pathToFileURL(resolve(filePath)).href}?arkorm_migrate=${Date.now()}`)
+        const imported = await RuntimeModuleLoader.load<Record<string, unknown>>(filePath)
         const exports = Object.values(imported) as unknown[]
 
         return exports

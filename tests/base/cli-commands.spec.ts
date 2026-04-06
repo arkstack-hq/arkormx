@@ -346,7 +346,7 @@ describe('CLI command classes', () => {
         expect(successLines.some(line => line.includes('SUCCESS: Model sync completed'))).toBe(true)
     })
 
-    it('SeedCommand loads and runs all seeder classes from configured directory', async () => {
+    it('SeedCommand loads and runs TypeScript seeder classes from configured directory', async () => {
         const workspace = makeTempDir('arkormx-cmd-seed-')
         process.chdir(workspace)
 
@@ -354,7 +354,7 @@ describe('CLI command classes', () => {
         mkdirSync(seedersDir, { recursive: true })
 
         const seederBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Seeder.ts`
-        writeFileSync(join(seedersDir, 'UserSeeder.mjs'), [
+        writeFileSync(join(seedersDir, 'UserSeeder.ts'), [
             `import { Seeder } from '${seederBaseImport}'`,
             '',
             'export class UserSeeder extends Seeder {',
@@ -386,7 +386,7 @@ describe('CLI command classes', () => {
         expect(successLines.some(line => line.includes('Seeded'))).toBe(true)
     })
 
-    it('MigrateCommand loads migrations and applies schema updates when prisma steps are skipped', async () => {
+    it('MigrateCommand loads TypeScript migrations and applies schema updates when prisma steps are skipped', async () => {
         const workspace = makeTempDir('arkormx-cmd-migrate-')
         process.chdir(workspace)
 
@@ -395,7 +395,7 @@ describe('CLI command classes', () => {
         mkdirSync(migrationsDir, { recursive: true })
 
         const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
-        writeFileSync(join(migrationsDir, 'CreateUsersMigration.mjs'), [
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
             `import { Migration } from '${migrationBaseImport}'`,
             '',
             'export class CreateUsersMigration extends Migration {',
@@ -483,7 +483,7 @@ describe('CLI command classes', () => {
         mkdirSync(migrationsDir, { recursive: true })
 
         const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
-        writeFileSync(join(migrationsDir, 'CreateUsersMigration.mjs'), [
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
             `import { Migration } from '${migrationBaseImport}'`,
             '',
             'export class CreateUsersMigration extends Migration {',
@@ -501,7 +501,7 @@ describe('CLI command classes', () => {
             '',
         ].join('\n'))
 
-        writeFileSync(join(migrationsDir, 'CreatePostsMigration.mjs'), [
+        writeFileSync(join(migrationsDir, 'CreatePostsMigration.ts'), [
             `import { Migration } from '${migrationBaseImport}'`,
             '',
             'export class CreatePostsMigration extends Migration {',

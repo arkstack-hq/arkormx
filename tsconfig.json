@@ -14,7 +14,10 @@
     "outDir": "./dist",
     "rootDir": "./",
     "types": ["node", "vitest"],
-    "baseUrl": "."
+    "paths": {
+      "src": ["./src"],
+      "src/*": ["./src/*"]
+    }
   },
   "include": [
     "src/**/*",
