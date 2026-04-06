@@ -66,6 +66,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         this.capabilities = {
             transactions: this.hasTransactionSupport(prisma),
             insertMany: Object.values(this.delegates).some(delegate => typeof (delegate as { createMany?: unknown }).createMany === 'function'),
+            upsert: false,
             updateMany: Object.values(this.delegates).some(delegate => typeof (delegate as { updateMany?: unknown }).updateMany === 'function'),
             deleteMany: false,
             exists: true,

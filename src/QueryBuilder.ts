@@ -15,6 +15,7 @@ import type {
     EagerLoadMap,
     InsertManySpec,
     InsertSpec,
+    UpsertSpec,
     ModelAttributes,
     ModelStatic,
     PaginationOptions,
@@ -1345,6 +1346,17 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         attributes: Record<string, unknown>,
         values: Record<string, unknown> | ((exists: boolean) => Record<string, unknown> | Promise<Record<string, unknown>>) = {}
     ): Promise<boolean> {
+        if (typeof values !== 'function' && this.adapter?.capabilities?.upsert && typeof this.requireAdapter().upsert === 'function') {
+            await this.executeUpsertRows([
+                {
+                    ...attributes,
+                    ...values,
+                },
+            ], Object.keys(attributes), Object.keys(values))
+
+            return true
+        }
+
         const existing = await this.clone().where(attributes as DelegateWhere<TDelegate>).first()
         const exists = existing != null
         const resolvedValues = typeof values === 'function'
@@ -1382,6 +1394,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return 0
 
         const uniqueKeys = Array.isArray(uniqueBy) ? uniqueBy : [uniqueBy]
+        if (this.adapter?.capabilities?.upsert && typeof this.requireAdapter().upsert === 'function') {
+            return await this.executeUpsertRows(values, uniqueKeys, update ?? undefined)
+        }
+
         let affected = 0
 
         for (const row of values) {
@@ -1435,6 +1451,19 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return {
             target: this.buildQueryTarget(),
             values: values as DatabaseRow[],
+        }
+    }
+
+    private tryBuildUpsertSpec (
+        values: Array<Record<string, unknown>>,
+        uniqueBy: string[],
+        updateColumns?: string[],
+    ): UpsertSpec<TModel> {
+        return {
+            target: this.buildQueryTarget(),
+            values: values as DatabaseRow[],
+            uniqueBy,
+            updateColumns,
         }
     }
 
@@ -2484,6 +2513,23 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         return inserted
+    }
+
+    private async executeUpsertRows (
+        values: Array<Record<string, unknown>>,
+        uniqueBy: string[],
+        updateColumns?: string[],
+    ): Promise<number> {
+        const adapter = this.requireAdapter()
+
+        if (typeof adapter.upsert !== 'function') {
+            throw new UnsupportedAdapterFeatureException('Upsert is not supported by the current adapter.', {
+                operation: 'query.upsert',
+                model: this.model.name,
+            })
+        }
+
+        return await adapter.upsert(this.tryBuildUpsertSpec(values, uniqueBy, updateColumns))
     }
 
     private async executeUpdateRow (
