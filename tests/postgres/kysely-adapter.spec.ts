@@ -462,6 +462,33 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('excluded."isActive"')
     })
 
+    it('uses RETURNING-aware single-row update and delete for non-unique QueryBuilder writes', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        await DbUser.query().create({
+            name: 'Ava',
+            email: 'ava@example.com',
+            isActive: 1,
+        })
+
+        const updated = await DbUser.query().where({ isActive: 1 }).update({ name: 'First Active Updated' })
+        expect(updated.getAttribute('name')).toBe('First Active Updated')
+
+        const activeUsers = await DbUser.query().where({ isActive: 1 }).orderBy({ id: 'asc' }).get()
+        expect(activeUsers.all().map(user => user.getAttribute('name'))).toContain('First Active Updated')
+
+        const deleted = await DbUser.query().where({ isActive: 1 }).delete()
+        expect(deleted.getAttribute('name')).toBeDefined()
+
+        const remaining = await DbUser.query().where({ isActive: 1 }).get()
+        expect(remaining.all()).toHaveLength(1)
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('with target_row as ( select "id" from "users" where "isActive" = $1 limit 1 ) update "users"')
+        expect(normalizedSql).toContain('returning "users".*')
+        expect(normalizedSql).toContain('with target_row as ( select "id" from "users" where "isActive" = $1 limit 1 ) delete from "users"')
+    })
+
     it('runs adapter transactions against Postgres', async () => {
         await kyselyAdapter.transaction(async (transactionAdapter) => {
             await transactionAdapter.insert({

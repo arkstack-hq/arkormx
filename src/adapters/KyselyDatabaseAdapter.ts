@@ -10,7 +10,6 @@ import type {
     DeleteSpec,
     InsertManySpec,
     InsertSpec,
-    UpsertSpec,
     QueryComparisonCondition,
     QueryCondition,
     QueryGroupCondition,
@@ -25,14 +24,15 @@ import type {
     SelectSpec,
     UpdateManySpec,
     UpdateSpec,
+    UpsertSpec,
 } from '../types/adapter'
 import type {
     BelongsToManyRelationMetadata,
     BelongsToRelationMetadata,
-    HasManyThroughRelationMetadata,
     HasManyRelationMetadata,
-    HasOneThroughRelationMetadata,
+    HasManyThroughRelationMetadata,
     HasOneRelationMetadata,
+    HasOneThroughRelationMetadata,
     ModelStatic,
 } from '../types'
 
@@ -523,6 +523,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return sql` where ${this.buildQueryFilterCondition(target, condition, relationFilters)}`
     }
 
+    private buildSingleRowTargetCte (target: QueryTarget<any>, where: QueryCondition): RawBuilder<unknown> {
+        const primaryKey = this.resolvePrimaryKey(target)
+
+        return sql`target_row as (
+            select ${sql.id(primaryKey)}
+            from ${sql.table(this.resolveTable(target))}
+            where ${this.buildWhereCondition(target, where)}
+            limit 1
+        )`
+    }
+
     private assertNoRelationLoads (spec: SelectSpec<any> | RelationLoadSpec<any>) {
         if ('relationLoads' in spec && spec.relationLoads && spec.relationLoads.length > 0) {
             throw new UnsupportedAdapterFeatureException('Kysely adapter relation-load execution is planned for a later phase.', {
@@ -703,6 +714,35 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     }
 
     /**
+     * Updates a single record in the database matching the specified criteria with the given values.
+     * 
+     * @param spec 
+     * @returns 
+     */
+    public async updateFirst<TModel = unknown> (spec: UpdateSpec<TModel>): Promise<DatabaseRow | null> {
+        const values = this.mapValues(spec.target, spec.values)
+        const assignments = Object.entries(values).map(([column, value]) => {
+            return sql`${sql.id(column)} = ${value}`
+        })
+
+        if (assignments.length === 0)
+            return await this.selectOne({ target: spec.target, where: spec.where, limit: 1 })
+
+        const primaryKey = this.resolvePrimaryKey(spec.target)
+        const table = this.resolveTable(spec.target)
+        const result = await sql<Record<string, unknown>>`
+            with ${this.buildSingleRowTargetCte(spec.target, spec.where)}
+            update ${sql.table(table)}
+            set ${sql.join(assignments, sql`, `)}
+            from target_row
+            where ${this.buildColumnReference(table, primaryKey)} = ${sql`target_row.${sql.id(primaryKey)}`}
+            returning ${sql.table(table)}.*
+        `.execute(this.db)
+
+        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
+    }
+
+    /**
      * Updates multiple records in the database matching the specified criteria with the 
      * given values and returns the number of records successfully updated.
      * 
@@ -740,6 +780,26 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             delete from ${sql.table(this.resolveTable(spec.target))}
             ${this.buildWhereClause(spec.target, spec.where)}
             returning *
+        `.execute(this.db)
+
+        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
+    }
+
+    /**
+     * Deletes a single record from the database matching the specified criteria and returns it as a database row.
+     * 
+     * @param spec 
+     * @returns 
+     */
+    public async deleteFirst<TModel = unknown> (spec: DeleteSpec<TModel>): Promise<DatabaseRow | null> {
+        const primaryKey = this.resolvePrimaryKey(spec.target)
+        const table = this.resolveTable(spec.target)
+        const result = await sql<Record<string, unknown>>`
+            with ${this.buildSingleRowTargetCte(spec.target, spec.where)}
+            delete from ${sql.table(table)}
+            using target_row
+            where ${this.buildColumnReference(table, primaryKey)} = ${sql`target_row.${sql.id(primaryKey)}`}
+            returning ${sql.table(table)}.*
         `.execute(this.db)
 
         return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)

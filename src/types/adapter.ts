@@ -218,8 +218,10 @@ export interface DatabaseAdapter {
     insertMany?: <TModel = unknown>(spec: InsertManySpec<TModel>) => Promise<number>
     upsert?: <TModel = unknown>(spec: UpsertSpec<TModel>) => Promise<number>
     update: <TModel = unknown>(spec: UpdateSpec<TModel>) => Promise<DatabaseRow | null>
+    updateFirst?: <TModel = unknown>(spec: UpdateSpec<TModel>) => Promise<DatabaseRow | null>
     updateMany?: <TModel = unknown>(spec: UpdateManySpec<TModel>) => Promise<number>
     delete: <TModel = unknown>(spec: DeleteSpec<TModel>) => Promise<DatabaseRow | null>
+    deleteFirst?: <TModel = unknown>(spec: DeleteSpec<TModel>) => Promise<DatabaseRow | null>
     deleteMany?: <TModel = unknown>(spec: DeleteManySpec<TModel>) => Promise<number>
     count: <TModel = unknown>(spec: AggregateSpec<TModel>) => Promise<number>
     exists?: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<boolean>
