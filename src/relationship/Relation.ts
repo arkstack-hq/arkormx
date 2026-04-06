@@ -1,7 +1,8 @@
-import type { DatabaseAdapter, DatabaseRow, ModelAttributes, QueryCondition, QueryOrderBy, QuerySelectColumn } from '../types'
+import type { DatabaseAdapter, ModelAttributes } from '../types'
 
 import { ArkormCollection } from '../Collection'
 import { QueryBuilder } from '../QueryBuilder'
+import { RelationTableLoader } from './RelationTableLoader'
 import type { RelationConstraint } from '../types/relationship'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 
@@ -33,39 +34,8 @@ export abstract class Relation<TModel> {
         }).related
     }
 
-    protected async selectRelationRows (options: {
-        table: string
-        where?: QueryCondition
-        columns?: QuerySelectColumn[]
-        orderBy?: QueryOrderBy[]
-        limit?: number
-        offset?: number
-    }): Promise<DatabaseRow[]> {
-        return await this.getRelationAdapter().select({
-            target: { table: options.table },
-            where: options.where,
-            columns: options.columns,
-            orderBy: options.orderBy,
-            limit: options.limit,
-            offset: options.offset,
-        })
-    }
-
-    protected async selectRelationRow (options: {
-        table: string
-        where?: QueryCondition
-        columns?: QuerySelectColumn[]
-        orderBy?: QueryOrderBy[]
-        offset?: number
-    }): Promise<DatabaseRow | null> {
-        return await this.getRelationAdapter().selectOne({
-            target: { table: options.table },
-            where: options.where,
-            columns: options.columns,
-            orderBy: options.orderBy,
-            limit: 1,
-            offset: options.offset,
-        })
+    protected createRelationTableLoader (): RelationTableLoader {
+        return new RelationTableLoader(this.getRelationAdapter())
     }
 
     /**

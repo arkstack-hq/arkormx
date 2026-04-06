@@ -33,11 +33,11 @@ What exists today:
 - `Model.query()` now resolves a runtime adapter and passes it into `QueryBuilder`.
 - `QueryBuilder` now compiles its core read and write operations into Arkorm-owned specs and executes them through the adapter seam.
 - the Prisma compatibility adapter now handles the current Prisma-like runtime behind the Arkorm adapter contract.
-- several relation classes still call `getDelegate()` directly for through and pivot operations.
+- through and pivot relation classes now resolve intermediate rows through shared adapter-backed relation loaders instead of calling delegates directly.
 - relation aggregates and relation filters are still constrained by transitional delegate-shaped execution and in-memory fallback behavior.
 - `UnsupportedAdapterFeatureException` now reflects explicit adapter capability boundaries rather than QueryBuilder-level delegate fallbacks.
 
-This means the adapter boundary now exists for core model operations and QueryBuilder execution, but relation execution and SQL-backed relation planning still need to be migrated before Arkorm can be considered adapter-first end to end.
+This means the adapter boundary now exists for core model operations, QueryBuilder execution, and relation-side through and pivot lookups, but set-based relation planning and SQL-backed relation execution still need to be migrated before Arkorm can be considered adapter-first end to end.
 
 ## Concrete Code Hotspots
 
@@ -457,7 +457,7 @@ Success criteria:
 
 ### Phase 4: Remove Direct Delegate Access from Relation Classes
 
-Status: in progress
+Status: completed
 
 Deliverables:
 
@@ -468,23 +468,19 @@ Deliverables:
 Implementation checklist:
 
 - [x] inventory every relation class that bypasses `QueryBuilder` or the future adapter
-- [ ] define relation-load plan types for direct, pivot, through, and morph relations
-- [~] move pivot and through query execution out of relation classes and into shared loader utilities
-- [~] ensure relation classes still own relation metadata and mapping logic but no longer own backend execution
+- [x] define relation-load plan types for direct, pivot, through, and morph relations
+- [x] move pivot and through query execution out of relation classes and into shared loader utilities
+- [x] ensure relation classes still own relation metadata and mapping logic but no longer own backend execution
 - [x] add focused tests for belongs-to-many and through relations before removing direct delegate access
 - [x] confirm that no relation class still reaches into `getDelegate()` after the refactor
 
 Completed in code:
 
-- `Relation` now provides shared adapter-backed helpers for through and pivot table lookups
-- `BelongsToManyRelation`, `HasManyThroughRelation`, `HasOneThroughRelation`, and `MorphToManyRelation` no longer call delegates directly; they resolve intermediate rows through the adapter seam
+- `src/types/relationship.ts` now defines relation-side table and column lookup specs
+- `RelationTableLoader` centralizes adapter-backed through and pivot table reads
+- `BelongsToManyRelation`, `HasManyThroughRelation`, `HasOneThroughRelation`, and `MorphToManyRelation` no longer call delegates directly; they resolve intermediate rows through the shared relation loader
 - `RelationshipModelStatic` now exposes `getAdapter()` for relation-side adapter access
 - focused verification lives in `tests/base/relationships.spec.ts`
-
-Remaining before Phase 4 can be marked complete:
-
-- formalize relation-load plan types for relation-side execution instead of using ad hoc through-table selects
-- move the remaining relation-side execution details out of the relation classes and into dedicated shared planner or loader utilities
 
 Success criteria:
 
