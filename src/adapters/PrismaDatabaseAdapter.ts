@@ -16,6 +16,7 @@ import type {
     QueryRawCondition,
     QuerySelectColumn,
     QueryTarget,
+    RelationLoadPlan,
     RelationLoadSpec,
     SelectSpec,
     UpdateManySpec,
@@ -24,6 +25,7 @@ import type {
 import type {
     PrismaClientLike,
     PrismaDelegateLike,
+    PrismaLikeInclude,
     PrismaLikeOrderBy,
     PrismaLikeSelect,
     PrismaLikeWhereInput,
@@ -182,6 +184,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     }
 
     private buildFindArgs (spec: SelectSpec<any>): {
+        include?: PrismaLikeInclude
         where?: PrismaLikeWhereInput
         orderBy?: PrismaLikeOrderBy
         select?: PrismaLikeSelect
@@ -189,12 +192,42 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         take?: number
     } {
         return {
+            include: this.toQueryInclude(spec.relationLoads),
             where: this.toQueryWhere(spec.where),
             orderBy: this.toQueryOrderBy(spec.orderBy),
             select: this.toQuerySelect(spec.columns),
             skip: spec.offset,
             take: spec.limit,
         }
+    }
+
+    private toQueryInclude (relationLoads?: RelationLoadPlan[]): PrismaLikeInclude | undefined {
+        if (!relationLoads || relationLoads.length === 0)
+            return undefined
+
+        return relationLoads.reduce<PrismaLikeInclude>((include, plan) => {
+            const nestedInclude = this.toQueryInclude(plan.relationLoads)
+            const nestedSelect = this.toQuerySelect(plan.columns)
+            const nestedWhere = this.toQueryWhere(plan.constraint)
+            const nestedOrderBy = this.toQueryOrderBy(plan.orderBy)
+
+            if (!nestedInclude && !nestedSelect && !nestedWhere && !nestedOrderBy && plan.offset === undefined && plan.limit === undefined) {
+                include[plan.relation] = true
+
+                return include
+            }
+
+            include[plan.relation] = {
+                where: nestedWhere,
+                orderBy: nestedOrderBy,
+                select: nestedSelect,
+                include: nestedInclude,
+                skip: plan.offset,
+                take: plan.limit,
+            }
+
+            return include
+        }, {})
     }
 
     private resolveDelegate (target: QueryTarget<any>): PrismaDelegateLike {

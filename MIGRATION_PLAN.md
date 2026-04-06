@@ -26,17 +26,18 @@ This migration is intended to improve:
 
 ## Current State Snapshot
 
-As of this revision, Arkorm is still delegate-first internally.
+As of this revision, Arkorm is in an active transition from delegate-first execution to adapter-first runtime planning.
 
 What exists today:
 
-- `Model.query()` still instantiates `QueryBuilder` with a runtime delegate, not an adapter.
-- `QueryBuilder` still executes against methods such as `findMany`, `findFirst`, `create`, `update`, and `delete` on the delegate.
+- `Model.query()` now resolves a runtime adapter and passes it into `QueryBuilder`.
+- `QueryBuilder` can compile core read and write operations into Arkorm-owned specs and route them through the adapter seam.
+- the Prisma compatibility adapter now handles the current Prisma-like runtime behind the Arkorm adapter contract.
 - several relation classes still call `getDelegate()` directly for through and pivot operations.
-- relation aggregates and relation filters are still constrained by delegate-shaped execution.
-- `UnsupportedAdapterFeatureException` exists, which is useful as a future-facing signal, but there is not yet a real adapter boundary in runtime architecture.
+- relation aggregates and relation filters are still constrained by transitional delegate-shaped execution and in-memory fallback behavior.
+- `UnsupportedAdapterFeatureException` now sits behind a real adapter boundary, but some builder paths still fall back to legacy delegate handling.
 
-This means the migration has not started in architectural terms. The next step is still to introduce the adapter boundary rather than trying to optimize SQL behavior directly.
+This means the adapter boundary now exists for core model operations, but relation execution and a few remaining builder paths still need to be migrated before Arkorm can be considered adapter-first end to end.
 
 ## Concrete Code Hotspots
 
@@ -443,14 +444,16 @@ Completed in code:
 - read-style operations now use the adapter seam when the query shape is supported: `get`, `first`, `value`, `pluck`, `count`, `exists`, `min`, `max`, `sum`, and `avg`
 - core write operations now use the adapter seam when the contract supports them: `create`, `insert`, `insertGetId`, `update`, `updateFrom`, `updateOrInsert`, `upsert`, and `delete`
 - duplicate-ignore insert flows now also use the adapter seam via `InsertManySpec.ignoreDuplicates`: `insertOrIgnore` and `insertOrIgnoreUsing`
-- `include` handling and raw where clauses remain transitional delegate-shaped paths while the rest of the core builder state now compiles from Arkorm-owned query state
+- Arkorm eager-load intent (`with(...)`) remains separate from explicit include planning, and `include(...)` now compiles into Arkorm-owned `relationLoads` plans instead of QueryBuilder-held delegate include state
+- raw where clauses now stay in Arkorm query state universally; unsupported adapters fail through adapter capability checks instead of QueryBuilder dropping back to delegate raw-where helpers
+- non-unique update and delete target resolution now prefers adapter-backed id lookup before falling back to direct delegate reads
 - delegate fallback remains in place for unsupported shapes and for the remaining transitional builder paths
 - focused regression coverage was added to `tests/base/query-builder.spec.ts`
 
 Remaining before Phase 3 can be marked complete:
 
-- replace the remaining transitional delegate-shaped builder state, especially `include` and raw where handling, with Arkorm-owned query state or planner abstractions
-- remove the remaining Prisma-specific argument handling from `QueryBuilder`
+- remove the remaining fallback-only Prisma argument helpers in `QueryBuilder`, now mainly legacy top-level `select(...)` and `orderBy(...)` normalization fallbacks plus the no-adapter `findMany`/`findFirst` compatibility path
+- decide whether no-adapter delegate fallback remains a supported compatibility mode or should be moved entirely behind a dedicated compatibility shim
 
 Success criteria:
 

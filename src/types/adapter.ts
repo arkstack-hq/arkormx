@@ -123,6 +123,8 @@ export interface RelationLoadPlan {
     orderBy?: QueryOrderBy[]
     limit?: number
     offset?: number
+    columns?: QuerySelectColumn[]
+    relationLoads?: RelationLoadPlan[]
 }
 
 export interface SelectSpec<TModel = unknown> {

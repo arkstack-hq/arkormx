@@ -1,4 +1,4 @@
-import { ArkormCollection, LengthAwarePaginator, Paginator, createPrismaDatabaseAdapter } from '../../src'
+import { ArkormCollection, LengthAwarePaginator, Paginator, createPrismaDatabaseAdapter, type DatabaseAdapter } from '../../src'
 import { Article, User } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
@@ -57,6 +57,7 @@ describe('QueryBuilder', () => {
         const adapter = createPrismaDatabaseAdapter(prisma)
         const insertSpy = vi.spyOn(adapter, 'insert')
         const insertManySpy = vi.spyOn(adapter, 'insertMany')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
         const updateSpy = vi.spyOn(adapter, 'update')
         const updateManySpy = vi.spyOn(adapter, 'updateMany')
         const deleteSpy = vi.spyOn(adapter, 'delete')
@@ -93,11 +94,21 @@ describe('QueryBuilder', () => {
             ])
 
             await User.query().whereKey('id', 20).update({ name: 'Adapter Updated' })
+            await User.query().where({ email: 'adapter-create@example.com' }).update({ name: 'Adapter Updated Again' })
             await User.query().where({ isActive: 1 }).updateFrom({ name: 'Batch Updated' })
             await User.query().whereKey('id', 22).delete()
 
             expect(insertSpy).toHaveBeenCalled()
             expect(insertManySpy).toHaveBeenCalled()
+            expect(selectOneSpy).toHaveBeenCalledWith(expect.objectContaining({
+                columns: [{ column: 'id' }],
+                where: {
+                    type: 'comparison',
+                    column: 'email',
+                    operator: '=',
+                    value: 'adapter-create@example.com',
+                },
+            }))
             expect(updateSpy).toHaveBeenCalled()
             expect(updateManySpy).toHaveBeenCalled()
             expect(deleteSpy).toHaveBeenCalled()
@@ -135,6 +146,108 @@ describe('QueryBuilder', () => {
 
             expect(insertManySpy).toHaveBeenCalledWith(expect.objectContaining({
                 ignoreDuplicates: true,
+            }))
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
+    it('routes raw where clauses through Arkorm query state when the adapter supports them', async () => {
+        const selectSpy = vi.fn(async () => ([
+            {
+                id: 1,
+                name: 'Jane',
+                email: 'jane@example.com',
+                password: 'secret',
+                isActive: 1,
+                meta: '{"tier":"pro"}',
+                createdAt: '2026-03-04T12:00:00.000Z',
+            },
+        ]))
+
+        const transaction: DatabaseAdapter['transaction'] = async <TResult> (callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>): Promise<TResult> => await callback(adapter)
+
+        const adapter: DatabaseAdapter = {
+            capabilities: { rawWhere: true },
+            select: selectSpy,
+            selectOne: async () => null,
+            insert: async () => ({ id: 0 }),
+            insertMany: async () => 0,
+            update: async () => null,
+            updateMany: async () => 0,
+            delete: async () => null,
+            deleteMany: async () => 0,
+            count: async () => 0,
+            exists: async () => false,
+            transaction,
+        }
+
+        User.setAdapter(adapter)
+
+        try {
+            const users = await User.query().whereRaw('id = ?', [1]).get()
+
+            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
+                where: {
+                    type: 'raw',
+                    sql: 'id = ?',
+                    bindings: [1],
+                },
+            }))
+            expect(users.all()).toHaveLength(1)
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
+    it('routes include clauses through Arkorm relation load plans', async () => {
+        const selectSpy = vi.fn(async () => ([]))
+
+        const transaction: DatabaseAdapter['transaction'] = async <TResult> (callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>): Promise<TResult> => await callback(adapter)
+
+        const adapter: DatabaseAdapter = {
+            select: selectSpy,
+            selectOne: async () => null,
+            insert: async () => ({ id: 0 }),
+            insertMany: async () => 0,
+            update: async () => null,
+            updateMany: async () => 0,
+            delete: async () => null,
+            deleteMany: async () => 0,
+            count: async () => 0,
+            exists: async () => false,
+            transaction,
+        }
+
+        User.setAdapter(adapter)
+
+        try {
+            await User.query().include({
+                posts: {
+                    where: { title: 'A' },
+                    orderBy: { id: 'desc' },
+                    select: { id: true, title: true },
+                    take: 1,
+                },
+            }).get()
+
+            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
+                relationLoads: [
+                    {
+                        relation: 'posts',
+                        constraint: {
+                            type: 'comparison',
+                            column: 'title',
+                            operator: '=',
+                            value: 'A',
+                        },
+                        orderBy: [{ column: 'id', direction: 'desc' }],
+                        columns: [{ column: 'id' }, { column: 'title' }],
+                        limit: 1,
+                        offset: undefined,
+                        relationLoads: undefined,
+                    },
+                ],
             }))
         } finally {
             User.setAdapter(undefined)

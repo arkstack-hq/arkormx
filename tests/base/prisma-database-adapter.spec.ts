@@ -2,7 +2,7 @@ import {
     createPrismaDatabaseAdapter,
     createPrismaDelegateMap,
 } from '../../src'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createCoreClient } from './helpers/core-fixtures'
 
@@ -145,5 +145,46 @@ describe('Prisma database adapter', () => {
         })
 
         expect(committed).toBe(true)
+    })
+
+    it('translates Arkorm relation load plans into Prisma include arguments at the adapter edge', async () => {
+        const prisma = createCoreClient()
+        const findManySpy = vi.spyOn((prisma as Record<string, any>).users, 'findMany')
+        const adapter = createPrismaDatabaseAdapter(prisma)
+
+        await adapter.select({
+            target: { table: 'users' },
+            relationLoads: [
+                {
+                    relation: 'posts',
+                    constraint: {
+                        type: 'comparison',
+                        column: 'title',
+                        operator: '=',
+                        value: 'A',
+                    },
+                    orderBy: [{ column: 'id', direction: 'desc' }],
+                    columns: [{ column: 'id' }, { column: 'title' }],
+                    limit: 1,
+                    relationLoads: [
+                        {
+                            relation: 'comments',
+                        },
+                    ],
+                },
+            ],
+        })
+
+        expect(findManySpy).toHaveBeenCalledWith(expect.objectContaining({
+            include: {
+                posts: {
+                    where: { title: 'A' },
+                    orderBy: [{ id: 'desc' }],
+                    select: { id: true, title: true },
+                    include: { comments: true },
+                    take: 1,
+                },
+            },
+        }))
     })
 })

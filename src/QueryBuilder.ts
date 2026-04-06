@@ -24,8 +24,10 @@ import type {
     QueryComparisonCondition,
     QueryCondition,
     QueryOrderBy,
+    QueryRawCondition,
     QuerySelectColumn,
     QueryTarget,
+    RelationLoadPlan,
     SelectSpec,
     UpdateManySpec,
     UpdateSpec,
@@ -56,7 +58,7 @@ type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<Rela
 export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> {
     private queryWhere?: QueryCondition
     private legacyWhere?: DelegateWhere<TDelegate>
-    private legacyInclude?: DelegateInclude<TDelegate>
+    private queryRelationLoads?: RelationLoadPlan[]
     private queryOrderBy?: QueryOrderBy[]
     private legacyOrderBy?: DelegateOrderBy<TDelegate>
     private querySelect?: QuerySelectColumn[]
@@ -508,7 +510,17 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public include (include: DelegateInclude<TDelegate>): this {
-        this.legacyInclude = include
+        const normalized = this.normalizeRelationLoads(include)
+        if (normalized === null)
+            throw new UnsupportedAdapterFeatureException('Include clauses could not be normalized into Arkorm relation load plans.', {
+                operation: 'include',
+                model: this.model.name,
+                meta: {
+                    feature: 'relationLoads',
+                },
+            })
+
+        this.queryRelationLoads = normalized
 
         return this
     }
@@ -1774,11 +1786,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public whereRaw (sql: string, bindings: unknown[] = []): this {
-        const delegate = this.delegate as unknown as {
-            applyRawWhere?: (where: DelegateWhere<TDelegate> | undefined, sql: string, bindings: unknown[]) => DelegateWhere<TDelegate>
-        }
-
-        if (typeof delegate.applyRawWhere !== 'function')
+        if (!this.adapter?.capabilities?.rawWhere)
             throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the current adapter.', {
                 operation: 'whereRaw',
                 model: this.model.name,
@@ -1787,8 +1795,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        this.legacyWhere = delegate.applyRawWhere(this.buildWhere(), sql, bindings)
-        this.queryWhere = undefined
+        this.appendQueryCondition('AND', {
+            type: 'raw',
+            sql,
+            bindings: bindings as DatabaseValue[],
+        } as QueryRawCondition)
 
         return this
     }
@@ -1801,11 +1812,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public orWhereRaw (sql: string, bindings: unknown[] = []): this {
-        const delegate = this.delegate as unknown as {
-            applyRawWhere?: (where: DelegateWhere<TDelegate> | undefined, sql: string, bindings: unknown[]) => DelegateWhere<TDelegate>
-        }
-
-        if (typeof delegate.applyRawWhere !== 'function')
+        if (!this.adapter?.capabilities?.rawWhere)
             throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the current adapter.', {
                 operation: 'orWhereRaw',
                 model: this.model.name,
@@ -1814,9 +1821,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        const rawWhere = delegate.applyRawWhere(undefined, sql, bindings)
+        this.appendQueryCondition('OR', {
+            type: 'raw',
+            sql,
+            bindings: bindings as DatabaseValue[],
+        } as QueryRawCondition)
 
-        return this.orWhere(rawWhere)
+        return this
     }
 
     /**
@@ -1903,7 +1914,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const builder = new QueryBuilder<TModel, TDelegate>(this.delegate, this.model, this.adapter)
         builder.queryWhere = this.queryWhere
         builder.legacyWhere = this.legacyWhere
-        builder.legacyInclude = this.legacyInclude
+        builder.queryRelationLoads = this.queryRelationLoads
+            ? this.cloneRelationLoads(this.queryRelationLoads)
+            : undefined
         builder.queryOrderBy = this.queryOrderBy ? [...this.queryOrderBy] : undefined
         builder.legacyOrderBy = this.legacyOrderBy
         builder.querySelect = this.querySelect ? [...this.querySelect] : undefined
@@ -2007,6 +2020,123 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return normalized
     }
 
+    private cloneRelationLoads (plans: RelationLoadPlan[]): RelationLoadPlan[] {
+        return plans.map((plan) => {
+            return {
+                relation: plan.relation,
+                constraint: plan.constraint,
+                orderBy: plan.orderBy ? [...plan.orderBy] : undefined,
+                limit: plan.limit,
+                offset: plan.offset,
+                columns: plan.columns ? [...plan.columns] : undefined,
+                relationLoads: plan.relationLoads
+                    ? this.cloneRelationLoads(plan.relationLoads)
+                    : undefined,
+            }
+        })
+    }
+
+    private normalizeRelationLoadSelect (select: unknown): QuerySelectColumn[] | null {
+        if (Array.isArray(select) || typeof select !== 'object' || !select)
+            return null
+
+        const entries = Object.entries(select as Record<string, unknown>)
+        if (entries.some(([, value]) => value !== true && value !== false && value !== undefined))
+            return null
+
+        return entries
+            .filter(([, value]) => value === true)
+            .map(([column]) => ({ column }))
+    }
+
+    private normalizeRelationLoadOrderBy (orderBy: unknown): QueryOrderBy[] | null {
+        const clauses = Array.isArray(orderBy)
+            ? orderBy
+            : [orderBy]
+
+        const normalized: QueryOrderBy[] = []
+        for (const clause of clauses) {
+            if (!clause || typeof clause !== 'object' || Array.isArray(clause))
+                return null
+
+            for (const [column, direction] of Object.entries(clause as Record<string, unknown>)) {
+                if (direction !== 'asc' && direction !== 'desc')
+                    return null
+
+                normalized.push({ column, direction })
+            }
+        }
+
+        return normalized
+    }
+
+    private normalizeRelationLoads (include: unknown): RelationLoadPlan[] | null {
+        if (Array.isArray(include) || typeof include !== 'object' || !include)
+            return null
+
+        const plans: RelationLoadPlan[] = []
+
+        for (const [relation, value] of Object.entries(include as Record<string, unknown>)) {
+            if (value === false || value === undefined)
+                continue
+
+            if (value === true) {
+                plans.push({ relation })
+                continue
+            }
+
+            if (!value || typeof value !== 'object' || Array.isArray(value))
+                return null
+
+            const options = value as Record<string, unknown>
+            const constraint = options.where === undefined
+                ? undefined
+                : this.tryBuildQueryCondition(options.where)
+            const orderBy = options.orderBy === undefined
+                ? undefined
+                : this.normalizeRelationLoadOrderBy(options.orderBy)
+            const columns = options.select === undefined
+                ? undefined
+                : this.normalizeRelationLoadSelect(options.select)
+            const relationLoads = options.include === undefined
+                ? undefined
+                : this.normalizeRelationLoads(options.include)
+
+            if (constraint === null || orderBy === null || columns === null || relationLoads === null)
+                return null
+
+            if ((options.skip !== undefined && typeof options.skip !== 'number')
+                || (options.take !== undefined && typeof options.take !== 'number'))
+                return null
+
+            plans.push({
+                relation,
+                constraint,
+                orderBy,
+                limit: options.take as number | undefined,
+                offset: options.skip as number | undefined,
+                columns,
+                relationLoads,
+            })
+        }
+
+        return plans
+    }
+
+    private appendQueryCondition (operator: 'AND' | 'OR', condition: QueryCondition): void {
+        if (!this.queryWhere) {
+            this.queryWhere = condition
+
+            return
+        }
+
+        this.queryWhere = {
+            type: 'group',
+            operator: operator === 'AND' ? 'and' : 'or',
+            conditions: [this.queryWhere, condition],
+        }
+    }
+
     private toDelegateWhere (condition?: QueryCondition): DelegateWhere<TDelegate> | undefined {
         if (!condition)
             return undefined
@@ -2097,6 +2227,39 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
             return select
         }, {}) as DelegateSelect<TDelegate>
+    }
+
+    private buildDelegateIncludeFromRelationLoads (plans?: RelationLoadPlan[]): DelegateInclude<TDelegate> | undefined {
+        if (!plans || plans.length === 0)
+            return undefined
+
+        return plans.reduce<Record<string, unknown>>((include, plan) => {
+            const nestedInclude = this.buildDelegateIncludeFromRelationLoads(plan.relationLoads)
+            const nestedSelect = plan.columns?.reduce<Record<string, true>>((select, column) => {
+                select[column.column] = true
+
+                return select
+            }, {})
+            const nestedWhere = this.toDelegateWhere(plan.constraint)
+            const nestedOrderBy = plan.orderBy?.map(entry => ({ [entry.column]: entry.direction }))
+
+            if (!nestedInclude && !nestedSelect && !nestedWhere && !nestedOrderBy && plan.offset === undefined && plan.limit === undefined) {
+                include[plan.relation] = true
+
+                return include
+            }
+
+            include[plan.relation] = {
+                where: nestedWhere,
+                orderBy: nestedOrderBy,
+                select: nestedSelect,
+                include: nestedInclude,
+                skip: plan.offset,
+                take: plan.limit,
+            }
+
+            return include
+        }, {}) as DelegateInclude<TDelegate>
     }
 
     private buildSoftDeleteQueryCondition (): QueryCondition | undefined {
@@ -2303,12 +2466,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             : { type: 'group', operator: 'and', conditions }
     }
 
-    private tryBuildSelectSpec (where: DelegateWhere<TDelegate> | undefined): SelectSpec<TModel> | null {
+    private tryBuildSelectSpec (
+        where: DelegateWhere<TDelegate> | undefined,
+        softDeleteOnly = false,
+    ): SelectSpec<TModel> | null {
         const columns = this.tryBuildQuerySelectColumns()
         const orderBy = this.tryBuildQueryOrderBy()
-        const condition = where === this.buildSoftDeleteOnlyWhere()
-            ? this.buildQueryWhereCondition(true)
-            : this.buildQueryWhereCondition(false)
+        const condition = this.buildQueryWhereCondition(softDeleteOnly)
 
         if (columns === null || orderBy === null || condition === null)
             return null
@@ -2320,6 +2484,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             orderBy,
             limit: this.limitValue,
             offset: this.offsetValue,
+            relationLoads: this.queryRelationLoads,
         }
     }
 
@@ -2337,7 +2502,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
     private buildFindArgsWithWhere (where: DelegateWhere<TDelegate> | undefined): DelegateFindManyArgs<TDelegate> {
         return {
-            include: this.legacyInclude,
+            include: this.buildDelegateIncludeFromRelationLoads(this.queryRelationLoads),
             orderBy: this.buildDelegateOrderBy(),
             select: this.buildDelegateSelect(),
             skip: this.offsetValue,
@@ -2355,7 +2520,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             : this.buildWhere()
 
         if (this.adapter) {
-            const spec = this.tryBuildSelectSpec(where)
+            const spec = this.tryBuildSelectSpec(where, useWhereOverride)
             if (spec)
                 return await this.adapter.select(spec)
         }
@@ -2508,7 +2673,23 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (this.isUniqueWhere(where as Record<string, unknown>))
             return where as unknown as DelegateUniqueWhere<TDelegate>
 
-        const row = await this.delegate.findFirst({ where } as DelegateFindManyArgs<TDelegate>) as DelegateRow<TDelegate> | null
+        let row: Record<string, unknown> | null = null
+
+        if (this.adapter) {
+            const condition = this.tryBuildQueryCondition(where)
+            if (condition) {
+                row = await this.adapter.selectOne({
+                    target: this.buildQueryTarget(),
+                    columns: [{ column: 'id' }],
+                    where: condition,
+                    limit: 1,
+                }) as Record<string, unknown> | null
+            }
+        }
+
+        if (!row)
+            row = await this.delegate.findFirst({ where } as DelegateFindManyArgs<TDelegate>) as DelegateRow<TDelegate> | null as Record<string, unknown> | null
+
         if (!row)
             throw new ModelNotFoundException(this.model.name, 'Record not found for update/delete operation.', {
                 operation: 'resolveUniqueWhere',
@@ -2517,8 +2698,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        const record = row as Record<string, unknown>
-        if (!Object.prototype.hasOwnProperty.call(record, 'id'))
+        if (!Object.prototype.hasOwnProperty.call(row, 'id'))
             throw new UniqueConstraintResolutionException('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.', {
                 operation: 'resolveUniqueWhere',
                 model: this.model.name,
@@ -2527,7 +2707,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        return { id: record.id } as unknown as DelegateUniqueWhere<TDelegate>
+        return { id: row.id } as unknown as DelegateUniqueWhere<TDelegate>
     }
 
     /**
