@@ -155,10 +155,44 @@ jobs:
       - name: Build project
         run: pnpm build
 
+      - name: Detect publish eligibility
+        id: publish_gate
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+          if [[ "${{ github.event_name }}" == 'release' ]]; then
+            if [[ "${{ github.event.release.prerelease }}" == 'true' ]]; then
+              echo "should_publish=false" >> $GITHUB_OUTPUT
+              echo "skip_reason=github-prerelease" >> $GITHUB_OUTPUT
+              echo "Detected GitHub pre-release: $VERSION"
+            else
+              echo "should_publish=true" >> $GITHUB_OUTPUT
+              echo "skip_reason=" >> $GITHUB_OUTPUT
+              echo "Detected GitHub stable release: $VERSION"
+            fi
+          elif [[ "$VERSION" == *-* ]]; then
+            echo "should_publish=false" >> $GITHUB_OUTPUT
+            echo "skip_reason=version-prerelease" >> $GITHUB_OUTPUT
+            echo "Detected preview version from package.json: $VERSION"
+          else
+            echo "should_publish=true" >> $GITHUB_OUTPUT
+            echo "skip_reason=" >> $GITHUB_OUTPUT
+            echo "Detected stable version from package.json: $VERSION"
+          fi
+
       - name: Publish to NPM
         run: pnpm release
+        if: steps.publish_gate.outputs.should_publish == 'true'
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Skip preview publish
+        if: steps.publish_gate.outputs.should_publish != 'true'
+        run: |
+          echo "Skipping npm publish for preview version ${{ steps.publish_gate.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+          echo "Reason: ${{ steps.publish_gate.outputs.skip_reason }}" >> $GITHUB_STEP_SUMMARY
+          echo "Preview releases are validated by this workflow but are not published to npm." >> $GITHUB_STEP_SUMMARY
 
       - name: Create release notes
         if: steps.version_check.outputs.version_bumped == 'true'
