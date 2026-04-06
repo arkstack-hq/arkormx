@@ -1,4 +1,7 @@
 import type {
+    AggregateSpec,
+    DatabaseAdapter,
+    DatabaseRow,
     DelegateCreateData,
     DelegateFindManyArgs,
     DelegateInclude,
@@ -13,8 +16,14 @@ import type {
     ModelAttributes,
     ModelStatic,
     PaginationOptions,
+    QueryComparisonCondition,
+    QueryCondition,
+    QueryOrderBy,
+    QuerySelectColumn,
+    QueryTarget,
     PrismaDelegateLike,
-    PrismaFindManyArgsLike
+    PrismaFindManyArgsLike,
+    SelectSpec,
 } from './types'
 import { LengthAwarePaginator, Paginator } from './Paginator'
 
@@ -67,6 +76,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public constructor(
         private readonly delegate: TDelegate,
         private readonly model: ModelStatic<TModel, TDelegate>,
+        private readonly adapter?: DatabaseAdapter,
     ) { }
 
     private resolvePaginationPage (
@@ -917,7 +927,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public async get (): Promise<ArkormCollection<TModel>> {
         const relationCache: RelationResultCache = new WeakMap()
-        const rows = await this.delegate.findMany(this.buildFindArgs())
+        const rows = await this.executeReadRows()
         const normalizedRows = this.randomOrderEnabled
             ? this.shuffleRows(rows as unknown[])
             : rows
@@ -931,10 +941,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                     .filter((id): id is string | number => id != null)
                 )
 
-                const allRows = await this.delegate.findMany({
-                    ...(this.args as DelegateFindManyArgs<TDelegate>),
-                    where: this.buildSoftDeleteOnlyWhere(),
-                } as DelegateFindManyArgs<TDelegate>)
+                const allRows = await this.executeReadRows(this.buildSoftDeleteOnlyWhere(), true)
                 const allModels = this.model.hydrateMany(allRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateMany']>[0])
 
                 filteredModels = await this.filterModelsByRelationConstraints(allModels, relationCache, baseIds)
@@ -968,7 +975,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         if (this.randomOrderEnabled) {
-            const rows = await this.delegate.findMany(this.buildFindArgs())
+            const rows = await this.executeReadRows()
             if (rows.length === 0)
                 return null
 
@@ -984,7 +991,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return model
         }
 
-        const row = await this.delegate.findFirst(this.buildFindArgs())
+        const row = await this.executeReadRow()
         if (!row)
             return null
 
@@ -1068,7 +1075,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async value<TKey extends keyof ModelAttributes<TModel> & string> (
         column: TKey
     ): Promise<ModelAttributes<TModel>[TKey] | null> {
-        const row = await this.delegate.findFirst(this.buildFindArgs()) as Record<string, unknown> | null
+        const row = await this.executeReadRow() as Record<string, unknown> | null
         if (!row)
             return null
 
@@ -1102,7 +1109,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         column: TKey,
         key?: keyof ModelAttributes<TModel> & string
     ): Promise<ArkormCollection<ModelAttributes<TModel>[TKey]>> {
-        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        const rows = await this.executeReadRows() as Record<string, unknown>[]
 
         if (!key)
             return new ArkormCollection(rows.map(row => row[column] as ModelAttributes<TModel>[TKey]))
@@ -1425,7 +1432,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (this.hasRelationFilters())
             return (await this.get()).all().length
 
-        return this.delegate.count({ where: this.buildWhere() })
+        return this.executeReadCount()
     }
 
     /**
@@ -1437,9 +1444,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (this.hasRelationFilters())
             return (await this.count()) > 0
 
-        const row = await this.delegate.findFirst(this.buildFindArgs())
-
-        return row != null
+        return await this.executeReadExists()
     }
 
     /**
@@ -1557,7 +1562,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async min<TKey extends keyof ModelAttributes<TModel> & string> (
         column: TKey
     ): Promise<ModelAttributes<TModel>[TKey] | null> {
-        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        const rows = await this.executeReadRows() as Record<string, unknown>[]
         if (rows.length === 0)
             return null
 
@@ -1581,7 +1586,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     public async max<TKey extends keyof ModelAttributes<TModel> & string> (
         column: TKey
     ): Promise<ModelAttributes<TModel>[TKey] | null> {
-        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        const rows = await this.executeReadRows() as Record<string, unknown>[]
         if (rows.length === 0)
             return null
 
@@ -1603,7 +1608,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async sum<TKey extends keyof ModelAttributes<TModel> & string> (column: TKey): Promise<number> {
-        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        const rows = await this.executeReadRows() as Record<string, unknown>[]
 
         return rows.reduce((total, row) => {
             const value = row[column]
@@ -1620,7 +1625,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async avg<TKey extends keyof ModelAttributes<TModel> & string> (column: TKey): Promise<number | null> {
-        const rows = await this.delegate.findMany(this.buildFindArgs()) as Record<string, unknown>[]
+        const rows = await this.executeReadRows() as Record<string, unknown>[]
         const values = rows
             .map(row => {
                 const value = row[column]
@@ -1768,7 +1773,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public clone (): QueryBuilder<TModel, TDelegate> {
-        const builder = new QueryBuilder<TModel, TDelegate>(this.delegate, this.model)
+        const builder = new QueryBuilder<TModel, TDelegate>(this.delegate, this.model, this.adapter)
         builder.args.where = this.args.where
         builder.args.include = this.args.include
         builder.args.orderBy = this.args.orderBy
@@ -1812,6 +1817,309 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         return relations
+    }
+
+    private buildQueryTarget (): QueryTarget<TModel> {
+        const modelClass = this.model as unknown as { delegate?: string }
+        const delegateName = typeof modelClass.delegate === 'string' && modelClass.delegate.length > 0
+            ? modelClass.delegate
+            : undefined
+
+        return {
+            model: this.model as unknown as ModelStatic<TModel, any>,
+            modelName: this.model.name,
+            table: delegateName,
+        }
+    }
+
+    private tryBuildQuerySelectColumns (): QuerySelectColumn[] | undefined | null {
+        if (!this.args.select)
+            return undefined
+
+        if (Array.isArray(this.args.select) || typeof this.args.select !== 'object')
+            return null
+
+        const entries = Object.entries(this.args.select as Record<string, unknown>)
+        if (entries.some(([, value]) => value !== true && value !== false && value !== undefined))
+            return null
+
+        const columns = entries
+            .filter(([, value]) => value === true)
+            .map(([column]) => ({ column }))
+
+        return columns.length > 0 ? columns : undefined
+    }
+
+    private tryBuildQueryOrderBy (): QueryOrderBy[] | undefined | null {
+        if (!this.args.orderBy)
+            return undefined
+
+        const clauses = Array.isArray(this.args.orderBy)
+            ? this.args.orderBy
+            : [this.args.orderBy]
+
+        const orderBy = clauses.reduce<QueryOrderBy[] | null>((accumulator, clause) => {
+            if (!accumulator)
+                return null
+
+            if (!clause || typeof clause !== 'object' || Array.isArray(clause))
+                return null
+
+            const entries = Object.entries(clause as Record<string, unknown>)
+            for (const [column, direction] of entries) {
+                if (direction !== 'asc' && direction !== 'desc')
+                    return null
+
+                accumulator.push({ column, direction })
+            }
+
+            return accumulator
+        }, [])
+
+        if (orderBy === null)
+            return null
+
+        return orderBy.length > 0 ? orderBy : undefined
+    }
+
+    private tryBuildFieldCondition (column: string, value: unknown): QueryCondition | null {
+        if (value === null)
+            return { type: 'comparison', column, operator: 'is-null' }
+
+        if (value instanceof Date || typeof value !== 'object')
+            return { type: 'comparison', column, operator: '=', value }
+
+        if (Array.isArray(value))
+            return null
+
+        const clause = value as Record<string, unknown>
+        const conditions: QueryCondition[] = []
+
+        for (const [operator, operand] of Object.entries(clause)) {
+            if (operator === 'equals') {
+                conditions.push({ type: 'comparison', column, operator: operand === null ? 'is-null' : '=', value: operand })
+                continue
+            }
+
+            if (operator === 'not') {
+                if (operand && typeof operand === 'object' && !Array.isArray(operand))
+                    return null
+
+                conditions.push({ type: 'comparison', column, operator: operand === null ? 'is-not-null' : '!=', value: operand })
+                continue
+            }
+
+            if (operator === 'in' || operator === 'notIn') {
+                if (!Array.isArray(operand))
+                    return null
+
+                conditions.push({
+                    type: 'comparison',
+                    column,
+                    operator: operator === 'in' ? 'in' : 'not-in',
+                    value: operand,
+                })
+                continue
+            }
+
+            if (operator === 'gt' || operator === 'gte' || operator === 'lt' || operator === 'lte') {
+                const comparison: QueryComparisonCondition = {
+                    type: 'comparison',
+                    column,
+                    operator: operator === 'gt'
+                        ? '>'
+                        : operator === 'gte'
+                            ? '>='
+                            : operator === 'lt'
+                                ? '<'
+                                : '<=',
+                    value: operand,
+                }
+
+                conditions.push(comparison)
+                continue
+            }
+
+            if (operator === 'contains' || operator === 'startsWith' || operator === 'endsWith') {
+                conditions.push({
+                    type: 'comparison',
+                    column,
+                    operator: operator === 'startsWith'
+                        ? 'starts-with'
+                        : operator === 'endsWith'
+                            ? 'ends-with'
+                            : 'contains',
+                    value: operand,
+                })
+                continue
+            }
+
+            return null
+        }
+
+        if (conditions.length === 0)
+            return null
+
+        return conditions.length === 1
+            ? conditions[0] ?? null
+            : { type: 'group', operator: 'and', conditions }
+    }
+
+    private tryBuildQueryCondition (where: unknown): QueryCondition | undefined | null {
+        if (!where)
+            return undefined
+
+        if (Array.isArray(where) || typeof where !== 'object')
+            return null
+
+        const conditions: QueryCondition[] = []
+
+        for (const [key, value] of Object.entries(where as Record<string, unknown>)) {
+            if (key === 'AND' || key === 'OR') {
+                if (!Array.isArray(value))
+                    return null
+
+                const nested = value
+                    .map(entry => this.tryBuildQueryCondition(entry))
+                    .filter((entry): entry is QueryCondition => entry !== undefined)
+
+                if (nested.some(entry => entry == null))
+                    return null
+
+                if (nested.length > 0) {
+                    conditions.push({
+                        type: 'group',
+                        operator: key === 'AND' ? 'and' : 'or',
+                        conditions: nested,
+                    })
+                }
+
+                continue
+            }
+
+            if (key === 'NOT') {
+                const nested = Array.isArray(value)
+                    ? value
+                        .map(entry => this.tryBuildQueryCondition(entry))
+                        .filter((entry): entry is QueryCondition => entry !== undefined)
+                    : [this.tryBuildQueryCondition(value)].filter((entry): entry is QueryCondition => entry !== undefined)
+
+                if (nested.some(entry => entry == null))
+                    return null
+
+                if (nested.length === 0)
+                    continue
+
+                conditions.push({
+                    type: 'not',
+                    condition: nested.length === 1
+                        ? nested[0] as QueryCondition
+                        : { type: 'group', operator: 'and', conditions: nested },
+                })
+                continue
+            }
+
+            const condition = this.tryBuildFieldCondition(key, value)
+            if (!condition)
+                return null
+
+            conditions.push(condition)
+        }
+
+        if (conditions.length === 0)
+            return undefined
+
+        return conditions.length === 1
+            ? conditions[0] ?? undefined
+            : { type: 'group', operator: 'and', conditions }
+    }
+
+    private tryBuildSelectSpec (where: DelegateWhere<TDelegate> | undefined): SelectSpec<TModel> | null {
+        const columns = this.tryBuildQuerySelectColumns()
+        const orderBy = this.tryBuildQueryOrderBy()
+        const condition = this.tryBuildQueryCondition(where)
+
+        if (columns === null || orderBy === null || condition === null)
+            return null
+
+        return {
+            target: this.buildQueryTarget(),
+            columns,
+            where: condition,
+            orderBy,
+            limit: this.args.take,
+            offset: this.args.skip,
+        }
+    }
+
+    private tryBuildAggregateSpec (): AggregateSpec<TModel> | null {
+        const condition = this.tryBuildQueryCondition(this.buildWhere())
+        if (condition === null)
+            return null
+
+        return {
+            target: this.buildQueryTarget(),
+            where: condition,
+            aggregate: { type: 'count' },
+        }
+    }
+
+    private buildFindArgsWithWhere (where: DelegateWhere<TDelegate> | undefined): DelegateFindManyArgs<TDelegate> {
+        return {
+            ...(this.args as DelegateFindManyArgs<TDelegate>),
+            where,
+        }
+    }
+
+    private async executeReadRows (
+        whereOverride?: DelegateWhere<TDelegate>,
+        useWhereOverride = false,
+    ): Promise<DatabaseRow[]> {
+        const where = useWhereOverride
+            ? whereOverride
+            : this.buildWhere()
+
+        if (this.adapter) {
+            const spec = this.tryBuildSelectSpec(where)
+            if (spec)
+                return await this.adapter.select(spec)
+        }
+
+        return await this.delegate.findMany(this.buildFindArgsWithWhere(where)) as DatabaseRow[]
+    }
+
+    private async executeReadRow (): Promise<DatabaseRow | null> {
+        if (this.adapter) {
+            const spec = this.tryBuildSelectSpec(this.buildWhere())
+            if (spec)
+                return await this.adapter.selectOne(spec)
+        }
+
+        return await this.delegate.findFirst(this.buildFindArgs()) as DatabaseRow | null
+    }
+
+    private async executeReadCount (): Promise<number> {
+        if (this.adapter) {
+            const spec = this.tryBuildAggregateSpec()
+            if (spec)
+                return await this.adapter.count(spec)
+        }
+
+        return await this.delegate.count({ where: this.buildWhere() })
+    }
+
+    private async executeReadExists (): Promise<boolean> {
+        if (this.adapter) {
+            const spec = this.tryBuildSelectSpec(this.buildWhere())
+            if (spec) {
+                if (typeof this.adapter.exists === 'function')
+                    return await this.adapter.exists({ ...spec, limit: 1 })
+
+                return (await this.adapter.selectOne({ ...spec, limit: 1 })) != null
+            }
+        }
+
+        return (await this.delegate.findFirst(this.buildFindArgs())) != null
     }
 
     /**

@@ -168,14 +168,30 @@ export const getLastMigrationRun = (
     if (runs.length === 0)
         return undefined
 
-    return [...runs].sort((left, right) => right.appliedAt.localeCompare(left.appliedAt))[0]
+    return runs
+        .map((run, index) => ({ run, index }))
+        .sort((left, right) => {
+            const appliedAtOrder = right.run.appliedAt.localeCompare(left.run.appliedAt)
+            if (appliedAtOrder !== 0)
+                return appliedAtOrder
+
+            return right.index - left.index
+        })[0]?.run
 }
 
 export const getLatestAppliedMigrations = (
     state: AppliedMigrationsState,
     steps: number
 ): AppliedMigrationEntry[] => {
-    return [...state.migrations]
-        .sort((left, right) => right.appliedAt.localeCompare(left.appliedAt))
+    return state.migrations
+        .map((migration, index) => ({ migration, index }))
+        .sort((left, right) => {
+            const appliedAtOrder = right.migration.appliedAt.localeCompare(left.migration.appliedAt)
+            if (appliedAtOrder !== 0)
+                return appliedAtOrder
+
+            return right.index - left.index
+        })
         .slice(0, Math.max(0, steps))
+        .map(entry => entry.migration)
 }

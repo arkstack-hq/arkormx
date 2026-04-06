@@ -359,6 +359,8 @@ Success criteria:
 
 ### Phase 1: Introduce Arkorm Adapter Types
 
+Status: completed
+
 Deliverables:
 
 - define `DatabaseAdapter` and related spec types in `src/types`
@@ -367,18 +369,26 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] add adapter contract types under `src/types`
-- [ ] define select, mutation, aggregate, relation-load, and transaction spec types
-- [ ] define adapter capability flags or feature descriptors for optional features
-- [ ] define shared row and result types that are not Prisma-specific
-- [ ] review existing type exports and decide where the new adapter types should be re-exported
-- [ ] add type-level tests or compile-only fixtures for the new public and internal type shapes
+- [x] add adapter contract types under `src/types`
+- [x] define select, mutation, aggregate, relation-load, and transaction spec types
+- [x] define adapter capability flags or feature descriptors for optional features
+- [x] define shared row and result types that are not Prisma-specific
+- [x] review existing type exports and decide where the new adapter types should be re-exported
+- [x] add type-level tests or compile-only fixtures for the new public and internal type shapes
+
+Completed in code:
+
+- `src/types/adapter.ts` now defines Arkorm-owned adapter, spec, condition, relation, and transaction types
+- adapter types are re-exported via `src/types/index.ts` and `src/index.ts`
+- compile coverage exists via `tests/types/adapter-types.fixture.ts`
 
 Success criteria:
 
 - adapter shapes are represented in types without changing runtime behavior yet
 
 ### Phase 2: Add a Prisma Compatibility Adapter
+
+Status: completed
 
 Deliverables:
 
@@ -388,18 +398,26 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] create a Prisma compatibility adapter module in `src`
-- [ ] map Arkorm select specs to existing Prisma delegate calls
-- [ ] map create, update, delete, count, and exists operations through the compatibility adapter
-- [ ] add transaction bridging so adapter-managed transactions still use the current Prisma transaction context correctly
-- [ ] preserve current soft delete expectations at the adapter boundary
-- [ ] add focused tests that compare compatibility-adapter behavior to current delegate behavior
+- [x] create a Prisma compatibility adapter module in `src`
+- [x] map Arkorm select specs to existing Prisma delegate calls
+- [x] map create, update, delete, count, and exists operations through the compatibility adapter
+- [x] add transaction bridging so adapter-managed transactions still use the current Prisma transaction context correctly
+- [x] preserve current soft delete expectations at the adapter boundary
+- [x] add focused tests that compare compatibility-adapter behavior to current delegate behavior
+
+Completed in code:
+
+- `src/adapters/PrismaDatabaseAdapter.ts` implements the compatibility adapter
+- `src/adapters/index.ts`, `src/helpers/prisma.ts`, and `src/index.ts` export the adapter factories and mapping helpers
+- focused verification lives in `tests/base/prisma-database-adapter.spec.ts`
 
 Success criteria:
 
 - Arkorm still behaves the same, but the runtime calls an adapter instead of a delegate directly
 
 ### Phase 3: Refactor QueryBuilder to Emit Arkorm Specs
+
+Status: in progress
 
 Deliverables:
 
@@ -409,12 +427,27 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] identify all methods in `QueryBuilder` that currently build Prisma-shaped args objects
+- [x] identify all methods in `QueryBuilder` that currently build Prisma-shaped args objects
 - [ ] replace internal delegate-arg state with Arkorm-owned query state structures
-- [ ] add one or more internal spec-builder methods for read, write, and aggregate paths
-- [ ] route execution methods through the adapter instead of calling delegate methods directly
-- [ ] preserve scope, pagination, eager-load intent, and soft-delete behavior during the refactor
+- [x] add one or more internal spec-builder methods for read, write, and aggregate paths
+- [~] route execution methods through the adapter instead of calling delegate methods directly
+- [x] preserve scope, pagination, eager-load intent, and soft-delete behavior during the refactor for current read-path coverage
 - [ ] remove or isolate Prisma-specific type dependencies from `QueryBuilder` where practical
+
+Completed in code:
+
+- `Model.query()` now resolves and passes a runtime adapter into `QueryBuilder`
+- `ModelStatic` exposes `getAdapter()` and `setAdapter()` so the adapter seam exists at the model layer
+- `QueryBuilder` can translate current read-state into Arkorm `SelectSpec` and `AggregateSpec`
+- read-style operations now use the adapter seam when the query shape is supported: `get`, `first`, `value`, `pluck`, `count`, `exists`, `min`, `max`, `sum`, and `avg`
+- delegate fallback remains in place for unsupported shapes and for the still-unmigrated write paths
+- focused regression coverage was added to `tests/base/query-builder.spec.ts`
+
+Remaining before Phase 3 can be marked complete:
+
+- replace Prisma-shaped internal builder state with Arkorm-owned query state
+- route create, update, delete, upsert, and related write helpers through adapter specs
+- remove the remaining Prisma-specific argument handling from `QueryBuilder`
 
 Success criteria:
 

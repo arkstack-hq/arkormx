@@ -1,3 +1,4 @@
+import type { DatabaseAdapter } from './adapter'
 import type { DelegateRow, PrismaDelegateLike, SoftDeleteConfig } from './core'
 
 import type { QueryBuilder } from '../QueryBuilder'
@@ -9,7 +10,9 @@ export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = Pris
     hydrateMany: (attributes: (DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>)[]) => TModel[]
     hydrateRetrieved: (attributes: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>) => Promise<TModel>
     hydrateManyRetrieved: (attributes: (DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>)[]) => Promise<TModel[]>
+    getAdapter: () => DatabaseAdapter | undefined
     getDelegate: (delegate?: string) => TDelegate
+    setAdapter: (adapter?: DatabaseAdapter) => void
     getSoftDeleteConfig: () => SoftDeleteConfig
 }
 

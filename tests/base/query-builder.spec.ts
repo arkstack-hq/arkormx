@@ -1,8 +1,8 @@
-import { ArkormCollection, LengthAwarePaginator, Paginator } from '../../src'
+import { ArkormCollection, LengthAwarePaginator, Paginator, createPrismaDatabaseAdapter } from '../../src'
 import { Article, User } from './helpers/core-fixtures'
-import { beforeEach, describe, expect, it } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import { setupCoreRuntime } from './helpers/core-fixtures'
+import { createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
 
 describe('QueryBuilder', () => {
     beforeEach(() => {
@@ -26,6 +26,31 @@ describe('QueryBuilder', () => {
         expect(simplePage.data).toBeInstanceOf(ArkormCollection)
         expect(simplePage.data.all().length).toBe(1)
         expect(simplePage.meta.hasMorePages).toBe(true)
+    })
+
+    it('routes basic read execution through the configured adapter seam', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+        const countSpy = vi.spyOn(adapter, 'count')
+        const existsSpy = vi.spyOn(adapter, 'exists')
+
+        User.setAdapter(adapter)
+
+        try {
+            await User.query().orderBy({ id: 'asc' }).get()
+            await User.query().whereKey('id', 1).first()
+            await User.query().count()
+            await User.query().whereKey('id', 1).exists()
+
+            expect(selectSpy).toHaveBeenCalled()
+            expect(selectOneSpy).toHaveBeenCalled()
+            expect(countSpy).toHaveBeenCalled()
+            expect(existsSpy).toHaveBeenCalled()
+        } finally {
+            User.setAdapter(undefined)
+        }
     })
 
     it('supports whereKey and whereIn helpers', async () => {

@@ -9,7 +9,9 @@ import {
     MorphOneRelation,
     MorphToManyRelation
 } from './relationship'
+import { createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
 import type { ModelFactory } from './database/factories'
+import type { DatabaseAdapter } from './types/adapter'
 import type {
     CastMap,
     EagerLoadConstraint,
@@ -53,6 +55,7 @@ export abstract class Model<
     private static eventsSuppressed = 0
 
     protected static factoryClass?: new () => ModelFactory<any, any>
+    protected static adapter?: DatabaseAdapter
     protected static client: Record<string, unknown>
     protected static delegate: string
     protected static softDeletes = false
@@ -113,6 +116,10 @@ export abstract class Model<
         client: Record<string, unknown>
     ): void {
         this.client = client
+    }
+
+    public static setAdapter (adapter?: DatabaseAdapter): void {
+        this.adapter = adapter
     }
 
     public static setFactory<TFactory extends ModelFactory<any, any>> (
@@ -373,6 +380,19 @@ export abstract class Model<
         return resolved as TDelegate
     }
 
+    public static getAdapter (): DatabaseAdapter | undefined {
+        ensureArkormConfigLoading()
+
+        if (this.adapter)
+            return this.adapter
+
+        const client = getActiveTransactionClient() ?? this.client ?? getRuntimePrismaClient()
+        if (!client || typeof client !== 'object')
+            return undefined
+
+        return createPrismaCompatibilityAdapter(client)
+    }
+
     /**
      * Get a new query builder instance for the model.
      * 
@@ -388,9 +408,12 @@ export abstract class Model<
     ): QueryBuilder<TModel, TDelegate> {
         Model.ensureModelBooted(this as unknown as typeof Model)
 
+        const modelStatic = this as unknown as ModelStatic<TModel, TDelegate>
+
         let builder = new QueryBuilder<TModel, TDelegate>(
-            (this as unknown as ModelStatic<TModel, TDelegate>).getDelegate(),
-            this as unknown as ModelStatic<TModel, TDelegate>
+            modelStatic.getDelegate(),
+            modelStatic,
+            modelStatic.getAdapter()
         )
 
         const modelClass = this as unknown as typeof Model
