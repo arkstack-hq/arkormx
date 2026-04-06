@@ -1073,8 +1073,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         key: TKey
     ): Promise<TModel | null>
     public async find (value: string | number, key?: string): Promise<TModel | null>
-    public async find (value: unknown, key = 'id'): Promise<TModel | null> {
-        return this.where({ [key]: value } as DelegateWhere<TDelegate>).first()
+    public async find (value: unknown, key?: string): Promise<TModel | null> {
+        const resolvedKey = key ?? this.model.getPrimaryKey()
+
+        return this.where({ [resolvedKey]: value } as DelegateWhere<TDelegate>).first()
     }
 
     /**
@@ -1095,7 +1097,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         keyOrCallback: string | (() => TResult | Promise<TResult>),
         maybeCallback?: () => TResult | Promise<TResult>
     ): Promise<TModel | TResult> {
-        const key = typeof keyOrCallback === 'string' ? keyOrCallback : 'id'
+        const key = typeof keyOrCallback === 'string' ? keyOrCallback : this.model.getPrimaryKey()
         const callback = typeof keyOrCallback === 'function' ? keyOrCallback : maybeCallback
         if (!callback)
             throw new QueryConstraintException('findOr requires a fallback callback.', {
@@ -1244,7 +1246,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         sequence?: string | null
     ): Promise<unknown> {
         const created = await this.executeInsertRow(values) as Record<string, unknown>
-        const key = sequence ?? 'id'
+        const key = sequence ?? this.model.getPrimaryKey()
         if (!(key in created))
             throw new UniqueConstraintResolutionException(`Inserted record does not contain key [${key}].`, {
                 operation: 'insertGetId',
@@ -1885,15 +1887,15 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     private buildQueryTarget (): QueryTarget<TModel> {
-        const modelClass = this.model as unknown as { delegate?: string }
-        const delegateName = typeof modelClass.delegate === 'string' && modelClass.delegate.length > 0
-            ? modelClass.delegate
-            : undefined
+        const metadata = this.model.getModelMetadata()
 
         return {
             model: this.model as unknown as ModelStatic<TModel, any>,
             modelName: this.model.name,
-            table: delegateName,
+            table: metadata.table,
+            primaryKey: metadata.primaryKey,
+            columns: metadata.columns,
+            softDelete: metadata.softDelete,
         }
     }
 
@@ -2590,7 +2592,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         const row = await this.requireAdapter().selectOne({
             target: this.buildQueryTarget(),
-            columns: [{ column: 'id' }],
+            columns: [{ column: this.model.getPrimaryKey() }],
             where: condition,
             limit: 1,
         }) as Record<string, unknown> | null
@@ -2603,8 +2605,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        if (!Object.prototype.hasOwnProperty.call(row, 'id'))
-            throw new UniqueConstraintResolutionException('Unable to resolve a unique identifier for update/delete operation. Include an id in the query constraints.', {
+        const primaryKey = this.model.getPrimaryKey()
+
+        if (!Object.prototype.hasOwnProperty.call(row, primaryKey))
+            throw new UniqueConstraintResolutionException(`Unable to resolve a unique identifier for update/delete operation. Include [${primaryKey}] in the query constraints.`, {
                 operation: 'resolveUniqueWhere',
                 model: this.model.name,
                 meta: {
@@ -2612,7 +2616,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        return { id: row.id } as unknown as DelegateUniqueWhere<TDelegate>
+        return { [primaryKey]: row[primaryKey] } as unknown as DelegateUniqueWhere<TDelegate>
     }
 
     /**
@@ -2623,7 +2627,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     private isUniqueWhere (where: Record<string, unknown>): boolean {
-        return Object.keys(where).length === 1 && Object.prototype.hasOwnProperty.call(where, 'id')
+        const primaryKey = this.model.getPrimaryKey()
+
+        return Object.keys(where).length === 1 && Object.prototype.hasOwnProperty.call(where, primaryKey)
     }
 
     private shuffleRows<TRow> (rows: TRow[]): TRow[] {
@@ -2686,7 +2692,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (typeof readable.getAttribute !== 'function')
             return null
 
-        const id = readable.getAttribute('id')
+        const id = readable.getAttribute(this.model.getPrimaryKey())
         if (typeof id === 'number' || typeof id === 'string')
             return id
 

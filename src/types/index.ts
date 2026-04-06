@@ -1,6 +1,7 @@
 export * from './adapter'
 export * from './core'
 export * from './factories'
+export * from './metadata'
 export * from './migrations'
 export * from './model'
 export * from './ModelStatic'

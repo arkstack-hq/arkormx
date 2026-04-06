@@ -1,5 +1,6 @@
+import type { HasOneThroughRelationMetadata, RelatedModelClass } from 'src/types'
+
 import type { QueryBuilder } from '../QueryBuilder'
-import type { RelatedModelClass } from 'src/types'
 import { SingleResultRelation } from './SingleResultRelation'
 
 /**
@@ -46,6 +47,18 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
             return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: [] } }))
 
         return this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediateKey }))
+    }
+
+    public getMetadata (): HasOneThroughRelationMetadata {
+        return {
+            type: 'hasOneThrough',
+            relatedModel: this.related,
+            throughTable: this.throughDelegate,
+            firstKey: this.firstKey,
+            secondKey: this.secondKey,
+            localKey: this.localKey,
+            secondLocalKey: this.secondLocalKey,
+        }
     }
 
     /**

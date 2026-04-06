@@ -1,4 +1,4 @@
-import type { DatabaseAdapter, ModelAttributes } from '../types'
+import type { DatabaseAdapter, ModelAttributes, RelationMetadata } from '../types'
 
 import { ArkormCollection } from '../Collection'
 import { QueryBuilder } from '../QueryBuilder'
@@ -212,6 +212,8 @@ export abstract class Relation<TModel> {
 
         return constrained ?? query
     }
+
+    public abstract getMetadata (): RelationMetadata
 
     /**
      * Build the underlying query for the relationship.

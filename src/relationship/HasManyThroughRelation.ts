@@ -1,7 +1,8 @@
+import type { HasManyThroughRelationMetadata, RelationshipModelStatic } from 'src/types'
+
 import { ArkormCollection } from '../Collection'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
 
 /**
  * Defines a has-many-through relationship, which provides a convenient way to access 
@@ -44,6 +45,18 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
         })
 
         return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: keys } }))
+    }
+
+    public getMetadata (): HasManyThroughRelationMetadata {
+        return {
+            type: 'hasManyThrough',
+            relatedModel: this.related,
+            throughTable: this.throughDelegate,
+            firstKey: this.firstKey,
+            secondKey: this.secondKey,
+            localKey: this.localKey,
+            secondLocalKey: this.secondLocalKey,
+        }
     }
 
     /**

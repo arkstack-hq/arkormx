@@ -12,6 +12,38 @@ export class User extends Model<'users'> {
 }
 ```
 
+## Metadata (Arkormˣ next)
+
+Arkorm can now expose explicit model metadata for adapters and future SQL planning,
+while still preserving convention-based fallback behavior for existing models.
+
+```ts
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+  protected static override table = 'app_users';
+  protected static override primaryKey = 'uuid';
+  protected static override columns = {
+    displayName: 'display_name',
+  };
+}
+```
+
+Available metadata helpers:
+
+- `Model.getTable()`
+- `Model.getPrimaryKey()`
+- `Model.getColumnMap()`
+- `Model.getColumnName(attribute)`
+- `Model.getModelMetadata()`
+- `Model.getRelationMetadata(name)`
+
+Fallback rules:
+
+- `table` falls back to `delegate`, then the model name in plural camel case.
+- `primaryKey` falls back to `'id'`.
+- `columns` falls back to an empty map.
+- soft delete metadata still comes from `softDeletes` and `deletedAtColumn`.
+
 ## Attributes
 
 ```ts

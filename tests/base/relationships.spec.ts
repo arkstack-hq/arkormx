@@ -98,6 +98,41 @@ describe('Model relationships', () => {
         expect((tags as ArkormCollection<Tag>).all().length).toBe(2)
     })
 
+    it('exposes relation metadata from model relationship definitions', () => {
+        expect(User.getRelationMetadata('profile')).toMatchObject({
+            type: 'hasOne',
+            foreignKey: 'userId',
+            localKey: 'id',
+        })
+        expect(User.getRelationMetadata('roles')).toMatchObject({
+            type: 'belongsToMany',
+            throughTable: 'roleUsers',
+            foreignPivotKey: 'userId',
+            relatedPivotKey: 'roleId',
+            parentKey: 'id',
+            relatedKey: 'id',
+        })
+        expect(User.getRelationMetadata('avatar')).toMatchObject({
+            type: 'hasOneThrough',
+            throughTable: 'profiles',
+            firstKey: 'userId',
+            secondKey: 'profileId',
+            localKey: 'id',
+            secondLocalKey: 'id',
+        })
+        expect(User.getRelationMetadata('tags')).toMatchObject({
+            type: 'morphToMany',
+            throughTable: 'taggables',
+            morphName: 'taggable',
+            morphIdColumn: 'taggableId',
+            morphTypeColumn: 'taggableType',
+            relatedPivotKey: 'tagId',
+            parentKey: 'id',
+            relatedKey: 'id',
+        })
+        expect(User.getRelationMetadata('missing')).toBeNull()
+    })
+
     it('returns empty collections for through and many-to-many relations with no matches', async () => {
         const user = await User.query().find(2)
         expect(user).not.toBeNull()
