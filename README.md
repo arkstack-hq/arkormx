@@ -7,12 +7,12 @@
 [![Deploy Documentation](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml)
 [![codecov](https://codecov.io/gh/arkstack-hq/arkormx/graph/badge.svg?token=ls1VVoFkYh)](https://codecov.io/gh/arkstack-hq/arkormx)
 
-Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
+Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility kept during the current transition window.
 
 ## Features
 
-- Arkormˣ is built on top of Prisma, providing a familiar and powerful API for database interactions.
-- Delegate-backed query execution with practical ORM ergonomics.
+- Adapter-backed query execution with practical ORM ergonomics.
+- Adapter-first runtime setup with Kysely/Postgres support and a Prisma compatibility adapter during migration.
 - End-to-end guides for setup, querying, relationships, migrations, and CLI usage.
 - Full TypeScript support, providing strong typing and improved developer experience.
 - Follows best practices for security, ensuring your data is protected.
@@ -38,6 +38,22 @@ pnpm add -D prisma
 ```
 
 ### Configuration
+
+Primary runtime path:
+
+```ts
+import { Model, createPrismaDatabaseAdapter } from 'arkormx';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+const adapter = createPrismaDatabaseAdapter(prisma);
+
+class User extends Model<'users'> {}
+
+User.setAdapter(adapter);
+```
+
+Optional compatibility/runtime config for CLI and transaction helpers:
 
 Create `arkormx.config.js` in your project root:
 
@@ -98,6 +114,7 @@ await User.transaction(async () => {
 
 - [Setup](https://arkormx.toneflix.net/guide/setup)
 - [Configuration](https://arkormx.dev/guide/configuration)
+- [Prisma Compatibility](https://arkormx.dev/guide/prisma-compatibility)
 - [Typing](https://arkormx.dev/guide/typing)
 - [Models](https://arkormx.dev/guide/models)
 - [Query Builder](https://arkormx.dev/guide/query-builder)

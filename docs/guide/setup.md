@@ -1,9 +1,10 @@
 # Setup
 
-This page contains a complete starter setup for Arkormˣ + Prisma.
+This page contains a complete starter setup for adapter-first Arkormˣ.
 
-It also includes the Phase 6 Kysely/Postgres runtime path for applications that
-want Arkorm models and query APIs on top of direct SQL execution.
+The primary path is to bind an adapter to your models at bootstrap time.
+Prisma runtime config remains available for CLI flows, transaction helpers, and
+the compatibility adapter during the transition window.
 
 ## 1. Create `arkormx.config.ts`
 
@@ -32,6 +33,9 @@ export default defineConfig({
 });
 ```
 
+This config keeps Prisma available for Arkorm runtime helpers. Your model query
+path should still bind an adapter explicitly.
+
 You can also use the Arkormˣ CLI to generate this config file by running the initialize command: `npx arkormx init`.
 
 ## 2. Define models
@@ -49,7 +53,20 @@ export class Article extends Model<'articles'> {
 }
 ```
 
-## 3. Query usage
+## 3. Bind an adapter
+
+Prisma compatibility adapter:
+
+```ts
+import { createPrismaDatabaseAdapter } from 'arkormx';
+
+const adapter = createPrismaDatabaseAdapter(prisma);
+
+User.setAdapter(adapter);
+Article.setAdapter(adapter);
+```
+
+## 4. Query usage
 
 ```ts
 const users = await User.query().whereKey('isActive', true).latest().get();
@@ -59,7 +76,7 @@ users[0]?.getAttribute('email');
 article?.getAttribute('deletedAt');
 ```
 
-## 4. Pagination URL customization (optional)
+## 5. Pagination URL customization (optional)
 
 ```ts
 import { URLDriver, defineConfig } from 'arkormx';
@@ -78,7 +95,7 @@ export default defineConfig({
 });
 ```
 
-## 5. Kysely + Postgres runtime
+## 6. Kysely + Postgres runtime
 
 If you want Arkorm to execute core CRUD queries through Kysely instead of the
 Prisma compatibility adapter, create a Kysely database instance, wrap it with
@@ -201,7 +218,7 @@ If you bind transaction-scoped adapters manually like this, restore the
 previous adapter before leaving the callback. A small runtime helper that binds
 and restores adapters for a known model list is the cleanest pattern.
 
-## 6. Production notes for TS seeders/migrations
+## 7. Production notes for TS seeders/migrations
 
 When you run the Arkormˣ CLI, Node executes JavaScript.
 If you source files are TypeScript, ensure that your build output structure is mirrors your source structure.

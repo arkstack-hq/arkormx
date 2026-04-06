@@ -131,15 +131,19 @@ Use this when you need to control transaction timeouts or isolation semantics.
 
 ## Requirements
 
-Transaction support depends on Arkorm having access to a runtime Prisma client.
-Use `defineConfig({ prisma })` or `configureArkormRuntime(...)` during
-application boot so Arkorm can start and scope transactions correctly.
+`Model.transaction(...)` depends on Arkorm having access to a runtime Prisma
+client. Use `defineConfig({ prisma })` or `configureArkormRuntime(...)` during
+application boot when you want Prisma-backed transaction scoping.
 
 ```ts
 import { configureArkormRuntime } from 'arkormx';
 
 configureArkormRuntime(() => prisma);
 ```
+
+If your app uses an adapter-first runtime path such as Kysely, prefer the
+adapter's own `transaction(...)` method and bind the transaction-scoped adapter
+inside that callback.
 
 If your current adapter does not expose transaction support, Arkorm throws an
 unsupported-adapter error when `Model.transaction()` is called.

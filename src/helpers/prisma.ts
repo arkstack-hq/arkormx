@@ -9,9 +9,11 @@ export type PrismaDelegateMap<TClient extends PrismaClientLike> = {
 }
 
 /**
- * Create an adapter to convert a Prisma client instance into a format 
+ * Create an adapter to convert a Prisma client instance into a format
  * compatible with ArkORM's expectations.
- * 
+ *
+ * @deprecated Prefer createPrismaDatabaseAdapter(prisma) for runtime usage.
+ *
  * @param prisma The Prisma client instance to adapt.
  * @param mapping An optional mapping of Prisma delegate names to ArkORM delegate names.
  * @returns A record of adapted Prisma delegates compatible with ArkORM.
@@ -33,6 +35,9 @@ export function createPrismaAdapter (
 
 /**
  * Create a delegate mapping record for Model.setClient() from a Prisma client.
+ *
+ * @deprecated Prefer createPrismaDatabaseAdapter(prisma, mapping) and bind the
+ * resulting adapter with Model.setAdapter(...).
  *
  * @param prisma The Prisma client instance.
  * @param mapping Optional mapping of Arkormˣ delegate names to Prisma delegate names.
