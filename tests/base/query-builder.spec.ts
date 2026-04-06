@@ -1,7 +1,6 @@
 import { ArkormCollection, LengthAwarePaginator, Paginator, createPrismaDatabaseAdapter } from '../../src'
 import { Article, User } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-
 import { createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
 
 describe('QueryBuilder', () => {
@@ -48,6 +47,95 @@ describe('QueryBuilder', () => {
             expect(selectOneSpy).toHaveBeenCalled()
             expect(countSpy).toHaveBeenCalled()
             expect(existsSpy).toHaveBeenCalled()
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
+    it('routes core write execution through the configured adapter seam', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const insertSpy = vi.spyOn(adapter, 'insert')
+        const insertManySpy = vi.spyOn(adapter, 'insertMany')
+        const updateSpy = vi.spyOn(adapter, 'update')
+        const updateManySpy = vi.spyOn(adapter, 'updateMany')
+        const deleteSpy = vi.spyOn(adapter, 'delete')
+
+        User.setAdapter(adapter)
+
+        try {
+            await User.query().create({
+                id: 20,
+                name: 'Adapter Create',
+                email: 'adapter-create@example.com',
+                isActive: 1,
+                createdAt: new Date('2026-03-04T20:00:00.000Z'),
+                updatedAt: new Date('2026-03-04T20:00:00.000Z'),
+            })
+
+            await User.query().insert([
+                {
+                    id: 21,
+                    name: 'Adapter Insert A',
+                    email: 'adapter-insert-a@example.com',
+                    isActive: 1,
+                    createdAt: new Date('2026-03-04T21:00:00.000Z'),
+                    updatedAt: new Date('2026-03-04T21:00:00.000Z'),
+                },
+                {
+                    id: 22,
+                    name: 'Adapter Insert B',
+                    email: 'adapter-insert-b@example.com',
+                    isActive: 0,
+                    createdAt: new Date('2026-03-04T22:00:00.000Z'),
+                    updatedAt: new Date('2026-03-04T22:00:00.000Z'),
+                },
+            ])
+
+            await User.query().whereKey('id', 20).update({ name: 'Adapter Updated' })
+            await User.query().where({ isActive: 1 }).updateFrom({ name: 'Batch Updated' })
+            await User.query().whereKey('id', 22).delete()
+
+            expect(insertSpy).toHaveBeenCalled()
+            expect(insertManySpy).toHaveBeenCalled()
+            expect(updateSpy).toHaveBeenCalled()
+            expect(updateManySpy).toHaveBeenCalled()
+            expect(deleteSpy).toHaveBeenCalled()
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
+    it('routes duplicate-ignore inserts through the configured adapter seam', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const insertManySpy = vi.spyOn(adapter, 'insertMany')
+
+        User.setAdapter(adapter)
+
+        try {
+            await User.query().insertOrIgnore([
+                {
+                    id: 30,
+                    name: 'Ignore A',
+                    email: 'ignore-a@example.com',
+                    isActive: 1,
+                    createdAt: new Date('2026-03-04T23:00:00.000Z'),
+                    updatedAt: new Date('2026-03-04T23:00:00.000Z'),
+                },
+                {
+                    id: 31,
+                    name: 'Ignore B',
+                    email: 'ignore-b@example.com',
+                    isActive: 0,
+                    createdAt: new Date('2026-03-04T23:30:00.000Z'),
+                    updatedAt: new Date('2026-03-04T23:30:00.000Z'),
+                },
+            ])
+
+            expect(insertManySpy).toHaveBeenCalledWith(expect.objectContaining({
+                ignoreDuplicates: true,
+            }))
         } finally {
             User.setAdapter(undefined)
         }

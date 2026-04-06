@@ -148,6 +148,7 @@ export interface InsertSpec<TModel = unknown> {
 export interface InsertManySpec<TModel = unknown> {
     target: QueryTarget<TModel>
     values: DatabaseRow[]
+    ignoreDuplicates?: boolean
 }
 
 export interface UpdateSpec<TModel = unknown> {

@@ -1,6 +1,6 @@
-import type { DatabaseAdapter } from './adapter'
 import type { DelegateRow, PrismaDelegateLike, SoftDeleteConfig } from './core'
 
+import type { DatabaseAdapter } from './adapter'
 import type { QueryBuilder } from '../QueryBuilder'
 
 export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> {

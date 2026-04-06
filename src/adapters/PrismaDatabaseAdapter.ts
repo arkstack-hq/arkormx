@@ -244,22 +244,32 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
 
     public async insertMany<TModel = unknown> (spec: InsertManySpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target) as PrismaDelegateLike & {
-            createMany?: (args: { data: DatabaseRow[] }) => Promise<{ count?: number } | number>
+            createMany?: (args: { data: DatabaseRow[], skipDuplicates?: boolean }) => Promise<{ count?: number } | number>
         }
 
         if (typeof delegate.createMany === 'function') {
-            const result = await delegate.createMany({ data: spec.values })
+            const result = await delegate.createMany({
+                data: spec.values,
+                skipDuplicates: spec.ignoreDuplicates,
+            })
             if (typeof result === 'number')
                 return result
 
             return typeof result?.count === 'number' ? result.count : spec.values.length
         }
 
-        await Promise.all(spec.values.map(async (values) => {
-            await delegate.create({ data: values })
-        }))
+        let inserted = 0
+        for (const values of spec.values) {
+            try {
+                await delegate.create({ data: values })
+                inserted += 1
+            } catch (error) {
+                if (!spec.ignoreDuplicates)
+                    throw error
+            }
+        }
 
-        return spec.values.length
+        return spec.ignoreDuplicates ? inserted : spec.values.length
     }
 
     public async update<TModel = unknown> (spec: UpdateSpec<TModel>): Promise<DatabaseRow | null> {

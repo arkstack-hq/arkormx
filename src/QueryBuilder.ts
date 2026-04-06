@@ -2,6 +2,7 @@ import type {
     AggregateSpec,
     DatabaseAdapter,
     DatabaseRow,
+    DatabaseValue,
     DelegateCreateData,
     DelegateFindManyArgs,
     DelegateInclude,
@@ -11,19 +12,24 @@ import type {
     DelegateUniqueWhere,
     DelegateUpdateData,
     DelegateWhere,
+    DeleteSpec,
     EagerLoadConstraint,
     EagerLoadMap,
+    InsertManySpec,
+    InsertSpec,
     ModelAttributes,
     ModelStatic,
     PaginationOptions,
+    PrismaDelegateLike,
+    PrismaFindManyArgsLike,
     QueryComparisonCondition,
     QueryCondition,
     QueryOrderBy,
     QuerySelectColumn,
     QueryTarget,
-    PrismaDelegateLike,
-    PrismaFindManyArgsLike,
     SelectSpec,
+    UpdateManySpec,
+    UpdateSpec,
 } from './types'
 import { LengthAwarePaginator, Paginator } from './Paginator'
 
@@ -1128,7 +1134,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async create (data: DelegateCreateData<TDelegate>): Promise<TModel> {
-        const created = await this.delegate.create({ data } as Parameters<TDelegate['create']>[0])
+        const created = await this.executeInsertRow(data)
 
         return this.model.hydrate(created as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1161,6 +1167,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (payloads.length === 0)
             return true
 
+        if (this.adapter) {
+            if (payloads.length === 1) {
+                await this.executeInsertRow(payloads[0] as DelegateCreateData<TDelegate>)
+
+                return true
+            }
+
+            const inserted = await this.executeInsertManyRows(payloads)
+            if (inserted != null)
+                return true
+        }
+
         const delegate = this.delegate as unknown as {
             createMany?: (args: { data: DelegateCreateData<TDelegate>[] }) => Promise<unknown>
         }
@@ -1190,6 +1208,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         const payloads = this.normalizeInsertPayloads(values)
         if (payloads.length === 0)
             return 0
+
+        if (this.adapter) {
+            const inserted = await this.executeInsertManyRows(payloads, true)
+            if (inserted != null)
+                return inserted
+        }
 
         const delegate = this.delegate as unknown as {
             createMany?: (args: { data: DelegateCreateData<TDelegate>[], skipDuplicates?: boolean }) => Promise<unknown>
@@ -1228,7 +1252,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         values: DelegateCreateData<TDelegate>,
         sequence?: string | null
     ): Promise<unknown> {
-        const created = await this.delegate.create({ data: values } as Parameters<TDelegate['create']>[0]) as Record<string, unknown>
+        const created = await this.executeInsertRow(values) as Record<string, unknown>
         const key = sequence ?? 'id'
         if (!(key in created))
             throw new UniqueConstraintResolutionException(`Inserted record does not contain key [${key}].`, {
@@ -1296,7 +1320,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             })
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
-        const updated = await this.delegate.update({ where: uniqueWhere, data } as Parameters<TDelegate['update']>[0])
+        const updated = await this.executeUpdateRow(uniqueWhere, data)
 
         return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1314,6 +1338,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 operation: 'updateFrom',
                 model: this.model.name,
             })
+
+        if (this.adapter) {
+            const updated = await this.executeUpdateManyRows(where, data)
+            if (updated != null)
+                return updated
+        }
 
         const delegate = this.delegate as unknown as {
             updateMany?: (args: { where: DelegateWhere<TDelegate>, data: DelegateUpdateData<TDelegate> }) => Promise<unknown>
@@ -1341,19 +1371,17 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         attributes: Record<string, unknown>,
         values: Record<string, unknown> | ((exists: boolean) => Record<string, unknown> | Promise<Record<string, unknown>>) = {}
     ): Promise<boolean> {
-        const existing = await this.delegate.findFirst({ where: attributes } as Parameters<TDelegate['findFirst']>[0])
+        const existing = await this.clone().where(attributes as DelegateWhere<TDelegate>).first()
         const exists = existing != null
         const resolvedValues = typeof values === 'function'
             ? await values(exists)
             : values
 
         if (!exists) {
-            await this.delegate.create({
-                data: {
-                    ...attributes,
-                    ...resolvedValues,
-                },
-            } as Parameters<TDelegate['create']>[0])
+            await this.executeInsertRow({
+                ...attributes,
+                ...resolvedValues,
+            } as DelegateCreateData<TDelegate>)
 
             return true
         }
@@ -1418,9 +1446,70 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             })
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
-        const deleted = await this.delegate.delete({ where: uniqueWhere } as Parameters<TDelegate['delete']>[0])
+        const deleted = await this.executeDeleteRow(uniqueWhere)
 
         return this.model.hydrate(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+    }
+    private tryBuildInsertSpec (values: DelegateCreateData<TDelegate>): InsertSpec<TModel> {
+        return {
+            target: this.buildQueryTarget(),
+            values: values as DatabaseRow,
+        }
+    }
+
+    private tryBuildInsertManySpec (values: DelegateCreateData<TDelegate>[]): InsertManySpec<TModel> {
+        return {
+            target: this.buildQueryTarget(),
+            values: values as DatabaseRow[],
+        }
+    }
+
+    private tryBuildInsertOrIgnoreManySpec (values: DelegateCreateData<TDelegate>[]): InsertManySpec<TModel> {
+        return {
+            ...this.tryBuildInsertManySpec(values),
+            ignoreDuplicates: true,
+        }
+    }
+
+    private tryBuildUpdateSpec (
+        where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
+        values: DelegateUpdateData<TDelegate>
+    ): UpdateSpec<TModel> | null {
+        const condition = this.tryBuildQueryCondition(where)
+        if (!condition)
+            return null
+
+        return {
+            target: this.buildQueryTarget(),
+            where: condition,
+            values: values as DatabaseRow,
+        }
+    }
+
+    private tryBuildUpdateManySpec (
+        where: DelegateWhere<TDelegate> | undefined,
+        values: DelegateUpdateData<TDelegate>
+    ): UpdateManySpec<TModel> | null {
+        const condition = this.tryBuildQueryCondition(where)
+        if (condition === null)
+            return null
+
+        return {
+            target: this.buildQueryTarget(),
+            where: condition,
+            values: values as DatabaseRow,
+        }
+    }
+
+    private tryBuildDeleteSpec (where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>): DeleteSpec<TModel> | null {
+        const condition = this.tryBuildQueryCondition(where)
+        if (!condition)
+            return null
+
+        return {
+            target: this.buildQueryTarget(),
+            where: condition,
+        }
     }
 
     /**
@@ -1887,7 +1976,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return { type: 'comparison', column, operator: 'is-null' }
 
         if (value instanceof Date || typeof value !== 'object')
-            return { type: 'comparison', column, operator: '=', value }
+            return { type: 'comparison', column, operator: '=', value: value as DatabaseValue }
 
         if (Array.isArray(value))
             return null
@@ -1897,7 +1986,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         for (const [operator, operand] of Object.entries(clause)) {
             if (operator === 'equals') {
-                conditions.push({ type: 'comparison', column, operator: operand === null ? 'is-null' : '=', value: operand })
+                conditions.push({ type: 'comparison', column, operator: operand === null ? 'is-null' : '=', value: operand as DatabaseValue })
                 continue
             }
 
@@ -1905,7 +1994,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 if (operand && typeof operand === 'object' && !Array.isArray(operand))
                     return null
 
-                conditions.push({ type: 'comparison', column, operator: operand === null ? 'is-not-null' : '!=', value: operand })
+                conditions.push({ type: 'comparison', column, operator: operand === null ? 'is-not-null' : '!=', value: operand as DatabaseValue })
                 continue
             }
 
@@ -1933,7 +2022,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                             : operator === 'lt'
                                 ? '<'
                                 : '<=',
-                    value: operand,
+                    value: operand as DatabaseValue,
                 }
 
                 conditions.push(comparison)
@@ -1949,7 +2038,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                         : operator === 'endsWith'
                             ? 'ends-with'
                             : 'contains',
-                    value: operand,
+                    value: operand as DatabaseValue,
                 })
                 continue
             }
@@ -2120,6 +2209,69 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         return (await this.delegate.findFirst(this.buildFindArgs())) != null
+    }
+    private async executeInsertRow (values: DelegateCreateData<TDelegate>): Promise<DatabaseRow> {
+        if (this.adapter)
+            return await this.adapter.insert(this.tryBuildInsertSpec(values))
+
+        return await this.delegate.create({ data: values } as Parameters<TDelegate['create']>[0]) as DatabaseRow
+    }
+
+    private async executeInsertManyRows (
+        values: DelegateCreateData<TDelegate>[],
+        ignoreDuplicates = false,
+    ): Promise<number | null> {
+        if (this.adapter && typeof this.adapter.insertMany === 'function') {
+            return await this.adapter.insertMany(
+                ignoreDuplicates
+                    ? this.tryBuildInsertOrIgnoreManySpec(values)
+                    : this.tryBuildInsertManySpec(values)
+            )
+        }
+
+        return null
+    }
+
+    private async executeUpdateRow (
+        where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
+        values: DelegateUpdateData<TDelegate>
+    ): Promise<DatabaseRow> {
+        if (this.adapter) {
+            const spec = this.tryBuildUpdateSpec(where, values)
+            if (spec) {
+                const updated = await this.adapter.update(spec)
+                if (updated)
+                    return updated
+            }
+        }
+
+        return await this.delegate.update({ where, data: values } as Parameters<TDelegate['update']>[0]) as DatabaseRow
+    }
+
+    private async executeUpdateManyRows (
+        where: DelegateWhere<TDelegate> | undefined,
+        values: DelegateUpdateData<TDelegate>
+    ): Promise<number | null> {
+        if (this.adapter && typeof this.adapter.updateMany === 'function') {
+            const spec = this.tryBuildUpdateManySpec(where, values)
+            if (spec)
+                return await this.adapter.updateMany(spec)
+        }
+
+        return null
+    }
+
+    private async executeDeleteRow (where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>): Promise<DatabaseRow> {
+        if (this.adapter) {
+            const spec = this.tryBuildDeleteSpec(where)
+            if (spec) {
+                const deleted = await this.adapter.delete(spec)
+                if (deleted)
+                    return deleted
+            }
+        }
+
+        return await this.delegate.delete({ where } as Parameters<TDelegate['delete']>[0]) as DatabaseRow
     }
 
     /**

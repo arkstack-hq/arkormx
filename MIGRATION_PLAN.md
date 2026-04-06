@@ -440,13 +440,15 @@ Completed in code:
 - `ModelStatic` exposes `getAdapter()` and `setAdapter()` so the adapter seam exists at the model layer
 - `QueryBuilder` can translate current read-state into Arkorm `SelectSpec` and `AggregateSpec`
 - read-style operations now use the adapter seam when the query shape is supported: `get`, `first`, `value`, `pluck`, `count`, `exists`, `min`, `max`, `sum`, and `avg`
-- delegate fallback remains in place for unsupported shapes and for the still-unmigrated write paths
+- core write operations now use the adapter seam when the contract supports them: `create`, `insert`, `insertGetId`, `update`, `updateFrom`, `updateOrInsert`, `upsert`, and `delete`
+- duplicate-ignore insert flows now also use the adapter seam via `InsertManySpec.ignoreDuplicates`: `insertOrIgnore` and `insertOrIgnoreUsing`
+- delegate fallback remains in place for unsupported shapes and for the still-unmigrated internal query-state representation
 - focused regression coverage was added to `tests/base/query-builder.spec.ts`
 
 Remaining before Phase 3 can be marked complete:
 
 - replace Prisma-shaped internal builder state with Arkorm-owned query state
-- route create, update, delete, upsert, and related write helpers through adapter specs
+- replace the remaining delegate-shaped builder state with Arkorm-owned query state instead of translating out of Prisma-like args at execution time
 - remove the remaining Prisma-specific argument handling from `QueryBuilder`
 
 Success criteria:
