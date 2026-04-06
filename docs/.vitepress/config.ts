@@ -32,6 +32,7 @@ export default defineConfig({
                     { text: 'Get Started', link: '/guide/getting-started' },
                     { text: 'Setup', link: '/guide/setup' },
                     { text: 'Configuration', link: '/guide/configuration' },
+                    { text: 'Prisma Compatibility', link: '/guide/prisma-compatibility' },
                     { text: 'Troubleshooting', link: '/guide/troubleshooting' },
                 ],
             },

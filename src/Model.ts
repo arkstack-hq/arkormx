@@ -54,6 +54,7 @@ export abstract class Model<
     TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
 > {
     private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
+    private static readonly emittedDeprecationWarnings = new Set<string>()
     private static eventsSuppressed = 0
 
     protected static factoryClass?: new () => ModelFactory<any, any>
@@ -112,14 +113,33 @@ export abstract class Model<
         }) as this
     }
 
+    private static emitDeprecationWarning (code: string, message: string): void {
+        if (Model.emittedDeprecationWarnings.has(code))
+            return
+
+        Model.emittedDeprecationWarnings.add(code)
+        process.emitWarning(message, {
+            type: 'DeprecationWarning',
+            code,
+        })
+    }
+
     /**
-     * Set the Prisma client delegates for all models. 
-     * 
-     * @param client 
+     * Set the Prisma client delegates for all models.
+     *
+     * @deprecated Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another
+     * adapter-first bootstrap path instead.
+     *
+     * @param client
      */
     protected static setClient (
         client: Record<string, unknown>
     ): void {
+        Model.emitDeprecationWarning(
+            'ARKORM_SET_CLIENT_DEPRECATED',
+            'Model.setClient() is deprecated and will be removed in Arkorm 3.0. Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another adapter-first setup path instead.'
+        )
+
         this.client = client
     }
 

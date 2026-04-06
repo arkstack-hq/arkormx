@@ -635,12 +635,20 @@ Deliverables:
 
 Implementation checklist:
 
-- [ ] mark delegate-first runtime APIs as deprecated in code and docs
-- [ ] update examples, guides, and README content to show adapter-first setup first
-- [ ] add migration notes for existing Prisma-client users moving to the compatibility adapter
-- [ ] keep compatibility coverage in CI for the agreed transition window
-- [ ] define the removal criteria and target release for delegate-first runtime APIs
-- [ ] announce the compatibility window and deprecation path in release notes or roadmap docs
+- [x] mark delegate-first runtime APIs as deprecated in code and docs
+- [x] update examples, guides, and README content to show adapter-first setup first
+- [x] add migration notes for existing Prisma-client users moving to the compatibility adapter
+- [x] keep compatibility coverage in CI for the agreed transition window
+- [x] define the removal criteria and target release for delegate-first runtime APIs
+- [x] announce the compatibility window and deprecation path in release notes or roadmap docs
+
+Completed in code and docs:
+
+- `Model.setClient()` now emits a deprecation warning and points callers at `Model.setAdapter(createPrismaDatabaseAdapter(...))`
+- Prisma delegate-map helpers are marked deprecated in favor of the compatibility adapter path
+- README and guide pages now show adapter binding first, while keeping runtime Prisma config documented for CLI and transaction helpers
+- `docs/guide/prisma-compatibility.md` now documents the migration path for existing Prisma users and the supported compatibility window
+- `ROADMAP.md` now records the deprecation path, CI-backed compatibility window, and a removal target of Arkorm 3.0 for delegate-first runtime APIs
 
 Success criteria:
 

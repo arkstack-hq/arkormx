@@ -1,6 +1,6 @@
 # Getting Started
 
-Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
+Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility preserved during the current migration window.
 
 ## 1. Install dependencies
 
@@ -43,7 +43,19 @@ yarn add -D prisma
 
 ## 2. Configure Arkormˣ
 
-Create `arkormx.config.ts` in your project root:
+Bind an adapter during application bootstrap:
+
+```ts
+import { createPrismaDatabaseAdapter } from 'arkormx';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+const adapter = createPrismaDatabaseAdapter(prisma);
+
+User.setAdapter(adapter);
+```
+
+If you also want Arkorm CLI/runtime config, create `arkormx.config.ts` in your project root:
 
 ```ts
 import { defineConfig } from 'arkormx';
@@ -88,6 +100,7 @@ pnpm prisma generate
 
 - [Setup](./setup.md)
 - [Configuration](./configuration.md)
+- [Prisma Compatibility](./prisma-compatibility.md)
 - [Typing](./typing.md)
 - [Models](./models.md)
 - [Query Builder](./query-builder.md)
