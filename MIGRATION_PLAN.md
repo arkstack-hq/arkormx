@@ -428,27 +428,28 @@ Deliverables:
 Implementation checklist:
 
 - [x] identify all methods in `QueryBuilder` that currently build Prisma-shaped args objects
-- [ ] replace internal delegate-arg state with Arkorm-owned query state structures
+- [~] replace internal delegate-arg state with Arkorm-owned query state structures
 - [x] add one or more internal spec-builder methods for read, write, and aggregate paths
 - [~] route execution methods through the adapter instead of calling delegate methods directly
 - [x] preserve scope, pagination, eager-load intent, and soft-delete behavior during the refactor for current read-path coverage
-- [ ] remove or isolate Prisma-specific type dependencies from `QueryBuilder` where practical
+- [~] remove or isolate Prisma-specific type dependencies from `QueryBuilder` where practical
 
 Completed in code:
 
 - `Model.query()` now resolves and passes a runtime adapter into `QueryBuilder`
 - `ModelStatic` exposes `getAdapter()` and `setAdapter()` so the adapter seam exists at the model layer
 - `QueryBuilder` can translate current read-state into Arkorm `SelectSpec` and `AggregateSpec`
+- `QueryBuilder` now stores its core filter, order, select, and pagination state in Arkorm-owned fields instead of the old delegate-shaped `args` object for those paths
 - read-style operations now use the adapter seam when the query shape is supported: `get`, `first`, `value`, `pluck`, `count`, `exists`, `min`, `max`, `sum`, and `avg`
 - core write operations now use the adapter seam when the contract supports them: `create`, `insert`, `insertGetId`, `update`, `updateFrom`, `updateOrInsert`, `upsert`, and `delete`
 - duplicate-ignore insert flows now also use the adapter seam via `InsertManySpec.ignoreDuplicates`: `insertOrIgnore` and `insertOrIgnoreUsing`
-- delegate fallback remains in place for unsupported shapes and for the still-unmigrated internal query-state representation
+- `include` handling and raw where clauses remain transitional delegate-shaped paths while the rest of the core builder state now compiles from Arkorm-owned query state
+- delegate fallback remains in place for unsupported shapes and for the remaining transitional builder paths
 - focused regression coverage was added to `tests/base/query-builder.spec.ts`
 
 Remaining before Phase 3 can be marked complete:
 
-- replace Prisma-shaped internal builder state with Arkorm-owned query state
-- replace the remaining delegate-shaped builder state with Arkorm-owned query state instead of translating out of Prisma-like args at execution time
+- replace the remaining transitional delegate-shaped builder state, especially `include` and raw where handling, with Arkorm-owned query state or planner abstractions
 - remove the remaining Prisma-specific argument handling from `QueryBuilder`
 
 Success criteria:

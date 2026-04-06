@@ -21,7 +21,6 @@ import type {
     ModelStatic,
     PaginationOptions,
     PrismaDelegateLike,
-    PrismaFindManyArgsLike,
     QueryComparisonCondition,
     QueryCondition,
     QueryOrderBy,
@@ -55,7 +54,15 @@ type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<Rela
  * @since 0.1.0
  */
 export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> {
-    private readonly args: PrismaFindManyArgsLike = {}
+    private queryWhere?: QueryCondition
+    private legacyWhere?: DelegateWhere<TDelegate>
+    private legacyInclude?: DelegateInclude<TDelegate>
+    private queryOrderBy?: QueryOrderBy[]
+    private legacyOrderBy?: DelegateOrderBy<TDelegate>
+    private querySelect?: QuerySelectColumn[]
+    private legacySelect?: DelegateSelect<TDelegate>
+    private offsetValue?: number
+    private limitValue?: number
     private readonly eagerLoads: EagerLoadMap = {}
     private includeTrashed = false
     private onlyTrashedRecords = false
@@ -331,14 +338,34 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     private addLogicalWhere (operator: 'AND' | 'OR', where: DelegateWhere<TDelegate>): this {
-        if (!this.args.where) {
-            this.args.where = where
+        const condition = this.tryBuildQueryCondition(where)
+        if (!this.legacyWhere && condition) {
+            if (!this.queryWhere) {
+                this.queryWhere = condition
+
+                return this
+            }
+
+            this.queryWhere = {
+                type: 'group',
+                operator: operator === 'AND' ? 'and' : 'or',
+                conditions: [this.queryWhere, condition],
+            }
 
             return this
         }
 
-        this.args.where = {
-            [operator]: [this.args.where as Record<string, unknown>, where as Record<string, unknown>],
+        const existingWhere = this.legacyWhere ?? this.toDelegateWhere(this.queryWhere)
+        this.queryWhere = undefined
+
+        if (!existingWhere) {
+            this.legacyWhere = where
+
+            return this
+        }
+
+        this.legacyWhere = {
+            [operator]: [existingWhere as Record<string, unknown>, where as Record<string, unknown>],
         } as DelegateWhere<TDelegate>
 
         return this
@@ -411,7 +438,16 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public orderBy (orderBy: DelegateOrderBy<TDelegate>): this {
         this.randomOrderEnabled = false
-        this.args.orderBy = orderBy
+        const normalized = this.normalizeQueryOrderBy(orderBy)
+        if (normalized) {
+            this.queryOrderBy = normalized
+            this.legacyOrderBy = undefined
+
+            return this
+        }
+
+        this.queryOrderBy = undefined
+        this.legacyOrderBy = orderBy
 
         return this
     }
@@ -435,7 +471,8 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public reorder (column?: string, direction: 'asc' | 'desc' = 'asc'): this {
-        this.args.orderBy = undefined
+        this.queryOrderBy = undefined
+        this.legacyOrderBy = undefined
         this.randomOrderEnabled = false
 
         if (!column)
@@ -471,7 +508,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public include (include: DelegateInclude<TDelegate>): this {
-        this.args.include = include
+        this.legacyInclude = include
 
         return this
     }
@@ -485,15 +522,6 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public with (relations: string | string[] | Record<string, EagerLoadConstraint | undefined>): this {
         const relationMap = this.normalizeWith(relations)
-        const names = Object.keys(relationMap)
-        this.args.include = {
-            ...((this.args.include as Record<string, unknown>) || {}),
-            ...names.reduce<Record<string, boolean>>((accumulator, name) => {
-                accumulator[name] = true
-
-                return accumulator
-            }, {}),
-        } as DelegateInclude<TDelegate>
 
         Object.entries(relationMap).forEach(([name, constraint]) => {
             this.eagerLoads[name] = constraint
@@ -862,7 +890,16 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public select (select: DelegateSelect<TDelegate>): this {
-        this.args.select = select
+        const normalized = this.normalizeQuerySelect(select)
+        if (normalized) {
+            this.querySelect = normalized
+            this.legacySelect = undefined
+
+            return this
+        }
+
+        this.querySelect = undefined
+        this.legacySelect = select
 
         return this
     }
@@ -875,7 +912,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public skip (skip: number): this {
-        this.args.skip = skip
+        this.offsetValue = skip
 
         return this
     }
@@ -897,7 +934,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public take (take: number): this {
-        this.args.take = take
+        this.limitValue = take
 
         return this
     }
@@ -941,7 +978,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         let filteredModels = models
         if (this.hasRelationFilters()) {
-            if (this.hasOrRelationFilters() && this.args.where) {
+            if (this.hasOrRelationFilters() && this.hasBaseWhereConstraints()) {
                 const baseIds = new Set(models
                     .map(model => this.getModelId(model))
                     .filter((id): id is string | number => id != null)
@@ -1750,7 +1787,8 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 },
             })
 
-        this.args.where = delegate.applyRawWhere(this.buildWhere(), sql, bindings)
+        this.legacyWhere = delegate.applyRawWhere(this.buildWhere(), sql, bindings)
+        this.queryWhere = undefined
 
         return this
     }
@@ -1863,12 +1901,15 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public clone (): QueryBuilder<TModel, TDelegate> {
         const builder = new QueryBuilder<TModel, TDelegate>(this.delegate, this.model, this.adapter)
-        builder.args.where = this.args.where
-        builder.args.include = this.args.include
-        builder.args.orderBy = this.args.orderBy
-        builder.args.select = this.args.select
-        builder.args.skip = this.args.skip
-        builder.args.take = this.args.take
+        builder.queryWhere = this.queryWhere
+        builder.legacyWhere = this.legacyWhere
+        builder.legacyInclude = this.legacyInclude
+        builder.queryOrderBy = this.queryOrderBy ? [...this.queryOrderBy] : undefined
+        builder.legacyOrderBy = this.legacyOrderBy
+        builder.querySelect = this.querySelect ? [...this.querySelect] : undefined
+        builder.legacySelect = this.legacySelect
+        builder.offsetValue = this.offsetValue
+        builder.limitValue = this.limitValue
         builder.includeTrashed = this.includeTrashed
         builder.onlyTrashedRecords = this.onlyTrashedRecords
         builder.randomOrderEnabled = this.randomOrderEnabled
@@ -1921,14 +1962,15 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
     }
 
-    private tryBuildQuerySelectColumns (): QuerySelectColumn[] | undefined | null {
-        if (!this.args.select)
-            return undefined
+    private hasBaseWhereConstraints (): boolean {
+        return this.queryWhere != null || this.legacyWhere != null
+    }
 
-        if (Array.isArray(this.args.select) || typeof this.args.select !== 'object')
+    private normalizeQuerySelect (select: DelegateSelect<TDelegate>): QuerySelectColumn[] | null {
+        if (Array.isArray(select) || typeof select !== 'object' || !select)
             return null
 
-        const entries = Object.entries(this.args.select as Record<string, unknown>)
+        const entries = Object.entries(select as Record<string, unknown>)
         if (entries.some(([, value]) => value !== true && value !== false && value !== undefined))
             return null
 
@@ -1936,18 +1978,15 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             .filter(([, value]) => value === true)
             .map(([column]) => ({ column }))
 
-        return columns.length > 0 ? columns : undefined
+        return columns.length > 0 ? columns : []
     }
 
-    private tryBuildQueryOrderBy (): QueryOrderBy[] | undefined | null {
-        if (!this.args.orderBy)
-            return undefined
+    private normalizeQueryOrderBy (orderBy: DelegateOrderBy<TDelegate>): QueryOrderBy[] | null {
+        const clauses = (Array.isArray(orderBy)
+            ? orderBy
+            : [orderBy]) as Record<string, unknown>[]
 
-        const clauses = Array.isArray(this.args.orderBy)
-            ? this.args.orderBy
-            : [this.args.orderBy]
-
-        const orderBy = clauses.reduce<QueryOrderBy[] | null>((accumulator, clause) => {
+        const normalized = clauses.reduce<QueryOrderBy[] | null>((accumulator, clause) => {
             if (!accumulator)
                 return null
 
@@ -1965,10 +2004,151 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return accumulator
         }, [])
 
-        if (orderBy === null)
+        return normalized
+    }
+
+    private toDelegateWhere (condition?: QueryCondition): DelegateWhere<TDelegate> | undefined {
+        if (!condition)
+            return undefined
+
+        if (condition.type === 'comparison') {
+            if (condition.operator === 'is-null')
+                return { [condition.column]: null } as DelegateWhere<TDelegate>
+
+            if (condition.operator === 'is-not-null')
+                return { [condition.column]: { not: null } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === '=')
+                return { [condition.column]: condition.value } as DelegateWhere<TDelegate>
+
+            if (condition.operator === '!=')
+                return { [condition.column]: { not: condition.value } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === '>')
+                return { [condition.column]: { gt: condition.value } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === '>=')
+                return { [condition.column]: { gte: condition.value } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === '<')
+                return { [condition.column]: { lt: condition.value } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === '<=')
+                return { [condition.column]: { lte: condition.value } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === 'in')
+                return { [condition.column]: { in: Array.isArray(condition.value) ? condition.value : [condition.value] } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === 'not-in')
+                return { [condition.column]: { notIn: Array.isArray(condition.value) ? condition.value : [condition.value] } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === 'contains')
+                return { [condition.column]: { contains: condition.value } } as DelegateWhere<TDelegate>
+
+            if (condition.operator === 'starts-with')
+                return { [condition.column]: { startsWith: condition.value } } as DelegateWhere<TDelegate>
+
+            return { [condition.column]: { endsWith: condition.value } } as DelegateWhere<TDelegate>
+        }
+
+        if (condition.type === 'group') {
+            const conditions = condition.conditions
+                .map(entry => this.toDelegateWhere(entry))
+                .filter((entry): entry is DelegateWhere<TDelegate> => Boolean(entry))
+
+            if (conditions.length === 0)
+                return undefined
+
+            return {
+                [condition.operator === 'and' ? 'AND' : 'OR']: conditions as Record<string, unknown>[],
+            } as DelegateWhere<TDelegate>
+        }
+
+        if (condition.type === 'not') {
+            const nested = this.toDelegateWhere(condition.condition)
+            if (!nested)
+                return undefined
+
+            return { NOT: nested } as unknown as DelegateWhere<TDelegate>
+        }
+
+        return undefined
+    }
+
+    private buildDelegateOrderBy (): DelegateOrderBy<TDelegate> | undefined {
+        if (this.legacyOrderBy)
+            return this.legacyOrderBy
+
+        if (!this.queryOrderBy || this.queryOrderBy.length === 0)
+            return undefined
+
+        return this.queryOrderBy.map(entry => ({ [entry.column]: entry.direction })) as DelegateOrderBy<TDelegate>
+    }
+
+    private buildDelegateSelect (): DelegateSelect<TDelegate> | undefined {
+        if (this.legacySelect)
+            return this.legacySelect
+
+        if (!this.querySelect)
+            return undefined
+
+        return this.querySelect.reduce<Record<string, true>>((select, column) => {
+            select[column.column] = true
+
+            return select
+        }, {}) as DelegateSelect<TDelegate>
+    }
+
+    private buildSoftDeleteQueryCondition (): QueryCondition | undefined {
+        const softDeleteConfig = this.model.getSoftDeleteConfig()
+        if (!softDeleteConfig.enabled || this.includeTrashed)
+            return undefined
+
+        return {
+            type: 'comparison',
+            column: softDeleteConfig.column,
+            operator: this.onlyTrashedRecords ? 'is-not-null' : 'is-null',
+        }
+    }
+
+    private buildQueryWhereCondition (softDeleteOnly = false): QueryCondition | undefined | null {
+        if (this.legacyWhere) {
+            const fallbackWhere = softDeleteOnly
+                ? this.buildSoftDeleteOnlyWhere()
+                : this.buildWhere()
+
+            return this.tryBuildQueryCondition(fallbackWhere)
+        }
+
+        const softDeleteCondition = this.buildSoftDeleteQueryCondition()
+        if (softDeleteOnly)
+            return softDeleteCondition
+
+        if (!this.queryWhere)
+            return softDeleteCondition
+
+        if (!softDeleteCondition)
+            return this.queryWhere
+
+        return {
+            type: 'group',
+            operator: 'and',
+            conditions: [this.queryWhere, softDeleteCondition],
+        }
+    }
+
+    private tryBuildQuerySelectColumns (): QuerySelectColumn[] | undefined | null {
+        if (this.legacySelect)
             return null
 
-        return orderBy.length > 0 ? orderBy : undefined
+        return this.querySelect
+    }
+
+    private tryBuildQueryOrderBy (): QueryOrderBy[] | undefined | null {
+        if (this.legacyOrderBy)
+            return null
+
+        return this.queryOrderBy
     }
 
     private tryBuildFieldCondition (column: string, value: unknown): QueryCondition | null {
@@ -2126,7 +2306,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     private tryBuildSelectSpec (where: DelegateWhere<TDelegate> | undefined): SelectSpec<TModel> | null {
         const columns = this.tryBuildQuerySelectColumns()
         const orderBy = this.tryBuildQueryOrderBy()
-        const condition = this.tryBuildQueryCondition(where)
+        const condition = where === this.buildSoftDeleteOnlyWhere()
+            ? this.buildQueryWhereCondition(true)
+            : this.buildQueryWhereCondition(false)
 
         if (columns === null || orderBy === null || condition === null)
             return null
@@ -2136,13 +2318,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             columns,
             where: condition,
             orderBy,
-            limit: this.args.take,
-            offset: this.args.skip,
+            limit: this.limitValue,
+            offset: this.offsetValue,
         }
     }
 
     private tryBuildAggregateSpec (): AggregateSpec<TModel> | null {
-        const condition = this.tryBuildQueryCondition(this.buildWhere())
+        const condition = this.buildQueryWhereCondition(false)
         if (condition === null)
             return null
 
@@ -2155,9 +2337,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
     private buildFindArgsWithWhere (where: DelegateWhere<TDelegate> | undefined): DelegateFindManyArgs<TDelegate> {
         return {
-            ...(this.args as DelegateFindManyArgs<TDelegate>),
+            include: this.legacyInclude,
+            orderBy: this.buildDelegateOrderBy(),
+            select: this.buildDelegateSelect(),
+            skip: this.offsetValue,
+            take: this.limitValue,
             where,
-        }
+        } as DelegateFindManyArgs<TDelegate>
     }
 
     private async executeReadRows (
@@ -2281,22 +2467,23 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     private buildWhere (): DelegateWhere<TDelegate> | undefined {
+        const baseWhere = this.legacyWhere ?? this.toDelegateWhere(this.queryWhere)
         const softDeleteConfig = this.model.getSoftDeleteConfig()
         if (!softDeleteConfig.enabled)
-            return this.args.where as DelegateWhere<TDelegate> | undefined
+            return baseWhere
 
         if (this.includeTrashed)
-            return this.args.where as DelegateWhere<TDelegate> | undefined
+            return baseWhere
 
         const softDeleteClause = this.onlyTrashedRecords
             ? { [softDeleteConfig.column]: { not: null } }
             : { [softDeleteConfig.column]: null }
 
-        if (!this.args.where)
+        if (!baseWhere)
             return softDeleteClause as DelegateWhere<TDelegate>
 
         return {
-            AND: [this.args.where as Record<string, unknown>, softDeleteClause],
+            AND: [baseWhere as Record<string, unknown>, softDeleteClause],
         } as unknown as DelegateWhere<TDelegate>
     }
 
@@ -2306,10 +2493,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     private buildFindArgs (): DelegateFindManyArgs<TDelegate> {
-        return {
-            ...(this.args as DelegateFindManyArgs<TDelegate>),
-            where: this.buildWhere(),
-        }
+        return this.buildFindArgsWithWhere(this.buildWhere())
     }
 
     /**
