@@ -91,6 +91,30 @@ Install the runtime packages:
 pnpm add kysely pg
 ```
 
+If you are following the preview line, install Arkorm with the `next` tag first:
+
+::: code-group
+
+```bash [pnpm next]
+pnpm add arkormx@next @prisma/client
+pnpm add -D prisma
+pnpm add kysely pg
+```
+
+```bash [npm next]
+npm install arkormx@next @prisma/client
+npm install -D prisma
+npm install kysely pg
+```
+
+```bash [yarn next]
+yarn add arkormx@next @prisma/client
+yarn add -D prisma
+yarn add kysely pg
+```
+
+:::
+
 Create a runtime module:
 
 ```ts
