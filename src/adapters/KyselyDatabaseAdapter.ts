@@ -1,5 +1,7 @@
 import type { AccessMode, IsolationLevel, Kysely, RawBuilder, Transaction } from 'kysely'
 import type {
+    AdapterModelIntrospectionOptions,
+    AdapterModelStructure,
     AdapterCapabilities,
     AdapterTransactionContext,
     AggregateSpec,
@@ -38,6 +40,7 @@ import type {
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
+import { str } from '@h3ravel/support'
 import { sql } from 'kysely'
 
 type KyselyExecutor = Kysely<any> | Transaction<any>
@@ -71,6 +74,49 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         private readonly db: KyselyExecutor,
         private readonly mapping: KyselyTableMapping = {},
     ) { }
+
+    private introspectionTypeToTs (typeName: string, enumValues: string[] | null): string {
+        if (enumValues && enumValues.length > 0)
+            return enumValues.map(value => `'${value.replace(/'/g, '\\\'')}'`).join(' | ')
+
+        switch (typeName) {
+            case 'bool':
+                return 'boolean'
+            case 'int2':
+            case 'int4':
+            case 'int8':
+            case 'float4':
+            case 'float8':
+            case 'numeric':
+            case 'money':
+                return 'number'
+            case 'json':
+            case 'jsonb':
+                return 'Record<string, unknown> | unknown[]'
+            case 'date':
+            case 'timestamp':
+            case 'timestamptz':
+                return 'Date'
+            case 'bytea':
+                return 'Uint8Array'
+            case 'uuid':
+            case 'varchar':
+            case 'bpchar':
+            case 'char':
+            case 'text':
+            case 'citext':
+            case 'time':
+            case 'timetz':
+            case 'interval':
+            case 'inet':
+            case 'cidr':
+            case 'macaddr':
+            case 'macaddr8':
+                return 'string'
+            default:
+                return 'unknown'
+        }
+    }
 
     private resolveTable (target: QueryTarget<any>): string {
         if (target.table && target.table.trim().length > 0)
@@ -856,6 +902,74 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         `.execute(this.db)
 
         return Boolean((result.rows[0] as { exists?: boolean } | undefined)?.exists)
+    }
+
+    public async introspectModels (options: AdapterModelIntrospectionOptions = {}): Promise<AdapterModelStructure[]> {
+        const tables = options.tables?.filter(Boolean) ?? []
+        const tableFilter = tables.length > 0
+            ? sql` and cls.relname in (${sql.join(tables)})`
+            : sql``
+
+        const result = await sql<{
+            table_name: string
+            column_name: string
+            is_nullable: boolean
+            type_name: string
+            element_type_name: string | null
+            enum_values: string[] | null
+            element_enum_values: string[] | null
+        }>`
+            select
+                cls.relname as table_name,
+                att.attname as column_name,
+                not att.attnotnull as is_nullable,
+                typ.typname as type_name,
+                case when typ.typcategory = 'A' then elem.typname else null end as element_type_name,
+                case when typ.typtype = 'e'
+                    then array(select enumlabel from pg_enum where enumtypid = typ.oid order by enumsortorder)
+                    else null
+                end as enum_values,
+                case when elem.typtype = 'e'
+                    then array(select enumlabel from pg_enum where enumtypid = elem.oid order by enumsortorder)
+                    else null
+                end as element_enum_values
+            from pg_attribute att
+            inner join pg_class cls on cls.oid = att.attrelid
+            inner join pg_namespace ns on ns.oid = cls.relnamespace
+            inner join pg_type typ on typ.oid = att.atttypid
+            left join pg_type elem on elem.oid = typ.typelem and typ.typcategory = 'A'
+            where cls.relkind in ('r', 'p')
+                and att.attnum > 0
+                and not att.attisdropped
+                and ns.nspname not in ('pg_catalog', 'information_schema')
+                ${tableFilter}
+            order by cls.relname asc, att.attnum asc
+        `.execute(this.db)
+
+        const models = new Map<string, AdapterModelStructure>()
+
+        result.rows.forEach((row) => {
+            const existing = models.get(row.table_name) ?? {
+                name: str(row.table_name).studly().singular().toString(),
+                table: row.table_name,
+                fields: [],
+            }
+
+            const isArray = row.element_type_name !== null
+            const baseType = isArray
+                ? this.introspectionTypeToTs(row.element_type_name ?? 'unknown', row.element_enum_values)
+                : this.introspectionTypeToTs(row.type_name, row.enum_values)
+
+            existing.fields.push({
+                name: row.column_name,
+                type: isArray ? `Array<${baseType}>` : baseType,
+                nullable: row.is_nullable,
+            })
+
+            models.set(row.table_name, existing)
+        })
+
+        return [...models.values()]
     }
 
     /**

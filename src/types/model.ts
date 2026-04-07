@@ -1,4 +1,4 @@
-import { DelegateRow, PrismaDelegateLike, RelationshipModelStatic } from './core'
+import { DelegateRow, PrismaDelegateLike, PrismaLikeInclude, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, RelationshipModelStatic } from './core'
 
 import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
@@ -26,14 +26,82 @@ type DelegateFromPrismaClient<TKey extends string> =
     ? PrismaClientDelegates[PluralKey<TKey>]
     : never
 
-export type DelegateForModelSchema<TSchema extends PrismaDelegateLike | Record<string, unknown> | string> =
+type AttributeScalarFilter<TValue> = Omit<PrismaLikeScalarFilter, 'equals' | 'not' | 'in' | 'notIn' | 'lt' | 'lte' | 'gt' | 'gte' | 'contains' | 'startsWith' | 'endsWith'> & {
+    equals?: TValue
+    not?: TValue | AttributeScalarFilter<TValue>
+    in?: TValue[]
+    notIn?: TValue[]
+    lt?: TValue
+    lte?: TValue
+    gt?: TValue
+    gte?: TValue
+    contains?: Extract<TValue, string>
+    startsWith?: Extract<TValue, string>
+    endsWith?: Extract<TValue, string>
+}
+
+export type AttributeWhereInput<TAttributes extends Record<string, unknown>> = {
+    AND?: AttributeWhereInput<TAttributes>[]
+    OR?: AttributeWhereInput<TAttributes>[]
+    NOT?: AttributeWhereInput<TAttributes> | AttributeWhereInput<TAttributes>[]
+} & {
+    [TKey in keyof TAttributes]?: TAttributes[TKey] | AttributeScalarFilter<NonNullable<TAttributes[TKey]>> | null
+}
+
+export type AttributeOrderBy<TAttributes extends Record<string, unknown>> =
+    | Partial<Record<keyof TAttributes & string, PrismaLikeSortOrder>>
+    | Array<Partial<Record<keyof TAttributes & string, PrismaLikeSortOrder>>>
+
+export type AttributeSelect<TAttributes extends Record<string, unknown>> = {
+    [TKey in keyof TAttributes]?: boolean
+}
+
+export interface AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> extends PrismaDelegateLike {
+    findMany: (args?: {
+        where?: AttributeWhereInput<TAttributes>
+        include?: PrismaLikeInclude
+        orderBy?: AttributeOrderBy<TAttributes>
+        select?: AttributeSelect<TAttributes>
+        skip?: number
+        take?: number
+    }) => Promise<TAttributes[]>
+    findFirst: (args?: {
+        where?: AttributeWhereInput<TAttributes>
+        include?: PrismaLikeInclude
+        orderBy?: AttributeOrderBy<TAttributes>
+        select?: AttributeSelect<TAttributes>
+        skip?: number
+        take?: number
+    }) => Promise<TAttributes | null>
+    create: (args: {
+        data: Partial<TAttributes>
+        select?: PrismaLikeSelect
+    }) => Promise<TAttributes>
+    update: (args: {
+        where: Partial<TAttributes>
+        data: Partial<TAttributes>
+        select?: PrismaLikeSelect
+    }) => Promise<TAttributes>
+    delete: (args: {
+        where: Partial<TAttributes>
+        select?: PrismaLikeSelect
+    }) => Promise<TAttributes>
+    count: (args?: {
+        where?: AttributeWhereInput<TAttributes>
+    }) => Promise<number>
+}
+
+export type DelegateForModelSchema<
+    TSchema extends PrismaDelegateLike | Record<string, unknown> | string,
+    TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
+> =
     TSchema extends PrismaDelegateLike
     ? TSchema
     : TSchema extends string
     ? DelegateFromPrismaClient<TSchema> extends PrismaDelegateLike
     ? DelegateFromPrismaClient<TSchema>
     : PrismaDelegateLike
-    : PrismaDelegateLike
+    : AttributeSchemaDelegate<TAttributes>
 
 export type ModelAttributesOf<TSchema extends PrismaDelegateLike | Record<string, unknown> | string> =
     TSchema extends PrismaDelegateLike
@@ -50,8 +118,8 @@ export type ModelAttributesOf<TSchema extends PrismaDelegateLike | Record<string
     ? TSchema
     : Record<string, any>
 
-export type ModelAttributes<TModel> = TModel extends Model<infer TSchema>
-    ? ModelAttributesOf<TSchema>
+export type ModelAttributes<TModel> = TModel extends Model<any, infer TAttributes>
+    ? TAttributes
     : Record<string, any>
 
 

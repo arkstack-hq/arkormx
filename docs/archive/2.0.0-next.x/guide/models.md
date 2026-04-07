@@ -287,7 +287,7 @@ class SendWelcomeEmail {
   }
 }
 
-export class User extends Model<'users'> {
+export class User extends Model {
   protected static override dispatchesEvents = {
     created: SendWelcomeEmail,
   };

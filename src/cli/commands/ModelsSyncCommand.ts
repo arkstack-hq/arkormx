@@ -4,16 +4,16 @@ import { resolve } from 'node:path'
 
 export class ModelsSyncCommand extends Command<CliApp> {
     protected signature = `models:sync
-        {--schema= : Path to prisma schema file}
+        {--schema= : Path to prisma schema file used when adapter introspection is unavailable}
         {--models= : Path to models directory}
     `
 
-    protected description = 'Sync model declare attributes from prisma schema for all model files'
+    protected description = 'Sync model declare attributes from the active adapter when supported, otherwise fall back to the Prisma schema'
 
     async handle () {
         this.app.command = this
 
-        const result = this.app.syncModelsFromPrisma({
+        const result = await this.app.syncModels({
             schemaPath: this.option('schema') ? resolve(String(this.option('schema'))) : undefined,
             modelsDir: this.option('models') ? resolve(String(this.option('models'))) : undefined,
         })
@@ -25,7 +25,8 @@ export class ModelsSyncCommand extends Command<CliApp> {
         this.success('SUCCESS: Model sync completed with the following results:');
 
         [
-            this.app.splitLogger('Schema', result.schemaPath),
+            this.app.splitLogger('Source', result.source === 'adapter' ? 'adapter introspection' : 'prisma schema'),
+            ...(result.schemaPath ? [this.app.splitLogger('Schema', result.schemaPath)] : []),
             this.app.splitLogger('Models', result.modelsDir),
             this.app.splitLogger('Processed', String(result.total)),
             ...updatedLines,

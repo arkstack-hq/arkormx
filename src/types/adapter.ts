@@ -210,6 +210,22 @@ export interface AdapterTransactionContext {
     timeout?: number
 }
 
+export interface AdapterModelFieldStructure {
+    name: string
+    type: string
+    nullable: boolean
+}
+
+export interface AdapterModelStructure {
+    name?: string
+    table: string
+    fields: AdapterModelFieldStructure[]
+}
+
+export interface AdapterModelIntrospectionOptions {
+    tables?: string[]
+}
+
 export interface DatabaseAdapter {
     readonly capabilities?: AdapterCapabilities
     select: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<DatabaseRows>
@@ -226,6 +242,7 @@ export interface DatabaseAdapter {
     count: <TModel = unknown>(spec: AggregateSpec<TModel>) => Promise<number>
     exists?: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<boolean>
     loadRelations?: <TModel = unknown>(spec: RelationLoadSpec<TModel>) => Promise<void>
+    introspectModels?: (options?: AdapterModelIntrospectionOptions) => Promise<AdapterModelStructure[]>
     transaction: <TResult = unknown>(
         callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
         context?: AdapterTransactionContext,

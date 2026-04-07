@@ -193,9 +193,7 @@ describe('CLI application', () => {
         writeFileSync(modelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
-            '    protected static override delegate = \'users\'',
-            '}',
+            'export class User extends Model {}',
             '',
         ].join('\n'))
 
@@ -248,9 +246,7 @@ describe('CLI application', () => {
         writeFileSync(modelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
-            '    protected static override delegate = \'users\'',
-            '}',
+            'export class User extends Model {}',
             '',
         ].join('\n'))
 
@@ -300,10 +296,9 @@ describe('CLI application', () => {
         writeFileSync(modelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
+            'export class User extends Model {',
             '    declare metadata: string[]',
             '    declare status: \'ACTIVE\'',
-            '    protected static override delegate = \'users\'',
             '}',
             '',
         ].join('\n'))
@@ -324,5 +319,53 @@ describe('CLI application', () => {
         expect(updatedSource).toContain('declare metadata: string[]')
         expect(updatedSource).toContain('declare status: \'ACTIVE\'')
         expect(updatedSource).not.toContain('import type { UserStatus } from \'@prisma/client\'')
+    })
+
+    it('syncs model declarations from adapter introspection when available', async () => {
+        const tempWorkspace = makeTempDir('arkormx-cli-model-sync-adapter-')
+        process.chdir(tempWorkspace)
+        const workspace = process.cwd()
+        const modelsDir = join(workspace, 'src', 'models')
+
+        mkdirSync(modelsDir, { recursive: true })
+
+        const modelPath = join(modelsDir, 'User.ts')
+        writeFileSync(modelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        const adapter = {
+            capabilities: {},
+            introspectModels: async () => ([
+                {
+                    table: 'users',
+                    fields: [
+                        { name: 'id', type: 'number', nullable: false },
+                        { name: 'email', type: 'string', nullable: false },
+                        { name: 'isActive', type: 'boolean', nullable: false },
+                    ],
+                },
+            ]),
+        } as unknown as ArkormConfig['adapter']
+
+        const app = createCliApp({
+            adapter,
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const result = await app.syncModels({ modelsDir })
+
+        expect(result.source).toBe('adapter')
+        expect(result.updated).toEqual([modelPath])
+
+        const updatedSource = readFileSync(modelPath, 'utf-8')
+        expect(updatedSource).toContain('declare id: number')
+        expect(updatedSource).toContain('declare email: string')
+        expect(updatedSource).toContain('declare isActive: boolean')
     })
 })

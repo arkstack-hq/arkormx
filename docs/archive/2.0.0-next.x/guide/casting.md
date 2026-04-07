@@ -40,7 +40,7 @@ const centsCast = {
   set: (value: unknown) => Math.round(Number(value ?? 0) * 100),
 };
 
-export class Product extends Model<'products'> {
+export class Product extends Model {
   protected override casts = {
     price: centsCast,
   } as const;

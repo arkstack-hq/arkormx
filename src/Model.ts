@@ -469,7 +469,10 @@ export abstract class Model<
     public static query<
         TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
         TModel extends InstanceType<TThis> = InstanceType<TThis>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
     > (
         this: TThis
     ): QueryBuilder<TModel, TDelegate> {
@@ -516,7 +519,10 @@ export abstract class Model<
     public static withTrashed<
         TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
         TModel extends InstanceType<TThis> = InstanceType<TThis>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
     > (
         this: TThis
     ): QueryBuilder<TModel, TDelegate> {
@@ -532,7 +538,10 @@ export abstract class Model<
     public static onlyTrashed<
         TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
         TModel extends InstanceType<TThis> = InstanceType<TThis>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
     > (
         this: TThis
     ): QueryBuilder<TModel, TDelegate> {
@@ -552,7 +561,10 @@ export abstract class Model<
     public static scope<
         TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
         TModel extends InstanceType<TThis> = InstanceType<TThis>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<TModel extends Model<infer TSchema> ? TSchema : Record<string, any>>
+        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
     > (
         this: TThis,
         name: string, ...args: unknown[]
