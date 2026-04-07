@@ -6,6 +6,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 
 import { Kernel } from '@h3ravel/musket'
 import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
+import { MigrateFreshCommand } from '../../src/cli/commands/MigrateFreshCommand'
 import { MigrateRollbackCommand } from '../../src/cli/commands/MigrateRollbackCommand'
 import { MigrationHistoryCommand } from '../../src/cli/commands/MigrationHistoryCommand'
 import { join } from 'node:path'
@@ -63,9 +64,11 @@ const createNoopAdapter = (): DatabaseAdapter => {
     const adapter: DatabaseAdapter & {
         state: AppliedMigrationsState
         executed: SchemaOperation[][]
+        resetCount: number
     } = {
         state,
         executed,
+        resetCount: 0,
         select: async <TModel = unknown> (_spec: SelectSpec<TModel>) => await notImplemented(),
         selectOne: async <TModel = unknown> (_spec: SelectSpec<TModel>) => await notImplemented(),
         insert: async <TModel = unknown> (_spec: InsertSpec<TModel>) => await notImplemented(),
@@ -79,6 +82,12 @@ const createNoopAdapter = (): DatabaseAdapter => {
         },
         executeSchemaOperations: async (operations: SchemaOperation[]): Promise<void> => {
             executed.push(operations)
+        },
+        resetDatabase: async (): Promise<void> => {
+            adapter.resetCount += 1
+            adapter.executed.splice(0, adapter.executed.length)
+            adapter.state.migrations.splice(0, adapter.state.migrations.length)
+            adapter.state.runs = []
         },
         readAppliedMigrationsState: async (): Promise<AppliedMigrationsState> => {
             return JSON.parse(JSON.stringify(state)) as AppliedMigrationsState
@@ -178,5 +187,67 @@ describe('database-backed migration command fallback', () => {
         expect(adapter.executed).toHaveLength(2)
         expect(adapter.executed[1]?.[0]).toMatchObject({ type: 'dropTable', table: 'users' })
         expect(adapter.state.migrations).toHaveLength(0)
+    })
+
+    it('resets adapter-backed databases before reapplying tracked migrations', async () => {
+        const workspace = makeTempDir('arkormx-db-fresh-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'email\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            state: AppliedMigrationsState
+            executed: SchemaOperation[][]
+            resetCount: number
+        }
+        adapter.state.migrations.push({
+            id: 'stale:Migration',
+            file: '/tmp/stale.ts',
+            className: 'StaleMigration',
+            appliedAt: '2026-04-07T00:00:00.000Z',
+            checksum: 'stale',
+        })
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const freshCommand = new MigrateFreshCommand(app, new Kernel(app))
+        ; (freshCommand as unknown as { app: CliApp }).app = app
+        const freshIo = attachCommandIo(freshCommand as unknown as any)
+
+        await freshCommand.handle()
+
+        expect(freshIo.errorLines).toHaveLength(0)
+        expect(freshIo.successLines.some(line => line.includes('Refreshed database with 1 migration(s).'))).toBe(true)
+        expect(adapter.resetCount).toBe(1)
+        expect(adapter.executed).toHaveLength(1)
+        expect(adapter.executed[0]?.[0]).toMatchObject({ type: 'createTable', table: 'users' })
+        expect(adapter.state.migrations).toHaveLength(1)
+        expect(adapter.state.migrations[0]?.id).toContain('CreateUsersMigration')
     })
 })

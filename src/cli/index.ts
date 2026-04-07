@@ -8,6 +8,7 @@ import { MakeMigrationCommand } from './commands/MakeMigrationCommand'
 import { MakeModelCommand } from './commands/MakeModelCommand'
 import { MakeSeederCommand } from './commands/MakeSeederCommand'
 import { MigrateCommand } from './commands/MigrateCommand'
+import { MigrateFreshCommand } from './commands/MigrateFreshCommand'
 import { MigrateRollbackCommand } from './commands/MigrateRollbackCommand'
 import { MigrationHistoryCommand } from './commands/MigrationHistoryCommand'
 import { ModelsSyncCommand } from './commands/ModelsSyncCommand'
@@ -28,6 +29,7 @@ await Kernel.init(app, {
         ModelsSyncCommand,
         SeedCommand,
         MigrateCommand,
+        MigrateFreshCommand,
         MigrateRollbackCommand,
         MigrationHistoryCommand,
     ],
