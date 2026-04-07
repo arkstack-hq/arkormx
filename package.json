@@ -92,6 +92,7 @@
     "@h3ravel/shared": "^0.27.13",
     "@h3ravel/support": "^0.15.11",
     "@rexxars/jiti": "^2.6.1",
+    "@viteplus/versions": "^2.0.6",
     "dotenv": "^17.3.1",
     "kysely": "^0.28.15",
     "pg": "^8.19.0"
