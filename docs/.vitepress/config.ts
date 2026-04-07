@@ -1,8 +1,19 @@
-import { defineConfig } from 'vitepress'
+import { defineVersionedConfig } from '@viteplus/versions'
 
-export default defineConfig({
+export default defineVersionedConfig({
     title: 'Arkormˣ',
     description: 'Modern TypeScript-first ORM for Node.js',
+
+    versionsConfig: {
+        current: '1.3.4',  // Label for current version
+        sources: 'src',     // Current version source directory
+        archive: 'versions', // Archive directory for older versions
+        versionSwitcher: {
+            text: 'v1.3.x',
+            includeCurrentVersion: true
+        }
+    },
+
     head: [
         ['link', { rel: 'icon', href: '/logo.png' }],
         ['meta', { name: 'viewport', content: 'width=device-width, initial-scale=1.0' }],
@@ -24,6 +35,9 @@ export default defineConfig({
             { text: 'Guide', link: '/guide/getting-started' },
             { text: 'CLI', link: '/guide/migrations-cli' },
             { text: 'Production', link: '/guide/production' },
+            {
+                component: 'VersionSwitcher',
+            },
         ],
         sidebar: [
             {
