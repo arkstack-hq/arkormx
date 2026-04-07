@@ -18,9 +18,7 @@ Supported cast types:
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+export class User extends Model {
   protected override casts = {
     isActive: 'boolean',
     profile: 'json',
@@ -43,8 +41,6 @@ const centsCast = {
 };
 
 export class Product extends Model<'products'> {
-  protected static override delegate = 'products';
-
   protected override casts = {
     price: centsCast,
   } as const;

@@ -1,6 +1,6 @@
 # Query Builder
 
-Arkormˣ query builder is fluent, typed, and adapter-backed.
+Arkormˣ query builder is fluent, typed, and delegate-backed.
 
 For multi-step write flows that need atomic commit/rollback behavior, see
 [Transactions](./transactions.md).

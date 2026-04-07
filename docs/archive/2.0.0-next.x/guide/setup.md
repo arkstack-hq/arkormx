@@ -2,25 +2,27 @@
 
 This page contains a complete starter setup for adapter-first Arkormˣ.
 
-The primary path is to bind an adapter to your models at bootstrap time.
-Prisma runtime config remains available for CLI flows, transaction helpers, and
-the compatibility adapter during the transition window.
+The primary 2.x path is to configure one global adapter in
+`arkormx.config.ts`. Prisma remains optional for compatibility mode, CLI flows,
+and Prisma-backed transaction helpers during the transition window.
 
 ## 1. Create `arkormx.config.ts`
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-
-const prisma = new PrismaClient({
-  adapter: new PrismaPg({
-    connectionString: process.env.DATABASE_URL as string,
-  }),
-});
+import { createKyselyAdapter, defineConfig } from 'arkormx';
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
 
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  adapter: createKyselyAdapter(
+    new Kysely<Record<string, never>>({
+      dialect: new PostgresDialect({
+        pool: new Pool({
+          connectionString: process.env.DATABASE_URL,
+        }),
+      }),
+    }),
+  ),
   paths: {
     stubs: './stubs',
     models: './src/models',
@@ -33,8 +35,9 @@ export default defineConfig({
 });
 ```
 
-This config keeps Prisma available for Arkorm runtime helpers. Your model query
-path should still bind an adapter explicitly.
+This is the default 2.x setup. Arkorm applies the configured adapter
+automatically, so normal app bootstrap does not need `User.setAdapter(...)` or
+`bindAdapter(...)` calls.
 
 You can also use the Arkormˣ CLI to generate this config file by running the initialize command: `npx arkormx init`.
 
@@ -43,30 +46,20 @@ You can also use the Arkormˣ CLI to generate this config file by running the in
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users';
-}
+export class User extends Model {}
 
-export class Article extends Model<'articles'> {
-  protected static override delegate = 'articles';
+export class Article extends Model {
   protected static override softDeletes = true;
 }
 ```
 
-## 3. Bind an adapter
+Only add `delegate` or `table` when your model names do not match the storage
+names Arkorm would infer by convention.
 
-Prisma compatibility adapter:
+## 3. Query usage
 
-```ts
-import { createPrismaDatabaseAdapter } from 'arkormx';
-
-const adapter = createPrismaDatabaseAdapter(prisma);
-
-User.setAdapter(adapter);
-Article.setAdapter(adapter);
-```
-
-## 4. Query usage
+With a global adapter configured, Arkorm queries work without extra bootstrap
+steps:
 
 ```ts
 const users = await User.query().whereKey('isActive', true).latest().get();
@@ -76,7 +69,7 @@ users[0]?.getAttribute('email');
 article?.getAttribute('deletedAt');
 ```
 
-## 5. Pagination URL customization (optional)
+## 4. Pagination URL customization (optional)
 
 ```ts
 import { URLDriver, defineConfig } from 'arkormx';
@@ -88,45 +81,38 @@ class AppURLDriver extends URLDriver {
 }
 
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  adapter,
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
 });
 ```
 
-## 6. Kysely + Postgres runtime
+## 5. Kysely + Postgres runtime
 
-If you want Arkorm to execute core CRUD queries through Kysely instead of the
-Prisma compatibility adapter, create a Kysely database instance, wrap it with
-`createKyselyAdapter(...)`, and bind that adapter to the models you want to run
-through SQL.
+Kysely is the primary SQL example in the 2.x docs. Create a Kysely database
+instance, wrap it with `createKyselyAdapter(...)`, and assign that adapter to
+the top-level `adapter` config field.
 
-Install the runtime packages:
+Kysely does not ship the Postgres driver itself. This setup uses
+`PostgresDialect` with a `pg` pool, so you need both `kysely` and `pg`.
 
-```bash
-pnpm add kysely pg
-```
+You do not need Prisma for this setup. This section only installs the SQL
+runtime pieces Arkorm needs for the adapter-first path.
 
-If you are following the preview line, install Arkorm with the `next` tag first:
+Install the packages used in this setup:
 
 ::: code-group
 
-```bash [pnpm next]
-pnpm add arkormx@next @prisma/client
-pnpm add -D prisma
+```bash [pnpm]
 pnpm add kysely pg
 ```
 
-```bash [npm next]
-npm install arkormx@next @prisma/client
-npm install -D prisma
+```bash [npm]
 npm install kysely pg
 ```
 
-```bash [yarn next]
-yarn add arkormx@next @prisma/client
-yarn add -D prisma
+```bash [yarn]
 yarn add kysely pg
 ```
 
@@ -150,23 +136,25 @@ export const db = new Kysely<Record<string, never>>({
 export const adapter = createKyselyAdapter(db);
 ```
 
-Bind the adapter to your models during application bootstrap:
+Configure the adapter centrally from `arkormx.config.ts`:
 
 ```ts
-import { Article, User } from './models';
+import { defineConfig } from 'arkormx';
 import { adapter } from './database';
 
-User.setAdapter(adapter);
-Article.setAdapter(adapter);
+export default defineConfig({
+  adapter,
+});
 ```
 
-You can still keep Prisma runtime config if you want Prisma-backed delegates for
-CLI flows, seeds, or other parts of the app:
+You can still keep Prisma as an opt-in companion if you want Prisma-backed CLI
+flows, compatibility delegates, or `Model.transaction(...)`:
 
 ```ts
 import { PrismaClient } from '@prisma/client';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { defineConfig } from 'arkormx';
+import { adapter } from './database';
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
@@ -175,7 +163,8 @@ const prisma = new PrismaClient({
 });
 
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  prisma: () => prisma,
+  adapter,
 });
 ```
 
@@ -216,9 +205,10 @@ await adapter.transaction(async (transactionAdapter) => {
 
 If you bind transaction-scoped adapters manually like this, restore the
 previous adapter before leaving the callback. A small runtime helper that binds
-and restores adapters for a known model list is the cleanest pattern.
+and restores adapters for a known model list is the cleanest pattern. The
+`boot` hook only applies the default app-level adapter.
 
-## 7. Production notes for TS seeders/migrations
+## 6. Production notes for TS seeders/migrations
 
 When you run the Arkormˣ CLI, Node executes JavaScript.
 If you source files are TypeScript, ensure that your build output structure is mirrors your source structure.

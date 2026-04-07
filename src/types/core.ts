@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import type { DatabaseAdapter } from './adapter'
 
 export type CastType = 'string' | 'number' | 'boolean' | 'date' | 'json' | 'array'
 
@@ -33,11 +34,28 @@ export interface PrismaTransactionCapableClient {
 
 export type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
 
+export interface AdapterBindableModel {
+    setAdapter: (adapter?: DatabaseAdapter) => void
+}
+
+export interface ArkormBootContext {
+    prisma?: PrismaClientLike
+    bindAdapter: (adapter: DatabaseAdapter, models: AdapterBindableModel[]) => DatabaseAdapter
+}
+
 export interface ArkormConfig {
     /**
-     * @property prisma A Prisma client instance or a function that returns a Prisma client instance.
+     * @property prisma Optional Prisma client instance or resolver used for compatibility, CLI flows, and Prisma-backed transactions.
      */
-    prisma: ClientResolver
+    prisma?: ClientResolver
+    /**
+     * @property adapter Optional global adapter applied automatically to models that do not define a model-specific adapter.
+     */
+    adapter?: DatabaseAdapter
+    /**
+     * @property boot Optional synchronous runtime boot hook for central adapter binding.
+     */
+    boot?: (context: ArkormBootContext) => void
     /**
      * @property pagination Configuration options related to pagination behavior and URL generation.
      */

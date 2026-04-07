@@ -1,18 +1,27 @@
 # Typing
 
-Arkormˣ uses your model generic and Prisma delegate shape to infer strongly typed query and attribute APIs.
+Arkormˣ uses your model generic and underlying row shape to infer strongly
+typed query and attribute APIs.
 
 ## Recommended pattern
 
-Use the delegate key as the model generic and set static `delegate`:
+Use a model generic when you want stricter query and attribute typing:
 
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users';
-}
+type UserAttributes = {
+  id: number;
+  email: string;
+  name: string;
+  isActive: boolean;
+};
+
+export class User extends Model<Record<string, never>, UserAttributes> {}
 ```
+
+If your project already uses delegate-name generics, that still works. The 2.x
+docs no longer treat explicit `delegate` overrides as the default model shape.
 
 ## Typed accessors
 

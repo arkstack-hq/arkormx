@@ -10,9 +10,7 @@ Arkormˣ provides flexible mutators and accessors for transforming attribute val
 ```ts
 import { Attribute, Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+export class User extends Model {
   public name() {
     return Attribute.make({
       get: (value) => String(value ?? '').trim(),
@@ -45,9 +43,7 @@ console.log(user.displayName); // JANE
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+export class User extends Model {
   public getNameAttribute(value: unknown): string {
     return String(value ?? '').trim();
   }

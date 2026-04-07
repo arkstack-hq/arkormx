@@ -1,11 +1,8 @@
 # Getting Started
 
-Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility preserved during the current migration window.
+Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
 
 ## 1. Install dependencies
-
-Use the default package name for stable releases. If you want the current preview
-line, install `arkormx@next` instead.
 
 ::: code-group
 
@@ -14,18 +11,8 @@ pnpm add arkormx @prisma/client
 pnpm add -D prisma
 ```
 
-```bash [pnpm next]
-pnpm add arkormx@next @prisma/client
-pnpm add -D prisma
-```
-
 ```bash [npm]
 npm install arkormx @prisma/client
-npm install -D prisma
-```
-
-```bash [npm next]
-npm install arkormx@next @prisma/client
 npm install -D prisma
 ```
 
@@ -34,28 +21,11 @@ yarn add arkormx @prisma/client
 yarn add -D prisma
 ```
 
-```bash [yarn next]
-yarn add arkormx@next @prisma/client
-yarn add -D prisma
-```
-
 :::
 
 ## 2. Configure Arkormˣ
 
-Bind an adapter during application bootstrap:
-
-```ts
-import { createPrismaDatabaseAdapter } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-const adapter = createPrismaDatabaseAdapter(prisma);
-
-User.setAdapter(adapter);
-```
-
-If you also want Arkorm CLI/runtime config, create `arkormx.config.ts` in your project root:
+Create `arkormx.config.ts` in your project root:
 
 ```ts
 import { defineConfig } from 'arkormx';
@@ -100,7 +70,6 @@ pnpm prisma generate
 
 - [Setup](./setup.md)
 - [Configuration](./configuration.md)
-- [Prisma Compatibility](./prisma-compatibility.md)
 - [Typing](./typing.md)
 - [Models](./models.md)
 - [Query Builder](./query-builder.md)
