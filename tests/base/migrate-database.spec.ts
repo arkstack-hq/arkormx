@@ -1,0 +1,182 @@
+import type { AggregateSpec, DatabaseAdapter, DeleteSpec, InsertSpec, SelectSpec, UpdateSpec } from '../../src/types/adapter'
+import type { AppliedMigrationsState, SchemaOperation } from '../../src'
+import { CliApp, configureArkormRuntime, resetArkormRuntimeForTests } from '../../src'
+import { afterEach, describe, expect, it } from 'vitest'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+
+import { Kernel } from '@h3ravel/musket'
+import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
+import { MigrateRollbackCommand } from '../../src/cli/commands/MigrateRollbackCommand'
+import { MigrationHistoryCommand } from '../../src/cli/commands/MigrationHistoryCommand'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
+
+const originalCwd = process.cwd()
+const tempDirectories: string[] = []
+
+const makeTempDir = (prefix: string): string => {
+    const directory = mkdtempSync(join(tmpdir(), prefix))
+    tempDirectories.push(directory)
+
+    return directory
+}
+
+const attachCommandIo = (
+    command: {
+        option: (name: string) => unknown
+        options: () => Record<string, unknown>
+        argument: (name: string) => unknown
+        success: (line: string) => void
+        error: (line: string) => void
+    },
+    options: Record<string, unknown> = {},
+    argumentsMap: Record<string, unknown> = {}
+) => {
+    const successLines: string[] = []
+    const errorLines: string[] = []
+
+    command.option = (name: string) => options[name]
+    command.options = () => options
+    command.argument = (name: string) => argumentsMap[name]
+    command.success = (line: string) => {
+        successLines.push(line)
+    }
+    command.error = (line: string) => {
+        errorLines.push(line)
+    }
+
+    return { successLines, errorLines }
+}
+
+const createNoopAdapter = (): DatabaseAdapter => {
+    const notImplemented = async (): Promise<never> => {
+        throw new Error('Not implemented in test adapter')
+    }
+
+    const state: AppliedMigrationsState = {
+        version: 1,
+        migrations: [],
+        runs: [],
+    }
+    const executed: SchemaOperation[][] = []
+
+    const adapter: DatabaseAdapter & {
+        state: AppliedMigrationsState
+        executed: SchemaOperation[][]
+    } = {
+        state,
+        executed,
+        select: async <TModel = unknown> (_spec: SelectSpec<TModel>) => await notImplemented(),
+        selectOne: async <TModel = unknown> (_spec: SelectSpec<TModel>) => await notImplemented(),
+        insert: async <TModel = unknown> (_spec: InsertSpec<TModel>) => await notImplemented(),
+        update: async <TModel = unknown> (_spec: UpdateSpec<TModel>) => await notImplemented(),
+        delete: async <TModel = unknown> (_spec: DeleteSpec<TModel>) => await notImplemented(),
+        count: async <TModel = unknown> (_spec: AggregateSpec<TModel>) => await notImplemented(),
+        transaction: async <TResult = unknown> (
+            callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+        ): Promise<TResult> => {
+            return await callback(adapter)
+        },
+        executeSchemaOperations: async (operations: SchemaOperation[]): Promise<void> => {
+            executed.push(operations)
+        },
+        readAppliedMigrationsState: async (): Promise<AppliedMigrationsState> => {
+            return JSON.parse(JSON.stringify(state)) as AppliedMigrationsState
+        },
+        writeAppliedMigrationsState: async (nextState: AppliedMigrationsState): Promise<void> => {
+            state.version = nextState.version
+            state.migrations.splice(0, state.migrations.length, ...nextState.migrations)
+            state.runs = [...(nextState.runs ?? [])]
+        },
+    }
+
+    return adapter
+}
+
+afterEach(() => {
+    process.chdir(originalCwd)
+    resetArkormRuntimeForTests()
+
+    tempDirectories.splice(0).forEach((directory) => {
+        rmSync(directory, { recursive: true, force: true })
+    })
+})
+
+describe('database-backed migration command fallback', () => {
+    it('uses adapter-backed migration execution and state tracking without prisma schema files', async () => {
+        const workspace = makeTempDir('arkormx-db-migrate-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'email\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            state: AppliedMigrationsState
+            executed: SchemaOperation[][]
+        }
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const migrateCommand = new MigrateCommand(app, new Kernel(app));
+        (migrateCommand as unknown as { app: CliApp }).app = app
+        const migrateIo = attachCommandIo(migrateCommand as unknown as any, {
+            all: true,
+        })
+
+        await migrateCommand.handle()
+
+        expect(migrateIo.errorLines).toHaveLength(0)
+        expect(migrateIo.successLines.some(line => line.includes('Applied 1 migration(s).'))).toBe(true)
+        expect(adapter.executed).toHaveLength(1)
+        expect(adapter.executed[0]?.[0]).toMatchObject({ type: 'createTable', table: 'users' })
+        expect(adapter.state.migrations).toHaveLength(1)
+
+        const historyCommand = new MigrationHistoryCommand(app, new Kernel(app));
+        (historyCommand as unknown as { app: CliApp }).app = app
+        const historyIo = attachCommandIo(historyCommand as unknown as any, {
+            json: true,
+        })
+
+        await historyCommand.handle()
+
+        expect(historyIo.errorLines).toHaveLength(0)
+        expect(historyIo.successLines.join('\n')).toContain('"migrations"')
+
+        const rollbackCommand = new MigrateRollbackCommand(app, new Kernel(app))
+            ; (rollbackCommand as unknown as { app: CliApp }).app = app
+        const rollbackIo = attachCommandIo(rollbackCommand as unknown as any)
+
+        await rollbackCommand.handle()
+
+        expect(rollbackIo.errorLines).toHaveLength(0)
+        expect(rollbackIo.successLines.some(line => line.includes('Rolled back 1 migration(s).'))).toBe(true)
+        expect(adapter.executed).toHaveLength(2)
+        expect(adapter.executed[1]?.[0]).toMatchObject({ type: 'dropTable', table: 'users' })
+        expect(adapter.state.migrations).toHaveLength(0)
+    })
+})
