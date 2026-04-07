@@ -13,9 +13,6 @@ hero:
       text: Get Started
       link: ./guide/getting-started
     - theme: alt
-      text: Migrate from 1.x
-      link: ./guide/migrating-from-1x
-    - theme: alt
       text: Query Builder
       link: ./guide/query-builder
 features:
