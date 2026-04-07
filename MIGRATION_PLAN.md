@@ -772,3 +772,9 @@ The migration is complete when:
 ## Immediate Next Step
 
 The first implementation task should be to define the Arkorm adapter interfaces and query spec types, then route current delegate-backed behavior through a Prisma compatibility adapter before attempting any Kysely CRUD or relation-loader work.
+
+## Post Migration
+
+### Add support for other databases
+
+Currently, the adapter backed setup is tightly coupled for `postgres` support, `introspectModels` for instance is hard coded to read from a `postgres` database. and this has to change for us to be progressive.

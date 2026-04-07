@@ -17,11 +17,12 @@ type UserAttributes = {
   isActive: boolean;
 };
 
-export class User extends Model<Record<string, never>, UserAttributes> {}
+export class User extends Model<UserAttributes> {}
 ```
 
-If your project already uses delegate-name generics, that still works. The 2.x
-docs no longer treat explicit `delegate` overrides as the default model shape.
+`Model<UserAttributes>` is the preferred 2.x typing path for adapter-first
+projects. If your project already uses delegate-name generics, that still
+works, but it is no longer the recommended default.
 
 ## Typed accessors
 
@@ -54,11 +55,15 @@ For static TypeScript field completion on direct properties, sync declarations w
 npx arkorm models:sync
 ```
 
-The generated declarations follow Prisma schema types closely:
+When the active adapter supports schema introspection, `models:sync` reads the
+database structure directly. Otherwise it falls back to the Prisma schema.
 
-- Prisma enums are referenced through `@prisma/client` type imports.
-- `Json` fields use `Record<string, unknown> | unknown[]`.
-- Prisma list fields use `Array<...>`.
+Generated declarations follow the available schema source closely:
+
+- Database and Prisma `Json` fields use `Record<string, unknown> | unknown[]`.
+- Array/list fields use `Array<...>`.
+- Prisma enums are referenced through `@prisma/client` type imports when the Prisma schema is the source.
+- Database enums are emitted as string-literal unions when adapter introspection is the source.
 - If you manually narrow a generated declaration to a compatible subtype, a later sync leaves it untouched.
 
 ## Untyped fallback

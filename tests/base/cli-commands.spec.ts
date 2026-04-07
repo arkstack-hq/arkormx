@@ -262,9 +262,7 @@ describe('CLI command classes', () => {
         writeFileSync(userModelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
-            '    protected static override delegate = \'users\'',
-            '}',
+            'export class User extends Model {}',
             '',
         ].join('\n'))
 
@@ -319,9 +317,7 @@ describe('CLI command classes', () => {
         writeFileSync(userModelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
-            '    protected static override delegate = \'users\'',
-            '}',
+            'export class User extends Model {}',
             '',
         ].join('\n'))
 
@@ -344,6 +340,57 @@ describe('CLI command classes', () => {
         expect(updatedSource).toContain('declare tags: Array<UserStatus>')
         expect(errorLines).toHaveLength(0)
         expect(successLines.some(line => line.includes('SUCCESS: Model sync completed'))).toBe(true)
+    })
+
+    it('ModelsSyncCommand prefers adapter introspection when the active adapter supports it', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'id', type: 'number', nullable: false },
+                            { name: 'email', type: 'string', nullable: false },
+                            { name: 'isActive', type: 'boolean', nullable: false },
+                        ],
+                    },
+                ]),
+            } as any,
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        const updatedSource = readFileSync(userModelPath, 'utf-8')
+        expect(updatedSource).toContain('declare id: number')
+        expect(updatedSource).toContain('declare email: string')
+        expect(updatedSource).toContain('declare isActive: boolean')
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('adapter introspection'))).toBe(true)
     })
 
     it('SeedCommand loads and runs TypeScript seeder classes from configured directory', async () => {

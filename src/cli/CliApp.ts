@@ -1,4 +1,4 @@
-import { ArkormConfig, GetUserConfig } from 'src/types'
+import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
 import { PRISMA_ENUM_REGEX, applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { dirname, extname, join, relative } from 'path'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
@@ -19,6 +19,20 @@ type SyncedPrismaModel = {
     name: string
     table: string
     fields: SyncedPrismaModelField[]
+}
+
+type SyncedModelSource = {
+    className: string
+    table: string
+}
+
+type SyncedModelsResult = {
+    source: 'adapter' | 'prisma'
+    schemaPath?: string
+    modelsDir: string
+    total: number
+    updated: string[]
+    skipped: string[]
 }
 
 type ParsedDeclarationNode =
@@ -782,6 +796,53 @@ export class CliApp {
         return lines.join('\n')
     }
 
+    private parseModelSyncSource (modelSource: string): SyncedModelSource | null {
+        const classMatch = modelSource.match(/export\s+class\s+(\w+)\s+extends\s+Model(?:<[^\n]+>)?\s*\{/)
+        if (!classMatch)
+            return null
+
+        const className = classMatch[1]
+        const tableMatch = modelSource.match(/protected\s+static\s+override\s+table\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+table\s*=\s*['"]([^'"]+)['"]/)
+        const delegateMatch = modelSource.match(/protected\s+static\s+override\s+delegate\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+delegate\s*=\s*['"]([^'"]+)['"]/)
+
+        return {
+            className,
+            table: tableMatch?.[1] ?? delegateMatch?.[1] ?? str(className).camel().plural().toString(),
+        }
+    }
+
+    private syncModelFiles (
+        modelFiles: string[],
+        resolveStructure: (filePath: string, source: string) => AdapterModelStructure | undefined,
+        enums: Map<string, string[]>,
+    ): { updated: string[], skipped: string[] } {
+        const updated: string[] = []
+        const skipped: string[] = []
+
+        modelFiles.forEach((filePath) => {
+            const source = readFileSync(filePath, 'utf-8')
+            const structure = resolveStructure(filePath, source)
+
+            if (!structure || structure.fields.length === 0) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            const synced = this.syncModelDeclarations(source, structure.fields, enums)
+            if (!synced.updated) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            writeFileSync(filePath, synced.content)
+            updated.push(filePath)
+        })
+
+        return { updated, skipped }
+    }
+
     /**
      * Parse Prisma enum definitions from a schema and return their member names.
      *
@@ -910,7 +971,7 @@ export class CliApp {
         enums: Map<string, string[]>
     ): { content: string, updated: boolean } {
         const lines = modelSource.split('\n')
-        const classIndex = lines.findIndex(line => /export\s+class\s+\w+\s+extends\s+Model<.+>\s*\{/.test(line))
+        const classIndex = lines.findIndex(line => /export\s+class\s+\w+\s+extends\s+Model(?:<[^\n]+>)?\s*\{/.test(line))
         if (classIndex < 0)
             return { content: modelSource, updated: false }
 
@@ -982,6 +1043,58 @@ export class CliApp {
         }
     }
 
+    public async syncModels (options: {
+        schemaPath?: string
+        modelsDir?: string
+    } = {}): Promise<SyncedModelsResult> {
+        const modelsDir = options.modelsDir ?? this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
+        if (!existsSync(modelsDir))
+            throw new Error(`Models directory not found: ${modelsDir}`)
+
+        const modelFiles = readdirSync(modelsDir)
+            .filter((file: string) => file.endsWith('.ts'))
+            .map(file => join(modelsDir, file))
+
+        const adapter = this.getConfig('adapter')
+        if (adapter && typeof adapter.introspectModels === 'function') {
+            const sources = modelFiles.reduce<Map<string, SyncedModelSource>>((all, filePath) => {
+                const parsed = this.parseModelSyncSource(readFileSync(filePath, 'utf-8'))
+                if (parsed)
+                    all.set(filePath, parsed)
+
+                return all
+            }, new Map())
+            const discovered = await adapter.introspectModels({
+                tables: [...new Set([...sources.values()].map(source => source.table))],
+            })
+            const structuresByTable = new Map(discovered.map(model => [model.table, model]))
+            const result = this.syncModelFiles(
+                modelFiles,
+                (filePath) => {
+                    const parsed = sources.get(filePath)
+
+                    return parsed ? structuresByTable.get(parsed.table) : undefined
+                },
+                new Map(),
+            )
+
+            return {
+                source: 'adapter',
+                modelsDir,
+                total: modelFiles.length,
+                updated: result.updated,
+                skipped: result.skipped,
+            }
+        }
+
+        const prismaResult = this.syncModelsFromPrisma(options)
+
+        return {
+            source: 'prisma',
+            ...prismaResult,
+        }
+    }
+
     /**
      * Sync model attribute declarations in model files based on the Prisma schema.
      * This method reads the Prisma schema to extract model definitions and their 
@@ -1017,46 +1130,26 @@ export class CliApp {
 
         const modelFiles = readdirSync(modelsDir)
             .filter((file: string) => file.endsWith('.ts'))
+            .map(file => join(modelsDir, file))
 
-        const updated: string[] = []
-        const skipped: string[] = []
+        const result = this.syncModelFiles(
+            modelFiles,
+            (filePath, source) => {
+                const parsed = this.parseModelSyncSource(source)
+                if (!parsed)
+                    return undefined
 
-        modelFiles.forEach((file: string) => {
-            const filePath = join(modelsDir, file)
-            const source = readFileSync(filePath, 'utf-8')
-            const classMatch = source.match(/export\s+class\s+(\w+)\s+extends\s+Model<'([^']+)'>/)
-            if (!classMatch) {
-                skipped.push(filePath)
-
-                return
-            }
-
-            const className = classMatch[1]
-            const delegate = classMatch[2]
-            const prismaModel = prismaModels.find(model => model.table === delegate) ?? prismaModels.find(model => model.name === className)
-            if (!prismaModel || prismaModel.fields.length === 0) {
-                skipped.push(filePath)
-
-                return
-            }
-
-            const synced = this.syncModelDeclarations(source, prismaModel.fields, prismaEnums)
-            if (!synced.updated) {
-                skipped.push(filePath)
-
-                return
-            }
-
-            writeFileSync(filePath, synced.content)
-            updated.push(filePath)
-        })
+                return prismaModels.find(model => model.table === parsed.table) ?? prismaModels.find(model => model.name === parsed.className)
+            },
+            prismaEnums,
+        )
 
         return {
             schemaPath,
             modelsDir,
             total: modelFiles.length,
-            updated,
-            skipped,
+            updated: result.updated,
+            skipped: result.skipped,
         }
     }
 }
