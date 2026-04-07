@@ -1,6 +1,6 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
-import { applyMigrationToPrismaSchema, runPrismaCommand } from '../../helpers/migrations'
-import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsState, resolveMigrationStateFilePath, writeAppliedMigrationsState } from '../../helpers/migration-history'
+import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
+import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -67,8 +67,10 @@ export class MigrateCommand extends Command<CliApp> {
             this.option('state-file') ? String(this.option('state-file')) : undefined
         )
         let appliedState = shouldTrackApplied
-            ? readAppliedMigrationsState(stateFilePath)
+            ? await readAppliedMigrationsStateFromStore(this.app.getConfig('adapter'), stateFilePath)
             : undefined
+        const adapter = this.app.getConfig('adapter')
+        const useDatabaseMigrations = supportsDatabaseMigrationExecution(adapter)
 
         const skipped: [MigrationClass, string][] = []
         const changed: [MigrationClass, string][] = []
@@ -100,8 +102,14 @@ export class MigrateCommand extends Command<CliApp> {
             return
         }
 
-        for (const [MigrationClassItem] of pending)
+        for (const [MigrationClassItem] of pending) {
+            if (useDatabaseMigrations) {
+                await applyMigrationToDatabase(adapter, MigrationClassItem)
+                continue
+            }
+
             await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
+        }
 
         if (appliedState) {
             const runAppliedIds: string[] = []
@@ -124,13 +132,13 @@ export class MigrateCommand extends Command<CliApp> {
                 migrationIds: runAppliedIds,
             })
 
-            writeAppliedMigrationsState(stateFilePath, appliedState)
+            await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
         }
 
-        if (!this.option('skip-generate'))
+        if (!useDatabaseMigrations && !this.option('skip-generate'))
             runPrismaCommand(['generate'], process.cwd())
 
-        if (!this.option('skip-migrate')) {
+        if (!useDatabaseMigrations && !this.option('skip-migrate')) {
             if (this.option('deploy')) {
                 runPrismaCommand(['migrate', 'deploy'], process.cwd())
             } else {

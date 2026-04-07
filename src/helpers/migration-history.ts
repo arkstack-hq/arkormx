@@ -2,12 +2,20 @@ import { AppliedMigrationEntry, AppliedMigrationRun, AppliedMigrationsState } fr
 import { dirname, extname, join, resolve } from 'node:path'
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 
+import type { DatabaseAdapter } from 'src/types/adapter'
 import { createHash } from 'node:crypto'
 
-const DEFAULT_STATE: AppliedMigrationsState = {
+export const createEmptyAppliedMigrationsState = (): AppliedMigrationsState => ({
     version: 1,
     migrations: [],
     runs: [],
+})
+
+export const supportsDatabaseMigrationState = (
+    adapter?: DatabaseAdapter
+): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
+    return typeof adapter?.readAppliedMigrationsState === 'function'
+        && typeof adapter?.writeAppliedMigrationsState === 'function'
 }
 
 export const resolveMigrationStateFilePath = (
@@ -42,12 +50,12 @@ export const readAppliedMigrationsState = (
     stateFilePath: string
 ): AppliedMigrationsState => {
     if (!existsSync(stateFilePath))
-        return { ...DEFAULT_STATE }
+        return createEmptyAppliedMigrationsState()
 
     try {
         const parsed = JSON.parse(readFileSync(stateFilePath, 'utf-8')) as Partial<AppliedMigrationsState>
         if (!Array.isArray(parsed.migrations))
-            return { ...DEFAULT_STATE }
+            return createEmptyAppliedMigrationsState()
 
         return {
             version: 1,
@@ -69,8 +77,18 @@ export const readAppliedMigrationsState = (
                 : [],
         }
     } catch {
-        return { ...DEFAULT_STATE }
+        return createEmptyAppliedMigrationsState()
     }
+}
+
+export const readAppliedMigrationsStateFromStore = async (
+    adapter: DatabaseAdapter | undefined,
+    stateFilePath: string
+): Promise<AppliedMigrationsState> => {
+    if (supportsDatabaseMigrationState(adapter))
+        return await adapter.readAppliedMigrationsState()
+
+    return readAppliedMigrationsState(stateFilePath)
 }
 
 export const writeAppliedMigrationsState = (
@@ -82,6 +100,38 @@ export const writeAppliedMigrationsState = (
         mkdirSync(directory, { recursive: true })
 
     writeFileSync(stateFilePath, JSON.stringify(state, null, 2))
+}
+
+export const writeAppliedMigrationsStateToStore = async (
+    adapter: DatabaseAdapter | undefined,
+    stateFilePath: string,
+    state: AppliedMigrationsState
+): Promise<void> => {
+    if (supportsDatabaseMigrationState(adapter)) {
+        await adapter.writeAppliedMigrationsState(state)
+
+        return
+    }
+
+    writeAppliedMigrationsState(stateFilePath, state)
+}
+
+export const deleteAppliedMigrationsStateFromStore = async (
+    adapter: DatabaseAdapter | undefined,
+    stateFilePath: string
+): Promise<'database' | 'file' | 'missing-file'> => {
+    if (supportsDatabaseMigrationState(adapter)) {
+        await adapter.writeAppliedMigrationsState(createEmptyAppliedMigrationsState())
+
+        return 'database'
+    }
+
+    if (!existsSync(stateFilePath))
+        return 'missing-file'
+
+    writeAppliedMigrationsState(stateFilePath, createEmptyAppliedMigrationsState())
+
+    return 'file'
 }
 
 export const isMigrationApplied = (

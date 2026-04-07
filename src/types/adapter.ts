@@ -1,5 +1,6 @@
 import type { ModelStatic } from './ModelStatic'
 import type { SoftDeleteConfig } from './core'
+import type { AppliedMigrationsState, SchemaOperation } from './migrations'
 
 export type DatabasePrimitive = string | number | boolean | bigint | Date | null
 
@@ -243,6 +244,9 @@ export interface DatabaseAdapter {
     exists?: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<boolean>
     loadRelations?: <TModel = unknown>(spec: RelationLoadSpec<TModel>) => Promise<void>
     introspectModels?: (options?: AdapterModelIntrospectionOptions) => Promise<AdapterModelStructure[]>
+    executeSchemaOperations?: (operations: SchemaOperation[]) => Promise<void>
+    readAppliedMigrationsState?: () => Promise<AppliedMigrationsState>
+    writeAppliedMigrationsState?: (state: AppliedMigrationsState) => Promise<void>
     transaction: <TResult = unknown>(
         callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
         context?: AdapterTransactionContext,
