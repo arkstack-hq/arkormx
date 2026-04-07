@@ -1,10 +1,12 @@
-import { DelegateRow, PrismaDelegateLike, PrismaLikeInclude, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, RelationshipModelStatic } from './core'
+import { DelegateCreateData, DelegateRow, DelegateUpdateData, PrismaDelegateLike, PrismaLikeInclude, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, RelationshipModelStatic } from './core'
 
 import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
 import { QueryBuilder } from 'src'
 
 type LowercaseString<T extends string> = Lowercase<T>
+type Simplify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & {}
+type ConventionalAutoManagedKeys = 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'
 
 type SingularKey<T extends string> =
     LowercaseString<T> extends `${infer Base}s`
@@ -56,6 +58,25 @@ export type AttributeSelect<TAttributes extends Record<string, unknown>> = {
     [TKey in keyof TAttributes]?: boolean
 }
 
+type RequiredCreateKeys<TAttributes extends Record<string, unknown>> = Exclude<{
+    [TKey in keyof TAttributes]-?: undefined extends TAttributes[TKey]
+    ? never
+    : null extends TAttributes[TKey]
+    ? never
+    : TKey
+}[keyof TAttributes], ConventionalAutoManagedKeys>
+
+type AtLeastOne<TValue extends Record<string, unknown>> = {
+    [TKey in keyof TValue]-?: Required<Pick<TValue, TKey>> & Partial<Omit<TValue, TKey>>
+}[keyof TValue]
+
+export type AttributeCreateInput<TAttributes extends Record<string, unknown>> = Simplify<
+    Pick<TAttributes, RequiredCreateKeys<TAttributes>>
+    & Partial<Omit<TAttributes, RequiredCreateKeys<TAttributes>>>
+>
+
+export type AttributeUpdateInput<TAttributes extends Record<string, unknown>> = AtLeastOne<Partial<TAttributes>>
+
 export interface AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> extends PrismaDelegateLike {
     findMany: (args?: {
         where?: AttributeWhereInput<TAttributes>
@@ -74,12 +95,12 @@ export interface AttributeSchemaDelegate<TAttributes extends Record<string, unkn
         take?: number
     }) => Promise<TAttributes | null>
     create: (args: {
-        data: Partial<TAttributes>
+        data: AttributeCreateInput<TAttributes>
         select?: PrismaLikeSelect
     }) => Promise<TAttributes>
     update: (args: {
         where: Partial<TAttributes>
-        data: Partial<TAttributes>
+        data: AttributeUpdateInput<TAttributes>
         select?: PrismaLikeSelect
     }) => Promise<TAttributes>
     delete: (args: {
@@ -121,6 +142,20 @@ export type ModelAttributesOf<TSchema extends PrismaDelegateLike | Record<string
 export type ModelAttributes<TModel> = TModel extends Model<any, infer TAttributes>
     ? TAttributes
     : Record<string, any>
+
+export type ModelCreateData<TModel, TDelegate extends PrismaDelegateLike> =
+    TModel extends Model<any, infer TAttributes>
+    ? TDelegate extends AttributeSchemaDelegate<TAttributes>
+    ? AttributeCreateInput<TAttributes>
+    : DelegateCreateData<TDelegate>
+    : DelegateCreateData<TDelegate>
+
+export type ModelUpdateData<TModel, TDelegate extends PrismaDelegateLike> =
+    TModel extends Model<any, infer TAttributes>
+    ? TDelegate extends AttributeSchemaDelegate<TAttributes>
+    ? AttributeUpdateInput<TAttributes>
+    : DelegateUpdateData<TDelegate>
+    : DelegateUpdateData<TDelegate>
 
 
 

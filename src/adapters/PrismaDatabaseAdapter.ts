@@ -1,4 +1,6 @@
 import type {
+    AdapterModelIntrospectionOptions,
+    AdapterModelStructure,
     AdapterCapabilities,
     AdapterTransactionContext,
     AggregateSpec,
@@ -93,6 +95,64 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
 
     private unique (values: string[]): string[] {
         return [...new Set(values.filter(Boolean))]
+    }
+
+    private runtimeModelTypeToTs (
+        typeName: string,
+        kind: string | undefined,
+        enumValues: string[] | null,
+    ): string {
+        if (kind === 'enum' && enumValues && enumValues.length > 0)
+            return enumValues.map(value => `'${value.replace(/'/g, '\\\'')}'`).join(' | ')
+
+        switch (typeName) {
+            case 'Int':
+            case 'Float':
+            case 'Decimal':
+            case 'BigInt':
+                return 'number'
+            case 'Boolean':
+                return 'boolean'
+            case 'DateTime':
+                return 'Date'
+            case 'Json':
+                return 'Record<string, unknown> | unknown[]'
+            case 'Bytes':
+                return 'Uint8Array'
+            case 'String':
+            case 'UUID':
+                return 'string'
+            default:
+                return 'string'
+        }
+    }
+
+    private getRuntimeDataModel (): {
+        models?: Record<string, {
+            dbName?: string | null
+            fields?: Array<{
+                name: string
+                kind?: string
+                type: string
+                isList?: boolean
+                isRequired?: boolean
+            }>
+        }>
+        enums?: Record<string, {
+            values?: Array<string | { name?: string }>
+        }>
+    } | null {
+        const prismaRecord = this.prisma as Record<string, unknown>
+
+        const runtimeDataModel = prismaRecord._runtimeDataModel as {
+            models?: Record<string, unknown>
+            enums?: Record<string, unknown>
+        } | undefined
+
+        if (runtimeDataModel && typeof runtimeDataModel === 'object')
+            return runtimeDataModel as ReturnType<PrismaDatabaseAdapter['getRuntimeDataModel']>
+
+        return null
     }
 
     private toQuerySelect (columns?: QuerySelectColumn[]): PrismaLikeSelect | undefined {
@@ -237,6 +297,40 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
 
             return include
         }, {})
+    }
+
+    public async introspectModels (options: AdapterModelIntrospectionOptions = {}): Promise<AdapterModelStructure[]> {
+        const runtimeDataModel = this.getRuntimeDataModel()
+        if (!runtimeDataModel?.models)
+            return []
+
+        const requestedTables = new Set(options.tables?.filter(Boolean) ?? [])
+        const enums = runtimeDataModel.enums ?? {}
+
+        return Object.entries(runtimeDataModel.models).flatMap(([name, model]) => {
+            const table = model.dbName ?? `${str(name).camel().plural()}`
+            if (requestedTables.size > 0 && !requestedTables.has(table))
+                return []
+
+            return [{
+                name,
+                table,
+                fields: (model.fields ?? [])
+                    .filter(field => field.kind !== 'object')
+                    .map((field) => {
+                        const enumValues = field.kind === 'enum'
+                            ? ((enums[field.type]?.values ?? []) as Array<string | { name?: string }>).map(value => typeof value === 'string' ? value : value.name ?? '').filter(Boolean)
+                            : null
+                        const baseType = this.runtimeModelTypeToTs(field.type, field.kind, enumValues)
+
+                        return {
+                            name: field.name,
+                            type: field.isList ? `Array<${baseType}>` : baseType,
+                            nullable: field.isRequired === false,
+                        }
+                    }),
+            }]
+        })
     }
 
     private resolveDelegate (target: QueryTarget<any>): PrismaDelegateLike {

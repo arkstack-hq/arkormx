@@ -26,15 +26,13 @@ Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It b
 Stable release:
 
 ```sh
-pnpm add arkormx @prisma/client
-pnpm add -D prisma
+pnpm add arkormx kysely pg
 ```
 
 Preview release (`next`):
 
 ```sh
-pnpm add arkormx@next @prisma/client
-pnpm add -D prisma
+pnpm add arkormx@next kysely pg
 ```
 
 ### Configuration
@@ -42,15 +40,21 @@ pnpm add -D prisma
 Primary runtime path:
 
 ```ts
-import { Model, createPrismaDatabaseAdapter } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { createKyselyAdapter, defineConfig } from 'arkormx';
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
-const adapter = createPrismaDatabaseAdapter(prisma);
-
-class User extends Model<'users'> {}
-
-User.setAdapter(adapter);
+export default defineConfig({
+  adapter: createKyselyAdapter(
+    new Kysely<Record<string, never>>({
+      dialect: new PostgresDialect({
+        pool: new Pool({
+          connectionString: process.env.DATABASE_URL,
+        }),
+      }),
+    }),
+  ),
+});
 ```
 
 Optional compatibility/runtime config for CLI and transaction helpers:
@@ -61,8 +65,10 @@ Create `arkormx.config.js` in your project root:
 import { defineConfig } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
+
 export default defineConfig({
-  prisma: new PrismaClient(...),
+  prisma: () => prisma,
 });
 ```
 
@@ -73,15 +79,21 @@ Or run the Arkormˣ CLI command `npx arkorm init` to initialize your project alo
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users'; // not required if your model name matches the delegate name or the pluralized form of it
-}
+type UserAttributes = {
+  id: number;
+  email: string;
+  name: string;
+  isActive: boolean;
+};
+
+export class User extends Model<UserAttributes> {}
 ```
 
-### Generate Prisma client
+### Optional Prisma compatibility
 
 ```sh
-pnpm prisma generate
+pnpm add @prisma/client
+pnpm add -D prisma
 ```
 
 ### Run queries

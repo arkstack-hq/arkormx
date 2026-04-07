@@ -187,4 +187,52 @@ describe('Prisma database adapter', () => {
             },
         }))
     })
+
+    it('introspects model structure from Prisma runtime data model metadata when available', async () => {
+        const prisma = {
+            user: {
+                findMany: async () => [],
+                findFirst: async () => null,
+                create: async () => ({}),
+                update: async () => ({}),
+                delete: async () => ({}),
+                count: async () => 0,
+            },
+            _runtimeDataModel: {
+                models: {
+                    User: {
+                        dbName: 'users',
+                        fields: [
+                            { name: 'id', kind: 'scalar', type: 'Int', isRequired: true },
+                            { name: 'email', kind: 'scalar', type: 'String', isRequired: true },
+                            { name: 'status', kind: 'enum', type: 'UserStatus', isRequired: true },
+                            { name: 'tags', kind: 'enum', type: 'UserStatus', isRequired: true, isList: true },
+                            { name: 'posts', kind: 'object', type: 'Post', isRequired: false },
+                        ],
+                    },
+                },
+                enums: {
+                    UserStatus: {
+                        values: ['ACTIVE', 'SUSPENDED'],
+                    },
+                },
+            },
+        } as Record<string, unknown>
+
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const models = await adapter.introspectModels?.()
+
+        expect(models).toEqual([
+            {
+                name: 'User',
+                table: 'users',
+                fields: [
+                    { name: 'id', type: 'number', nullable: false },
+                    { name: 'email', type: 'string', nullable: false },
+                    { name: 'status', type: '\'ACTIVE\' | \'SUSPENDED\'', nullable: false },
+                    { name: 'tags', type: 'Array<\'ACTIVE\' | \'SUSPENDED\'>', nullable: false },
+                ],
+            },
+        ])
+    })
 })

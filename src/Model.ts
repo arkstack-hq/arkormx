@@ -32,7 +32,7 @@ import {
     runArkormTransaction,
 } from './helpers/runtime-config'
 
-import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, RelatedModelClass, RelationMetadata } from './types'
+import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, ModelUpdateData, RelatedModelClass, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
@@ -757,7 +757,7 @@ export abstract class Model<
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
 
-            const model = await constructor.query().create(payload)
+            const model = await constructor.query().create(payload as ModelCreateData<this, PrismaDelegateLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
             this.syncOriginal()
@@ -771,7 +771,7 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
 
-        const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload)
+        const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, PrismaDelegateLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -814,7 +814,7 @@ export abstract class Model<
         if (softDeleteConfig.enabled) {
             const model = await constructor.query()
                 .where({ [primaryKey]: identifier })
-                .update({ [softDeleteConfig.column]: new Date() })
+                .update({ [softDeleteConfig.column]: new Date() } as ModelUpdateData<this, PrismaDelegateLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
             this.syncOriginal()
@@ -904,7 +904,7 @@ export abstract class Model<
 
         const model = await constructor.query().withTrashed()
             .where({ [primaryKey]: identifier })
-            .update({ [softDeleteConfig.column]: null })
+            .update({ [softDeleteConfig.column]: null } as ModelUpdateData<this, PrismaDelegateLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
