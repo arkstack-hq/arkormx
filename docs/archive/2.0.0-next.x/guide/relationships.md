@@ -5,17 +5,13 @@ Arkormˣ supports relationships with eager loading and constrained relationship 
 ## Define relationships
 
 ```ts
-class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+class User extends Model {
   posts() {
     return this.hasMany(Post, 'authorId', 'id');
   }
 }
 
-class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
-
+class Post extends Model {
   author() {
     return this.belongsTo(User, 'authorId', 'id');
   }
@@ -41,9 +37,7 @@ Supported relationships:
 Use `hasOne` when the current model owns exactly one related record.
 
 ```ts
-class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+class User extends Model {
   profile() {
     return this.hasOne(Profile, 'userId', 'id');
   }
@@ -55,9 +49,7 @@ class User extends Model<'users'> {
 Use `hasMany` when the current model owns many related records.
 
 ```ts
-class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+class User extends Model {
   posts() {
     return this.hasMany(Post, 'authorId', 'id');
   }
@@ -69,9 +61,7 @@ class User extends Model<'users'> {
 Use `belongsTo` on the child side that contains the foreign key.
 
 ```ts
-class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
-
+class Post extends Model {
   author() {
     return this.belongsTo(User, 'authorId', 'id');
   }
@@ -83,9 +73,7 @@ class Post extends Model<'posts'> {
 Use `belongsToMany` for many-to-many relations through a pivot table.
 
 ```ts
-class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+class User extends Model {
   roles() {
     return this.belongsToMany(
       Role,
@@ -104,9 +92,7 @@ class User extends Model<'users'> {
 Use `hasOneThrough` to access one distant relation via an intermediate model.
 
 ```ts
-class Mechanic extends Model<'mechanics'> {
-  protected static override delegate = 'mechanics';
-
+class Mechanic extends Model {
   carOwner() {
     return this.hasOneThrough(Owner, Car, 'mechanicId', 'carId', 'id', 'id');
   }
@@ -118,9 +104,7 @@ class Mechanic extends Model<'mechanics'> {
 Use `hasManyThrough` to access many distant relations via an intermediate model.
 
 ```ts
-class Country extends Model<'countries'> {
-  protected static override delegate = 'countries';
-
+class Country extends Model {
   posts() {
     return this.hasManyThrough(Post, User, 'countryId', 'authorId', 'id', 'id');
   }
@@ -132,9 +116,7 @@ class Country extends Model<'countries'> {
 Use `morphOne` for one polymorphic relation.
 
 ```ts
-class User extends Model<'users'> {
-  protected static override delegate = 'users';
-
+class User extends Model {
   avatar() {
     return this.morphOne(Image, 'imageable', 'id');
   }
@@ -146,9 +128,7 @@ class User extends Model<'users'> {
 Use `morphMany` for many polymorphic related records.
 
 ```ts
-class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
-
+class Post extends Model {
   comments() {
     return this.morphMany(Comment, 'commentable', 'id');
   }
@@ -160,9 +140,7 @@ class Post extends Model<'posts'> {
 Use `morphToMany` for polymorphic many-to-many relation through a pivot table.
 
 ```ts
-class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
-
+class Post extends Model {
   tags() {
     return this.morphToMany(
       Tag,
@@ -189,9 +167,7 @@ Single-result relationships support `withDefault()`:
 Use it when a missing related record should resolve to a fallback model instead of `null`.
 
 ```ts
-class Profile extends Model<'profiles'> {
-  protected static override delegate = 'profiles';
-
+class Profile extends Model {
   user() {
     return this.belongsTo(User, 'userId').withDefault({
       name: 'Guest User',

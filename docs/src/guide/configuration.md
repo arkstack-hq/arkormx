@@ -2,9 +2,6 @@
 
 Arkormˣ loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
 
-Adapter binding is the primary runtime path. Config still matters for CLI flows,
-runtime helpers, and Prisma compatibility during the transition window.
-
 ## defineConfig
 
 ```ts
@@ -67,18 +64,6 @@ configureArkormRuntime(() => prisma, {
 });
 ```
 
-Runtime configuration does not replace `Model.setAdapter(...)`. Bind an adapter
-explicitly during bootstrap and use runtime config only when Arkorm also needs
-access to the Prisma client for CLI or transaction scoping.
-
-```ts
-import { createPrismaDatabaseAdapter } from 'arkormx';
-
-const adapter = createPrismaDatabaseAdapter(prisma)
-
-User.setAdapter(adapter)
-```
-
 Runtime configuration also enables transaction scopes through
 `Model.transaction(...)`, because Arkorm can resolve the active Prisma client
-and switch compatibility-adapter queries onto the transaction client automatically.
+and switch model queries onto the transaction client automatically.

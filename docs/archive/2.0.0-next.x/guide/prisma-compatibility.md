@@ -2,20 +2,25 @@
 
 Arkorm now treats adapter binding as the primary runtime path.
 
-Prisma is still supported through the compatibility adapter during the Phase 10
+Prisma is still supported through the compatibility adapter during the
 transition window.
 
 ## Recommended bootstrap
 
+Use this page only when you intentionally want Prisma compatibility. The normal
+2.x setup path is still `defineConfig({ adapter })` with your chosen runtime
+adapter.
+
 ```ts
-import { createPrismaDatabaseAdapter } from 'arkormx';
+import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const adapter = createPrismaDatabaseAdapter(prisma);
 
-User.setAdapter(adapter);
-Article.setAdapter(adapter);
+export default defineConfig({
+  prisma: () => prisma,
+  adapter: createPrismaDatabaseAdapter(prisma),
+});
 ```
 
 If your Arkorm delegate names differ from Prisma delegate names, pass a mapping:
@@ -49,7 +54,7 @@ still needs access to the Prisma client for:
 
 ## Migration notes for existing Prisma users
 
-1. Replace `Model.setClient(...)` bootstrap code with `createPrismaDatabaseAdapter(prisma)` plus `Model.setAdapter(...)`.
+1. Replace `Model.setClient(...)` bootstrap code with `defineConfig({ adapter: createPrismaDatabaseAdapter(prisma) })`.
 2. Keep your `defineConfig({ prisma })` or `configureArkormRuntime(...)` call if you use CLI commands or `Model.transaction(...)`.
 3. Move any custom delegate-name mapping into `createPrismaDatabaseAdapter(prisma, mapping)`.
 4. Keep parity tests running against the compatibility adapter while you roll out SQL-backed adapters.

@@ -1,4 +1,5 @@
 import type {
+    AdapterBindableModel,
     ArkormConfig,
     ClientResolver,
     GetUserConfig,
@@ -10,6 +11,7 @@ import type {
     PrismaTransactionCapableClient,
     PrismaTransactionOptions
 } from '../types/core'
+import type { DatabaseAdapter } from '../types/adapter'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { AsyncLocalStorage } from 'async_hooks'
@@ -60,6 +62,7 @@ const userConfig: Partial<ArkormConfig> = {
 let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
+let runtimeAdapter: DatabaseAdapter | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
 let runtimePaginationCurrentPageResolver: PaginationCurrentPageResolver | undefined
 const transactionClientStorage = new AsyncLocalStorage<PrismaClientLike>()
@@ -96,6 +99,17 @@ export const defineConfig = (config: ArkormConfig): ArkormConfig => {
     return config
 }
 
+export const bindAdapterToModels = (
+    adapter: DatabaseAdapter,
+    models: AdapterBindableModel[]
+): DatabaseAdapter => {
+    models.forEach((model) => {
+        model.setAdapter(adapter)
+    })
+
+    return adapter
+}
+
 /**
  * Get the user-provided ArkORM configuration. 
  * 
@@ -117,17 +131,24 @@ export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?
  * @param mapping 
  */
 export const configureArkormRuntime = (
-    prisma: ClientResolver,
+    prisma?: ClientResolver,
     options: Omit<ArkormConfig, 'prisma'> = {}
 ): void => {
     const nextConfig: Partial<ArkormConfig> = {
         ...userConfig,
-        prisma,
         paths: mergePathConfig(options.paths),
     }
 
+    nextConfig.prisma = prisma
+
     if (options.pagination !== undefined)
         nextConfig.pagination = options.pagination
+
+    if (options.adapter !== undefined)
+        nextConfig.adapter = options.adapter
+
+    if (options.boot !== undefined)
+        nextConfig.boot = options.boot
 
     if (options.outputExt !== undefined)
         nextConfig.outputExt = options.outputExt
@@ -137,8 +158,14 @@ export const configureArkormRuntime = (
     })
 
     runtimeClientResolver = prisma
+    runtimeAdapter = options.adapter
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
     runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
+
+    options.boot?.({
+        prisma: resolveClient(prisma),
+        bindAdapter: bindAdapterToModels,
+    })
 }
 
 /**
@@ -155,6 +182,7 @@ export const resetArkormRuntimeForTests = (): void => {
     runtimeConfigLoaded = false
     runtimeConfigLoadingPromise = undefined
     runtimeClientResolver = undefined
+    runtimeAdapter = undefined
     runtimePaginationURLDriverFactory = undefined
     runtimePaginationCurrentPageResolver = undefined
 }
@@ -191,10 +219,12 @@ const resolveClient = (resolver: ClientResolver | undefined): PrismaClientLike |
 const resolveAndApplyConfig = (imported: unknown): void => {
     const candidate = imported as { default?: unknown }
     const config = (candidate?.default ?? imported) as Partial<ArkormConfig>
-    if (!config || typeof config !== 'object' || !config.prisma)
+    if (!config || typeof config !== 'object')
         return
 
     configureArkormRuntime(config.prisma, {
+        adapter: config.adapter,
+        boot: config.boot,
         pagination: config.pagination,
         paths: config.paths,
         outputExt: config.outputExt,
@@ -312,6 +342,13 @@ export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
         loadRuntimeConfigSync()
 
     return resolveClient(runtimeClientResolver)
+}
+
+export const getRuntimeAdapter = (): DatabaseAdapter | undefined => {
+    if (!runtimeConfigLoaded)
+        loadRuntimeConfigSync()
+
+    return runtimeAdapter
 }
 
 export const getActiveTransactionClient = (): PrismaClientLike | undefined => {

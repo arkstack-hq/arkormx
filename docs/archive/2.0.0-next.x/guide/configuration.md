@@ -2,32 +2,50 @@
 
 Arkormˣ loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
 
-Adapter binding is the primary runtime path. Config still matters for CLI flows,
-runtime helpers, and Prisma compatibility during the transition window.
+Adapter configuration is the primary runtime path. Prisma is optional and only
+needed when you want compatibility mode, CLI flows, or Prisma-backed
+transactions during the transition window.
 
 ## defineConfig
 
 ```ts
 import { defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
+import { createKyselyAdapter } from 'arkormx';
 
 export default defineConfig({
-  prisma: new PrismaClient(),
+  adapter: createKyselyAdapter(
+    new Kysely<Record<string, never>>({
+      dialect: new PostgresDialect({
+        pool: new Pool({
+          connectionString: process.env.DATABASE_URL,
+        }),
+      }),
+    }),
+  ),
 });
 ```
 
 ## Full configuration shape
 
 ```ts
-import { defineConfig, URLDriver } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { createKyselyAdapter, defineConfig, URLDriver } from 'arkormx';
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
 
-const prisma = new PrismaClient();
+const db = new Kysely<Record<string, never>>({
+  dialect: new PostgresDialect({
+    pool: new Pool({
+      connectionString: process.env.DATABASE_URL,
+    }),
+  }),
+});
 
 class AppURLDriver extends URLDriver {}
 
 export default defineConfig({
-  prisma: new PrismaClient(),
+  adapter: createKyselyAdapter(db),
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
@@ -43,9 +61,25 @@ export default defineConfig({
 });
 ```
 
+If you still need Prisma compatibility, add it alongside the adapter instead of
+replacing the adapter-first setup:
+
+```ts
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export default defineConfig({
+  prisma: () => prisma,
+  adapter: createKyselyAdapter(db),
+});
+```
+
 ## Config reference
 
-- `prisma` (required): Prisma client instance or resolver function.
+- `prisma` (optional): Prisma client instance or resolver function for compatibility mode, CLI flows, and Prisma-backed `Model.transaction(...)`.
+- `adapter`: optional global adapter applied automatically to models that do not define their own adapter.
+- `boot`: optional low-level synchronous hook for advanced runtime binding work.
 - `pagination.urlDriver`: custom URL driver factory for paginator links.
 - `pagination.resolveCurrentPage`: runtime hook used when `paginate()` or `simplePaginate()` is called without an explicit page argument.
 - `paths.models`: generated model directory.
@@ -67,18 +101,23 @@ configureArkormRuntime(() => prisma, {
 });
 ```
 
-Runtime configuration does not replace `Model.setAdapter(...)`. Bind an adapter
-explicitly during bootstrap and use runtime config only when Arkorm also needs
-access to the Prisma client for CLI or transaction scoping.
+Runtime configuration does not replace `defineConfig({ adapter })`. Prefer the
+top-level `adapter` field so Arkorm can apply one adapter automatically across
+your model layer, and use the lower-level binding APIs only for advanced cases
+such as transaction-scoped adapter overrides.
 
 ```ts
-import { createPrismaDatabaseAdapter } from 'arkormx';
+import { createKyselyAdapter, defineConfig } from 'arkormx';
 
-const adapter = createPrismaDatabaseAdapter(prisma)
-
-User.setAdapter(adapter)
+export default defineConfig({
+  prisma: () => prisma,
+  adapter: createKyselyAdapter(db),
+});
 ```
 
 Runtime configuration also enables transaction scopes through
 `Model.transaction(...)`, because Arkorm can resolve the active Prisma client
 and switch compatibility-adapter queries onto the transaction client automatically.
+
+If you do not use Prisma compatibility features, you can omit `prisma`
+entirely and configure only `adapter`.

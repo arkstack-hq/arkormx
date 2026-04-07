@@ -15,7 +15,6 @@ import type { ModelFactory } from './database/factories'
 import type { DatabaseAdapter } from './types/adapter'
 import type {
     CastMap,
-    EagerLoadConstraint,
     EagerLoadMap,
     ModelStatic,
     PrismaClientLike,
@@ -27,6 +26,7 @@ import type {
 import {
     ensureArkormConfigLoading,
     getActiveTransactionClient,
+    getRuntimeAdapter,
     getRuntimePrismaClient,
     isDelegateLike,
     runArkormTransaction,
@@ -448,6 +448,10 @@ export abstract class Model<
 
         if (this.adapter)
             return this.adapter
+
+        const runtimeAdapter = getRuntimeAdapter()
+        if (runtimeAdapter)
+            return runtimeAdapter
 
         const client = getActiveTransactionClient() ?? this.client ?? getRuntimePrismaClient()
         if (!client || typeof client !== 'object')
