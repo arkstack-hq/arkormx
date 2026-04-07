@@ -16,8 +16,6 @@ import type {
     InsertManySpec,
     InsertSpec,
     UpsertSpec,
-    ModelAttributes,
-    ModelStatic,
     PaginationOptions,
     PrismaDelegateLike,
     QueryComparisonCondition,
@@ -33,6 +31,8 @@ import type {
     UpdateManySpec,
     UpdateSpec,
 } from './types'
+import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
+import type { ModelStatic } from './types/ModelStatic'
 import { LengthAwarePaginator, Paginator } from './Paginator'
 
 import { ArkormCollection } from './Collection'
@@ -1173,8 +1173,8 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @param data 
      * @returns 
      */
-    public async create (data: DelegateCreateData<TDelegate>): Promise<TModel> {
-        const created = await this.executeInsertRow(data)
+    public async create (data: ModelCreateData<TModel, TDelegate>): Promise<TModel> {
+        const created = await this.executeInsertRow(data as DelegateCreateData<TDelegate>)
 
         return this.model.hydrate(created as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1185,7 +1185,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @param values
      * @returns
      */
-    public async createMany (values: DelegateCreateData<TDelegate>[]): Promise<TModel[]> {
+    public async createMany (values: ModelCreateData<TModel, TDelegate>[]): Promise<TModel[]> {
         if (values.length === 0)
             return []
 
@@ -1201,7 +1201,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async insert (
-        values: DelegateCreateData<TDelegate> | DelegateCreateData<TDelegate>[]
+        values: ModelCreateData<TModel, TDelegate> | ModelCreateData<TModel, TDelegate>[]
     ): Promise<boolean> {
         const payloads = this.normalizeInsertPayloads(values)
         if (payloads.length === 0)
@@ -1225,7 +1225,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async insertOrIgnore (
-        values: DelegateCreateData<TDelegate> | DelegateCreateData<TDelegate>[]
+        values: ModelCreateData<TModel, TDelegate> | ModelCreateData<TModel, TDelegate>[]
     ): Promise<number> {
         const payloads = this.normalizeInsertPayloads(values)
         if (payloads.length === 0)
@@ -1242,10 +1242,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns
      */
     public async insertGetId (
-        values: DelegateCreateData<TDelegate>,
+        values: ModelCreateData<TModel, TDelegate>,
         sequence?: string | null
     ): Promise<unknown> {
-        const created = await this.executeInsertRow(values) as Record<string, unknown>
+        const created = await this.executeInsertRow(values as DelegateCreateData<TDelegate>) as Record<string, unknown>
         const key = sequence ?? this.model.getPrimaryKey()
         if (!(key in created))
             throw new UniqueConstraintResolutionException(`Inserted record does not contain key [${key}].`, {
@@ -1274,7 +1274,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (rows.length === 0)
             return 0
 
-        await this.insert(rows as DelegateCreateData<TDelegate>[])
+        await this.insert(rows as ModelCreateData<TModel, TDelegate>[])
 
         return rows.length
     }
@@ -1294,7 +1294,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (rows.length === 0)
             return 0
 
-        return this.insertOrIgnore(rows as DelegateCreateData<TDelegate>[])
+        return this.insertOrIgnore(rows as ModelCreateData<TModel, TDelegate>[])
     }
 
     /**
@@ -1304,7 +1304,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @param data 
      * @returns 
      */
-    public async update (data: DelegateUpdateData<TDelegate>): Promise<TModel> {
+    public async update (data: ModelUpdateData<TModel, TDelegate>): Promise<TModel> {
         const where = this.buildWhere()
         if (!where)
             throw new QueryConstraintException('Update requires a where clause.', {
@@ -1312,7 +1312,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 model: this.model.name,
             })
 
-        const directSpec = this.tryBuildUpdateSpec(where, data)
+        const directSpec = this.tryBuildUpdateSpec(where, data as DelegateUpdateData<TDelegate>)
         const adapter = this.requireAdapter()
         if (!this.isUniqueWhere(where as Record<string, unknown>) && directSpec && typeof adapter.updateFirst === 'function') {
             const updated = await adapter.updateFirst(directSpec)
@@ -1325,7 +1325,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
-        const updated = await this.executeUpdateRow(uniqueWhere, data)
+        const updated = await this.executeUpdateRow(uniqueWhere, data as DelegateUpdateData<TDelegate>)
 
         return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1336,7 +1336,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @param data
      * @returns
      */
-    public async updateFrom (data: DelegateUpdateData<TDelegate>): Promise<number> {
+    public async updateFrom (data: ModelUpdateData<TModel, TDelegate>): Promise<number> {
         const where = this.buildWhere()
         if (!where)
             throw new QueryConstraintException('Update requires a where clause.', {
@@ -1344,7 +1344,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
                 model: this.model.name,
             })
 
-        return await this.executeUpdateManyRows(where, data)
+        return await this.executeUpdateManyRows(where, data as DelegateUpdateData<TDelegate>)
     }
 
     /**
@@ -1384,7 +1384,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return true
         }
 
-        const updated = await this.clone().where(attributes as DelegateWhere<TDelegate>).update(resolvedValues as DelegateUpdateData<TDelegate>)
+        const updated = await this.clone().where(attributes as DelegateWhere<TDelegate>).update(resolvedValues as ModelUpdateData<TModel, TDelegate>)
 
         return updated != null
     }
@@ -1573,12 +1573,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     private normalizeInsertPayloads (
-        values: DelegateCreateData<TDelegate> | DelegateCreateData<TDelegate>[]
+        values: ModelCreateData<TModel, TDelegate> | ModelCreateData<TModel, TDelegate>[]
     ): DelegateCreateData<TDelegate>[] {
         if (Array.isArray(values))
-            return values
+            return values as DelegateCreateData<TDelegate>[]
 
-        return [values]
+        return [values as DelegateCreateData<TDelegate>]
     }
 
     private resolveAffectedCount (result: unknown, fallback: number): number {
