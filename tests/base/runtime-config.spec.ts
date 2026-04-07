@@ -7,9 +7,10 @@ import {
     loadArkormConfig,
     resetArkormRuntimeForTests,
 } from '../../src/helpers/runtime-config'
-import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { Model } from '../../src'
 import type { DatabaseAdapter } from '../../src'
+import { RuntimeModuleLoader } from '../../src/helpers/runtime-module-loader'
 
 import { join } from 'node:path'
 import { resolve } from 'node:path'
@@ -169,6 +170,59 @@ describe('runtime config defaults', () => {
         expect(getUserConfig('adapter')).toEqual({ capabilities: {} })
         expect(getUserConfig('prisma')).toBeUndefined()
         expect(getUserConfig('paths')?.models).toBe(resolve(process.cwd(), 'src', 'domain', 'models'))
+    })
+
+    it('applies the configured global adapter to models loaded from the configured models path', async () => {
+        const workspace = makeTempDir('arkormx-runtime-config-discovered-models-')
+        const modelsDirectory = join(workspace, 'src', 'models')
+
+        mkdirSync(modelsDirectory, { recursive: true })
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, 'arkormx.config.js'), [
+            'export default {',
+            '  adapter: { capabilities: {} },',
+            '  paths: {',
+            '    models: "./src/models",',
+            '  },',
+            '}',
+            '',
+        ].join('\n'))
+
+        writeFileSync(join(modelsDirectory, 'User.ts'), [
+            'export const createUserModel = (ModelBase) => class User extends ModelBase {}',
+            '',
+        ].join('\n'))
+
+        await loadArkormConfig()
+
+        const imported = await RuntimeModuleLoader.load<{ createUserModel: (ModelBase: typeof Model) => typeof Model }>(join(modelsDirectory, 'User.ts'))
+        const User = imported.createUserModel(Model)
+
+        expect(getUserConfig('paths')?.models).toBe(resolve(process.cwd(), 'src', 'models'))
+        expect(User.getAdapter()).toBe(getUserConfig('adapter'))
+    })
+
+    it('applies the configured global adapter to models defined outside the configured models path', async () => {
+        const workspace = makeTempDir('arkormx-runtime-config-external-models-')
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, 'arkormx.config.js'), [
+            'export default {',
+            '  adapter: { capabilities: {} },',
+            '  paths: {',
+            '    models: "./src/models",',
+            '  },',
+            '}',
+            '',
+        ].join('\n'))
+
+        await loadArkormConfig()
+
+        class ExternalUser extends Model { }
+
+        expect(getUserConfig('paths')?.models).toBe(resolve(process.cwd(), 'src', 'models'))
+        expect(ExternalUser.getAdapter()).toBe(getUserConfig('adapter'))
     })
 
     it('rewrites relative runtime path overrides to absolute paths', () => {
