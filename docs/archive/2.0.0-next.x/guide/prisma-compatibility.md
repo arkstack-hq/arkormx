@@ -7,7 +7,7 @@ transition window.
 
 ## Recommended bootstrap
 
-Use this page only when you intentionally want Prisma compatibility. The normal
+This guide assumes that you intentionally want Prisma compatibility. The normal
 2.x setup path is still `defineConfig({ adapter })` with your chosen runtime
 adapter.
 
