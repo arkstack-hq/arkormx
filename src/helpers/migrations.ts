@@ -965,6 +965,24 @@ export const supportsDatabaseMigrationExecution = (
     return typeof adapter?.executeSchemaOperations === 'function'
 }
 
+export const supportsDatabaseReset = (
+    adapter?: DatabaseAdapter
+): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'resetDatabase'>> => {
+    return typeof adapter?.resetDatabase === 'function'
+}
+
+export const stripPrismaSchemaModelsAndEnums = (schema: string): string => {
+    const stripped = schema
+        .replace(PRISMA_MODEL_REGEX, '')
+        .replace(PRISMA_ENUM_REGEX, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trimEnd()
+
+    return stripped.length > 0
+        ? `${stripped}\n`
+        : ''
+}
+
 export const applyMigrationToDatabase = async (
     adapter: DatabaseAdapter,
     migration: Migration | (new () => Migration)

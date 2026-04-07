@@ -330,6 +330,45 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
+    private async resetDatabaseInternal (executor: KyselyExecutor): Promise<void> {
+        const tablesResult = await sql<{
+            table_name: string
+            table_schema: string
+        }>`
+            select table_name, table_schema
+            from information_schema.tables
+            where table_schema = current_schema()
+              and table_type = 'BASE TABLE'
+            order by table_name asc
+        `.execute(executor)
+
+        for (const row of tablesResult.rows) {
+            await this.executeRawStatement(
+                `drop table if exists ${this.quoteIdentifier(row.table_schema)}.${this.quoteIdentifier(row.table_name)} cascade`,
+                executor,
+            )
+        }
+
+        const enumTypesResult = await sql<{
+            enum_name: string
+            enum_schema: string
+        }>`
+            select t.typname as enum_name, n.nspname as enum_schema
+            from pg_type t
+            inner join pg_namespace n on n.oid = t.typnamespace
+            where t.typtype = 'e'
+              and n.nspname = current_schema()
+            order by t.typname asc
+        `.execute(executor)
+
+        for (const row of enumTypesResult.rows) {
+            await this.executeRawStatement(
+                `drop type if exists ${this.quoteIdentifier(row.enum_schema)}.${this.quoteIdentifier(row.enum_name)} cascade`,
+                executor,
+            )
+        }
+    }
+
     private introspectionTypeToTs (typeName: string, enumValues: string[] | null): string {
         if (enumValues && enumValues.length > 0)
             return enumValues.map(value => `'${value.replace(/'/g, '\\\'')}'`).join(' | ')
@@ -1247,6 +1286,14 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
                 await transactionAdapter.executeDropTableOperation(operation, transactionAdapter.db)
             }
+        })
+    }
+
+    public async resetDatabase (): Promise<void> {
+        await this.transaction(async (adapter) => {
+            const transactionAdapter = adapter as KyselyDatabaseAdapter
+
+            await transactionAdapter.resetDatabaseInternal(transactionAdapter.db)
         })
     }
 

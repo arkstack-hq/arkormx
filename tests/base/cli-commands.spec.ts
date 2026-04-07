@@ -1,9 +1,11 @@
+import * as migrationHelpers from '../../src/helpers/migrations'
+
 import {
     CliApp,
     configureArkormRuntime,
     resetArkormRuntimeForTests,
 } from '../../src'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { readAppliedMigrationsState, writeAppliedMigrationsState } from '../../src/helpers/migration-history'
 
@@ -14,6 +16,7 @@ import { MakeMigrationCommand } from '../../src/cli/commands/MakeMigrationComman
 import { MakeModelCommand } from '../../src/cli/commands/MakeModelCommand'
 import { MakeSeederCommand } from '../../src/cli/commands/MakeSeederCommand'
 import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
+import { MigrateFreshCommand } from '../../src/cli/commands/MigrateFreshCommand'
 import { MigrateRollbackCommand } from '../../src/cli/commands/MigrateRollbackCommand'
 import { MigrationHistoryCommand } from '../../src/cli/commands/MigrationHistoryCommand'
 import { ModelsSyncCommand } from '../../src/cli/commands/ModelsSyncCommand'
@@ -664,5 +667,218 @@ describe('CLI command classes', () => {
         const schemaAfterStepRollback = readFileSync(schemaPath, 'utf-8')
         expect(schemaAfterStepRollback).toContain('model User')
         expect(schemaAfterStepRollback).not.toContain('model Post')
+    })
+
+    it('MigrateFreshCommand rebuilds schema and tracked state from a clean baseline', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'email\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const migrateCommand = new MigrateCommand(app, new Kernel(app))
+            ; (migrateCommand as unknown as { app: CliApp }).app = app
+        const migrateIo = attachCommandIo(migrateCommand as unknown as any, {
+            all: true,
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await migrateCommand.handle()
+        expect(migrateIo.errorLines).toHaveLength(0)
+
+        writeFileSync(schemaPath, `${readFileSync(schemaPath, 'utf-8')}\nmodel Legacy {\n  id Int @id\n}\n`)
+
+        const freshCommand = new MigrateFreshCommand(app, new Kernel(app))
+            ; (freshCommand as unknown as { app: CliApp }).app = app
+        const freshIo = attachCommandIo(freshCommand as unknown as any, {
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await freshCommand.handle()
+
+        expect(freshIo.errorLines).toHaveLength(0)
+        expect(freshIo.successLines.some(line => line.includes('Refreshed database with 1 migration(s).'))).toBe(true)
+
+        const schemaAfterFresh = readFileSync(schemaPath, 'utf-8')
+        expect(schemaAfterFresh).toContain('model User')
+        expect(schemaAfterFresh).not.toContain('model Legacy')
+
+        const stateAfterFresh = readAppliedMigrationsState(join(workspace, '.arkormx', 'migrations.applied.json'))
+        expect(stateAfterFresh.migrations).toHaveLength(1)
+        expect(stateAfterFresh.runs).toHaveLength(1)
+    })
+
+    it('MigrateFreshCommand runs prisma generate and db push when skip flags are not set', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-prisma-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const prismaCommandSpy = vi.spyOn(migrationHelpers, 'runPrismaCommand').mockImplementation(() => undefined)
+
+        try {
+            const app = new CliApp()
+            const currentWorkspace = process.cwd()
+            const freshCommand = new MigrateFreshCommand(app, new Kernel(app))
+                ; (freshCommand as unknown as { app: CliApp }).app = app
+            const freshIo = attachCommandIo(freshCommand as unknown as any, {
+                schema: schemaPath,
+            })
+
+            await freshCommand.handle()
+
+            expect(freshIo.errorLines).toHaveLength(0)
+            expect(prismaCommandSpy).toHaveBeenNthCalledWith(1, ['generate', '--schema', schemaPath], currentWorkspace)
+            expect(prismaCommandSpy).toHaveBeenNthCalledWith(2, ['db', 'push', '--force-reset', '--schema', schemaPath], currentWorkspace)
+        } finally {
+            prismaCommandSpy.mockRestore()
+        }
+    })
+
+    it('MigrateFreshCommand reports missing migrations directories', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-missing-dir-')
+        process.chdir(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: join(workspace, 'database', 'missing-migrations'),
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any)
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('Migrations directory not found'))).toBe(true)
+    })
+
+    it('MigrateFreshCommand reports when no migration classes are available', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-empty-dir-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+        writeBaseSchema(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any)
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('No migration classes found to run.'))).toBe(true)
+    })
+
+    it('MigrateFreshCommand reports missing prisma schema files on file-backed runs', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-missing-schema-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, {
+            schema: join(workspace, 'prisma', 'missing.prisma'),
+        })
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('Prisma schema file not found'))).toBe(true)
     })
 })
