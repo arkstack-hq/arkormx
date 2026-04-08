@@ -1,4 +1,4 @@
-import type { AppliedMigrationsState, MigrationClass, PrimaryKeyGeneration, SchemaColumn, SchemaOperation } from '../types'
+import type { AppliedMigrationsState, MigrationClass, PrimaryKeyGeneration, SchemaColumn, SchemaOperation, TimestampColumnBehavior } from '../types'
 import type { ArkormConfig } from '../types/core'
 
 import { ArkormException } from '../Exceptions/ArkormException'
@@ -16,9 +16,14 @@ export interface PersistedTableMetadata {
     columns: Record<string, string>
     enums: Record<string, string[]>
     primaryKeyGeneration?: PersistedPrimaryKeyGeneration
+    timestampColumns?: PersistedTimestampColumn[]
 }
 
 export interface PersistedPrimaryKeyGeneration extends PrimaryKeyGeneration {
+    column: string
+}
+
+export interface PersistedTimestampColumn extends TimestampColumnBehavior {
     column: string
 }
 
@@ -83,10 +88,13 @@ const normalizePersistedTableMetadata = (table: unknown): PersistedTableMetadata
         columns?: Record<string, unknown>
         enums?: Record<string, unknown>
         primaryKeyGeneration?: unknown
+        timestampColumns?: unknown
     }
 
     const hasStructuredMetadata = Object.prototype.hasOwnProperty.call(candidate, 'columns')
         || Object.prototype.hasOwnProperty.call(candidate, 'enums')
+        || Object.prototype.hasOwnProperty.call(candidate, 'primaryKeyGeneration')
+        || Object.prototype.hasOwnProperty.call(candidate, 'timestampColumns')
 
     if (!hasStructuredMetadata)
         return {
@@ -110,6 +118,7 @@ const normalizePersistedTableMetadata = (table: unknown): PersistedTableMetadata
         columns,
         enums,
         primaryKeyGeneration: normalizePersistedPrimaryKeyGeneration(candidate.primaryKeyGeneration),
+        timestampColumns: normalizePersistedTimestampColumns(candidate.timestampColumns),
     }
 }
 
@@ -136,6 +145,39 @@ const normalizePersistedPrimaryKeyGeneration = (value: unknown): PersistedPrimar
     }
 }
 
+const normalizePersistedTimestampColumns = (value: unknown): PersistedTimestampColumn[] | undefined => {
+    if (!Array.isArray(value))
+        return undefined
+
+    const columns = value.reduce<PersistedTimestampColumn[]>((all, entry) => {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry))
+            return all
+
+        const candidate = entry as Record<string, unknown>
+        if (typeof candidate.column !== 'string' || candidate.column.trim().length === 0)
+            return all
+
+        const normalized: PersistedTimestampColumn = {
+            column: candidate.column,
+        }
+
+        if (candidate.default === 'now()')
+            normalized.default = 'now()'
+
+        if (candidate.updatedAt === true)
+            normalized.updatedAt = true
+
+        if (!normalized.default && !normalized.updatedAt)
+            return all
+
+        all.push(normalized)
+
+        return all
+    }, [])
+
+    return columns.length > 0 ? columns : undefined
+}
+
 const normalizePersistedColumnMappingsState = (
     state: Partial<PersistedColumnMappingsState> | undefined
 ): PersistedColumnMappingsState => {
@@ -144,7 +186,7 @@ const normalizePersistedColumnMappingsState = (
             return all
 
         const normalized = normalizePersistedTableMetadata(tableMetadata)
-        if (Object.keys(normalized.columns).length > 0 || Object.keys(normalized.enums).length > 0 || normalized.primaryKeyGeneration)
+        if (Object.keys(normalized.columns).length > 0 || Object.keys(normalized.enums).length > 0 || normalized.primaryKeyGeneration || normalized.timestampColumns?.length)
             all[tableName] = normalized
 
         return all
@@ -288,6 +330,7 @@ export const getPersistedTableMetadata = (
             return all
         }, {}),
         primaryKeyGeneration: metadata.primaryKeyGeneration ? { ...metadata.primaryKeyGeneration } : undefined,
+        timestampColumns: metadata.timestampColumns?.map(column => ({ ...column })),
     }
 }
 
@@ -325,6 +368,18 @@ export const getPersistedPrimaryKeyGeneration = (
     } = {},
 ): PersistedPrimaryKeyGeneration | undefined => {
     return getPersistedTableMetadata(table, options).primaryKeyGeneration
+}
+
+export const getPersistedTimestampColumns = (
+    table: string,
+    options: {
+        cwd?: string
+        configuredPath?: string
+        features?: PersistedMetadataFeatures
+        strict?: boolean
+    } = {},
+): PersistedTimestampColumn[] => {
+    return getPersistedTableMetadata(table, options).timestampColumns ?? []
 }
 
 const applyMappedColumn = (
@@ -378,6 +433,12 @@ const removePersistedColumnMetadata = (
 
     if (tableMetadata.primaryKeyGeneration?.column === columnName)
         delete tableMetadata.primaryKeyGeneration
+
+    if (tableMetadata.timestampColumns) {
+        tableMetadata.timestampColumns = tableMetadata.timestampColumns.filter(column => column.column !== columnName)
+        if (tableMetadata.timestampColumns.length === 0)
+            delete tableMetadata.timestampColumns
+    }
 }
 
 const applyPrimaryKeyGeneration = (
@@ -397,6 +458,32 @@ const applyPrimaryKeyGeneration = (
     }
 }
 
+const applyTimestampColumn = (
+    tableMetadata: PersistedTableMetadata,
+    column: SchemaColumn,
+): void => {
+    if (column.type !== 'timestamp' || (column.default !== 'now()' && column.updatedAt !== true)) {
+        if (tableMetadata.timestampColumns) {
+            tableMetadata.timestampColumns = tableMetadata.timestampColumns.filter(entry => entry.column !== column.name)
+            if (tableMetadata.timestampColumns.length === 0)
+                delete tableMetadata.timestampColumns
+        }
+
+        return
+    }
+
+    const nextColumn: PersistedTimestampColumn = {
+        column: column.name,
+        ...(column.default === 'now()' ? { default: 'now()' as const } : {}),
+        ...(column.updatedAt ? { updatedAt: true } : {}),
+    }
+
+    tableMetadata.timestampColumns = [
+        ...(tableMetadata.timestampColumns ?? []).filter(entry => entry.column !== column.name),
+        nextColumn,
+    ]
+}
+
 export const applyOperationsToPersistedColumnMappingsState = (
     state: PersistedColumnMappingsState,
     operations: SchemaOperation[],
@@ -411,6 +498,7 @@ export const applyOperationsToPersistedColumnMappingsState = (
                 return nextEnums
             }, {}),
             primaryKeyGeneration: metadata.primaryKeyGeneration ? { ...metadata.primaryKeyGeneration } : undefined,
+            timestampColumns: metadata.timestampColumns?.map(column => ({ ...column })),
         }
 
         return all
@@ -423,9 +511,10 @@ export const applyOperationsToPersistedColumnMappingsState = (
                 applyMappedColumn(tableMetadata.columns, column, features, operation.table)
                 applyEnumColumn(tableMetadata.enums, column, features, operation.table)
                 applyPrimaryKeyGeneration(tableMetadata, column)
+                applyTimestampColumn(tableMetadata, column)
             })
 
-            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0 || tableMetadata.primaryKeyGeneration)
+            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0 || tableMetadata.primaryKeyGeneration || tableMetadata.timestampColumns?.length)
                 nextTables[operation.table] = tableMetadata
             else
                 delete nextTables[operation.table]
@@ -439,12 +528,13 @@ export const applyOperationsToPersistedColumnMappingsState = (
                 applyMappedColumn(tableMetadata.columns, column, features, operation.table)
                 applyEnumColumn(tableMetadata.enums, column, features, operation.table)
                 applyPrimaryKeyGeneration(tableMetadata, column)
+                applyTimestampColumn(tableMetadata, column)
             })
             operation.dropColumns.forEach((columnName) => {
                 removePersistedColumnMetadata(tableMetadata, columnName)
             })
 
-            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0 || tableMetadata.primaryKeyGeneration)
+            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0 || tableMetadata.primaryKeyGeneration || tableMetadata.timestampColumns?.length)
                 nextTables[operation.table] = tableMetadata
             else
                 delete nextTables[operation.table]

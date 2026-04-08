@@ -1,4 +1,4 @@
-import type { AppliedMigrationsState, PrimaryKeyGeneration, SchemaOperation } from './migrations'
+import type { AppliedMigrationsState, PrimaryKeyGeneration, SchemaOperation, TimestampColumnBehavior } from './migrations'
 
 import type { ModelStatic } from './ModelStatic'
 import type { SoftDeleteConfig } from './core'
@@ -58,6 +58,7 @@ export interface QueryTarget<TModel = unknown> {
     table?: string
     primaryKey?: string
     primaryKeyGeneration?: PrimaryKeyGeneration
+    timestampColumns?: TimestampColumnBehavior[]
     columns?: Record<string, string>
     softDelete?: SoftDeleteConfig
     alias?: string

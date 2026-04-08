@@ -199,6 +199,7 @@ export abstract class Model<
                     runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
                 }
                 : undefined,
+            timestampColumns: persistedMetadata.timestampColumns?.map(column => ({ ...column })),
         }
     }
 

@@ -20,6 +20,12 @@ export interface PrimaryKeyGeneration {
     runtimeFactory?: 'uuid'
 }
 
+export interface TimestampColumnBehavior {
+    column: string
+    default?: 'now()'
+    updatedAt?: boolean
+}
+
 export interface SchemaColumn {
     name: string
     type: SchemaColumnType

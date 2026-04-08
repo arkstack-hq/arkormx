@@ -1,6 +1,6 @@
 import type { RelationshipModelStatic } from './ModelStatic'
 import type { SoftDeleteConfig } from './core'
-import type { PrimaryKeyGeneration } from './migrations'
+import type { PrimaryKeyGeneration, TimestampColumnBehavior } from './migrations'
 
 export type ColumnMap = Record<string, string>
 
@@ -10,6 +10,7 @@ export interface ModelMetadata {
     columns: ColumnMap
     softDelete: SoftDeleteConfig
     primaryKeyGeneration?: PrimaryKeyGeneration
+    timestampColumns?: TimestampColumnBehavior[]
 }
 
 export type RelationMetadataType =
