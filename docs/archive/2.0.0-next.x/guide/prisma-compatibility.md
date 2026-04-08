@@ -6,7 +6,7 @@ Prisma is still supported through the compatibility adapter during the
 transition window.
 
 If you are coming from Arkorm 1.x, read
-[Migrating from 1.x to 2.x](./migrating-from-1x.md) first, then use this page
+[Upgrade Guide](./upgrade-guide.md) first, then use this page
 for the Prisma-specific part of that upgrade.
 
 ## Recommended bootstrap
