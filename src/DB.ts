@@ -1,13 +1,14 @@
 import type { AdapterTransactionContext, DatabaseAdapter } from './types/adapter'
 import type { PrismaDelegateLike, SoftDeleteConfig } from './types/core'
-import { getActiveTransactionClient, getRuntimeAdapter, getRuntimePrismaClient } from './helpers/runtime-config'
+import { getActiveTransactionClient, getRuntimeAdapter, getRuntimePrismaClient, getUserConfig } from './helpers/runtime-config'
 
 import { ArkormException } from './Exceptions/ArkormException'
 import type { DatabaseTableOptions } from './types/db'
 import type { ModelMetadata } from './types/metadata'
 import type { ModelStatic } from './types/ModelStatic'
 import { QueryBuilder } from './QueryBuilder'
-import { createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
+import { PrismaDatabaseAdapter, createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
+import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
 
 const noopDelegate: PrismaDelegateLike = {
     findMany: async () => [],
@@ -97,8 +98,25 @@ export class DB {
         adapter?: DatabaseAdapter,
     ): ModelStatic<TRow, PrismaDelegateLike> {
         const primaryKey = options.primaryKey ?? 'id'
-        const columns = { ...(options.columns ?? {}) }
+        const resolvedAdapter = options.adapter ?? adapter ?? DB.getAdapter()
+        const persistedMetadata = DB.resolvePersistedTableMetadata(table, options, resolvedAdapter)
+        const columns = {
+            ...persistedMetadata.columns,
+            ...(options.columns ?? {}),
+        }
         const softDelete = options.softDelete ?? defaultSoftDeleteConfig
+        const primaryKeyGeneration = options.primaryKeyGeneration
+            ? { ...options.primaryKeyGeneration }
+            : persistedMetadata.primaryKeyGeneration?.column === primaryKey
+                ? {
+                    strategy: persistedMetadata.primaryKeyGeneration.strategy,
+                    prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
+                    databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
+                    runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
+                }
+                : undefined
+        const timestampColumns = options.timestampColumns?.map(column => ({ ...column }))
+            ?? persistedMetadata.timestampColumns?.map(column => ({ ...column }))
 
         const buildMetadata = (): ModelMetadata => {
             return {
@@ -106,10 +124,8 @@ export class DB {
                 primaryKey,
                 columns: { ...columns },
                 softDelete: { ...softDelete },
-                primaryKeyGeneration: options.primaryKeyGeneration
-                    ? { ...options.primaryKeyGeneration }
-                    : undefined,
-                timestampColumns: options.timestampColumns?.map(column => ({ ...column })),
+                primaryKeyGeneration,
+                timestampColumns,
             }
         }
 
@@ -122,7 +138,7 @@ export class DB {
             hydrateMany: (attributes: Record<string, unknown>[]): TRow[] => attributes.map(attribute => ({ ...attribute }) as TRow),
             hydrateRetrieved: async (attributes: Record<string, unknown>): Promise<TRow> => ({ ...attributes }) as TRow,
             hydrateManyRetrieved: async (attributes: Record<string, unknown>[]): Promise<TRow[]> => attributes.map(attribute => ({ ...attribute }) as TRow),
-            getAdapter: (): DatabaseAdapter | undefined => options.adapter ?? adapter ?? DB.getAdapter(),
+            getAdapter: (): DatabaseAdapter | undefined => resolvedAdapter,
             getColumnMap: (): Record<string, string> => ({ ...columns }),
             getColumnName: (attribute: string): string => columns[attribute] ?? attribute,
             getDelegate: (): PrismaDelegateLike => noopDelegate,
@@ -135,5 +151,26 @@ export class DB {
         }
 
         return modelStatic as unknown as ModelStatic<TRow, PrismaDelegateLike>
+    }
+
+    private static resolvePersistedTableMetadata (
+        table: string,
+        options: DatabaseTableOptions,
+        adapter?: DatabaseAdapter,
+    ) {
+        if (options.persistedMetadata === false)
+            return { columns: {}, enums: {} }
+
+        const persistedMetadataOptions = typeof options.persistedMetadata === 'object'
+            ? options.persistedMetadata
+            : {}
+
+        return getPersistedTableMetadata(table, {
+            cwd: persistedMetadataOptions.cwd,
+            configuredPath: persistedMetadataOptions.configuredPath,
+            features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+            strict: persistedMetadataOptions.strict
+                ?? (Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)),
+        })
     }
 }
