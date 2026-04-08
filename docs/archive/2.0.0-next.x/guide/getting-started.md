@@ -3,7 +3,7 @@
 Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility preserved during the current migration window.
 
 If you are upgrading an existing 1.x app, start with
-[Migrating from 1.x to 2.x](./migrating-from-1x.md) before following the new
+[Upgrade Guide](./upgrade-guide.md) before following the new
 default setup path below.
 
 ## 1. Install dependencies
@@ -90,7 +90,7 @@ pnpm add -D prisma
 
 ## Next steps
 
-- [Migrating from 1.x to 2.x](./migrating-from-1x.md)
+- [Upgrade Guide](./upgrade-guide.md)
 - [Setup](./setup.md)
 - [Configuration](./configuration.md)
 - [Prisma Compatibility](./prisma-compatibility.md)
