@@ -64,7 +64,16 @@ Generated declarations follow the available schema source closely:
 - Array/list fields use `Array<...>`.
 - Prisma enums are referenced through `@prisma/client` type imports when the Prisma schema is the source.
 - Database enums are emitted as string-literal unions when adapter introspection is the source.
+- For non-Prisma adapter projects, `models:sync` can restore enum types defined in migration classes from `.arkormx/column-mappings.json` even when the database introspection payload is incomplete.
 - If you manually narrow a generated declaration to a compatible subtype, a later sync leaves it untouched.
+
+## Column mapping metadata
+
+For non-Prisma adapters, mapped columns created in migration classes are persisted in `.arkormx/column-mappings.json`.
+
+That lets runtime attribute access keep using logical model keys while the adapter translates them to physical column names created through calls such as `table.string('emailVerificationCode').map('email_verification_code')`.
+
+Explicit model `columns` metadata still wins over the persisted artifact when both are present.
 
 ## Untyped fallback
 

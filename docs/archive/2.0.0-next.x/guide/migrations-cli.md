@@ -27,12 +27,17 @@ npx arkorm make:seeder Database
 npx arkorm make:migration "create users table"
 ```
 
-## Sync model declarations from Prisma
+## Sync model declarations
 
-`models:sync` reads Prisma models from `schema.prisma` and updates `declare` attributes inside your Arkorm models.
+`models:sync` updates `declare` attributes inside your Arkorm models from the best available schema source.
+
+- When the active adapter supports model introspection, Arkorm reads the database structure directly.
+- Otherwise Arkorm falls back to Prisma models from `schema.prisma`.
+- For non-Prisma adapter workflows, Arkorm also uses persisted enum metadata from `.arkormx/column-mappings.json` so enums defined through migration classes remain available to adapter-backed sync.
 
 - Scalar fields are mapped to TypeScript types.
 - Prisma enum fields are emitted with `import type { EnumName } from '@prisma/client'` declarations.
+- Adapter-introspected enum fields are emitted as string-literal unions.
 - `Json` fields are emitted as `Record<string, unknown> | unknown[]`, and Prisma list fields are emitted as `Array<...>`.
 - Nullable Prisma fields are emitted as `type | null`.
 - Existing non-`declare` class members are preserved.
@@ -45,7 +50,11 @@ npx arkorm models:sync --schema ./prisma/schema.prisma --models ./src/models
 
 ## Run migrations
 
-`migrate` loads migration classes, applies their `up` operations to `schema.prisma`, then optionally runs Prisma commands.
+`migrate` loads migration classes and applies their `up` operations using the active migration backend.
+
+- Prisma/file-backed flows update `schema.prisma`, then optionally run Prisma commands.
+- Adapter-backed flows execute schema operations directly against the database when the adapter supports them.
+- In adapter-backed flows, Arkorm also rebuilds `.arkormx/column-mappings.json` from the applied migration set so mapped columns and enum definitions remain available at runtime.
 
 - `--all`: run all migration class files in the migrations directory.
 - `<name>`: run one migration class/file by name.
@@ -64,6 +73,8 @@ npx arkorm migrate --all --deploy
 
 `migrate:rollback` applies `down` operations for tracked migration classes and updates migration history state.
 
+When you use adapter-backed migrations, rollback also refreshes `.arkormx/column-mappings.json` so removed mapped columns and enums disappear from persisted metadata.
+
 - Default behavior: rolls back all migration classes applied by the **last** `migrate` run.
 - `--step=<n>`: rolls back only the latest `n` applied migration classes.
 - `--dry-run`: previews rollback targets without changing schema/history or running Prisma commands.
@@ -81,6 +92,8 @@ npx arkorm migrate:rollback --skip-generate --skip-migrate
 ## Inspect migration history
 
 Use migration history commands to audit or reset tracked migration class state.
+
+For adapter-backed projects, resetting or deleting migration history also clears persisted metadata derived from that state.
 
 - `migrate:history`: prints tracked migration state.
 - `--json`: prints raw JSON output.

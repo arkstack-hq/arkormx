@@ -21,6 +21,7 @@ The biggest 2.x changes are architectural, not stylistic.
 - Manual per-model adapter binding is now an advanced pattern, mainly for transaction-scoped overrides.
 - Model typing is centered on model attributes rather than Prisma-shaped delegate assumptions.
 - Migration commands can now work through adapter-backed database execution when the active adapter supports it.
+- Non-Prisma adapter projects can persist mapped-column and enum metadata in `.arkormx/column-mappings.json` so runtime mapping and `models:sync` keep working after migrations run.
 
 ## Upgrade checklist
 
@@ -164,12 +165,15 @@ The class-based migration workflow remains, but the backend can now vary.
 - Prisma/file-backed projects can keep using `migrate`, `migrate:rollback`, and `migrate:history` as before.
 - Adapter-backed runtimes can execute migrations directly against the database when the adapter supports it.
 - `migrate:fresh` is available in 2.x to reset the database and rerun all migration classes.
+- Adapter-backed migration history now also drives persisted column and enum metadata for non-Prisma projects.
 
 If you are staying on Prisma compatibility first, your CLI flow can remain very
 close to your 1.x process.
 
 If you are moving to Kysely or another SQL-backed adapter, validate migration
 behavior in a staging database before using it in normal team workflows.
+
+If your migrations use mapped columns or enum definitions outside Prisma, keep the default `features.persistedColumnMappings` and `features.persistedEnums` settings enabled unless you are intentionally replacing that metadata with explicit model configuration.
 
 ## Common before and after
 
