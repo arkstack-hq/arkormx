@@ -173,4 +173,98 @@ describe('persisted column mappings', () => {
 
         expect(() => PersistedUser.getColumnMap()).toThrow(/persisted column mappings/)
     })
+
+    it('exposes persisted primary key generation metadata on model metadata', () => {
+        const workspace = makeTempDir('arkormx-column-mappings-pk-generation-')
+        process.chdir(workspace)
+
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                api_tokens: {
+                    columns: {},
+                    enums: {},
+                    primaryKeyGeneration: {
+                        column: 'id',
+                        strategy: 'uuid',
+                        prismaDefault: '@default(uuid())',
+                        databaseDefault: 'gen_random_uuid()::text',
+                        runtimeFactory: 'uuid',
+                    },
+                },
+            },
+        }, null, 2))
+
+        class ApiToken extends Model {
+            protected static override table = 'api_tokens'
+        }
+
+        expect(ApiToken.getModelMetadata()).toEqual(expect.objectContaining({
+            primaryKeyGeneration: {
+                strategy: 'uuid',
+                prismaDefault: '@default(uuid())',
+                databaseDefault: 'gen_random_uuid()::text',
+                runtimeFactory: 'uuid',
+            },
+        }))
+    })
+
+    it('generates missing primary keys for non-Prisma adapter inserts', async () => {
+        const workspace = makeTempDir('arkormx-column-mappings-pk-fallback-')
+        process.chdir(workspace)
+
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                api_tokens: {
+                    columns: {},
+                    enums: {},
+                    primaryKeyGeneration: {
+                        column: 'id',
+                        strategy: 'uuid',
+                        prismaDefault: '@default(uuid())',
+                        databaseDefault: 'gen_random_uuid()::text',
+                        runtimeFactory: 'uuid',
+                    },
+                },
+            },
+        }, null, 2))
+
+        class ApiToken extends Model {
+            protected static override table = 'api_tokens'
+        }
+
+        const insertSpecs: Array<InsertSpec<any>> = []
+        const adapter: DatabaseAdapter = {
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async <TModel = unknown> (spec: InsertSpec<TModel>) => {
+                insertSpecs.push(spec)
+
+                return spec.values
+            },
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            transaction: async <TResult = unknown> (
+                callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(adapter),
+        }
+
+        ApiToken.setAdapter(adapter)
+
+        try {
+            const created = await ApiToken.query().create({ name: 'Personal token' } as never)
+            const insertedId = insertSpecs[0]?.values.id
+
+            expect(typeof insertedId).toBe('string')
+            expect(insertedId).toMatch(/^[0-9a-f-]{36}$/)
+            expect(created.getAttribute('id')).toBe(insertedId)
+        } finally {
+            ApiToken.setAdapter(undefined)
+        }
+    })
 })

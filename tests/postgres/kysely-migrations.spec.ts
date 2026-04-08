@@ -96,6 +96,51 @@ describe('PostgreSQL Kysely migration backend', () => {
         }
     })
 
+    it('applies generated defaults for uuid-backed primary keys', async () => {
+        const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        const tableName = `arkorm_uuid_default_${suffix}`
+
+        try {
+            await adapter.executeSchemaOperations?.([
+                {
+                    type: 'createTable',
+                    table: tableName,
+                    columns: [
+                        {
+                            name: 'id',
+                            type: 'string',
+                            primary: true,
+                            primaryKeyGeneration: {
+                                strategy: 'uuid',
+                                prismaDefault: '@default(uuid())',
+                                databaseDefault: 'gen_random_uuid()::text',
+                                runtimeFactory: 'uuid',
+                            },
+                        },
+                    ],
+                    indexes: [],
+                    foreignKeys: [],
+                },
+            ])
+
+            const defaultResult = await sql<{ column_default: string | null }>`
+                select column_default
+                from information_schema.columns
+                where table_name = ${tableName}
+                  and column_name = 'id'
+            `.execute(db)
+
+            expect(defaultResult.rows[0]?.column_default).toContain('gen_random_uuid')
+        } finally {
+            await adapter.executeSchemaOperations?.([
+                {
+                    type: 'dropTable',
+                    table: tableName,
+                },
+            ])
+        }
+    })
+
     it('resets database-backed schema objects and migration state', async () => {
         const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
         const schemaName = `arkorm_reset_${suffix}`
