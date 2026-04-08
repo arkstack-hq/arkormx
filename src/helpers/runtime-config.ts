@@ -19,7 +19,7 @@ import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
-import path from 'path'
+import * as path from 'node:path'
 import { resetPersistedColumnMappingsCache } from './column-mappings'
 
 const supportedConfigExtensions = ['cjs', 'js', 'mjs', 'ts', 'cts', 'mts'] as const

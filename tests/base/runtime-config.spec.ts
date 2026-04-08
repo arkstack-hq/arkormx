@@ -19,6 +19,7 @@ import { resolve } from 'node:path'
 import { tmpdir } from 'node:os'
 
 const originalCwd = process.cwd()
+const projectRoot = resolve(__dirname, '..', '..')
 const temporaryDirectories: string[] = []
 
 const makeTempDir = (prefix: string): string => {
@@ -182,6 +183,24 @@ describe('runtime config defaults', () => {
         ].join('\n'))
 
         expect(getRuntimeAdapter()).toEqual({ capabilities: {}, source })
+        expect(getRuntimePrismaClient()).toEqual({ label: 'client' })
+    })
+
+    it('detects ts config files that import defineConfig from the package source', () => {
+        const workspace = makeTempDir('arkormx-runtime-config-define-config-')
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, 'arkormx.config.ts'), [
+            `import { defineConfig } from ${JSON.stringify(join(projectRoot, 'src', 'index.ts'))}`,
+            '',
+            'export default defineConfig({',
+            '  adapter: { capabilities: {}, source: "define-config" },',
+            '  prisma: () => ({ label: "client" }),',
+            '})',
+            '',
+        ].join('\n'))
+
+        expect(getRuntimeAdapter()).toEqual({ capabilities: {}, source: 'define-config' })
         expect(getRuntimePrismaClient()).toEqual({ label: 'client' })
     })
 
