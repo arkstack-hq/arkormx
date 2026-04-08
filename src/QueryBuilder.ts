@@ -15,7 +15,6 @@ import type {
     EagerLoadMap,
     InsertManySpec,
     InsertSpec,
-    UpsertSpec,
     PaginationOptions,
     PrismaDelegateLike,
     QueryComparisonCondition,
@@ -30,15 +29,16 @@ import type {
     SelectSpec,
     UpdateManySpec,
     UpdateSpec,
+    UpsertSpec,
 } from './types'
-import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
-import type { ModelStatic } from './types/ModelStatic'
 import { LengthAwarePaginator, Paginator } from './Paginator'
-import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
+import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
+import type { ModelStatic } from './types/ModelStatic'
+import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
 import { QueryConstraintException } from './Exceptions/QueryConstraintException'
 import { RelationResolutionException } from './Exceptions/RelationResolutionException'
 import { ScopeNotDefinedException } from './Exceptions/ScopeNotDefinedException'
@@ -1175,8 +1175,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async create (data: ModelCreateData<TModel, TDelegate>): Promise<TModel> {
-        const [payload] = this.normalizeInsertPayloads(data)
-        const created = await this.executeInsertRow(payload)
+        const created = await this.executeInsertRow(data as DelegateCreateData<TDelegate>)
 
         return this.model.hydrate(created as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1191,8 +1190,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (values.length === 0)
             return []
 
-        const payloads = this.normalizeInsertPayloads(values)
-        const created = await Promise.all(payloads.map(async value => await this.create(value as ModelCreateData<TModel, TDelegate>)))
+        const created = await Promise.all(values.map(async value => await this.create(value)))
 
         return created
     }
@@ -1576,7 +1574,11 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     private normalizeInsertPayloads (
-        values: ModelCreateData<TModel, TDelegate> | ModelCreateData<TModel, TDelegate>[]
+        values:
+            | ModelCreateData<TModel, TDelegate>
+            | ModelCreateData<TModel, TDelegate>[]
+            | DelegateCreateData<TDelegate>
+            | DelegateCreateData<TDelegate>[]
     ): DelegateCreateData<TDelegate>[] {
         const payloads = Array.isArray(values)
             ? values as DelegateCreateData<TDelegate>[]
@@ -1585,18 +1587,37 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         return payloads.map((payload) => {
             const nextPayload = { ...(payload as Record<string, unknown>) }
+            const now = new Date()
             const primaryKeyValue = nextPayload[metadata.primaryKey]
-            if (primaryKeyValue !== undefined && primaryKeyValue !== null)
-                return nextPayload as DelegateCreateData<TDelegate>
+            if (primaryKeyValue === undefined || primaryKeyValue === null) {
+                const generated = PrimaryKeyGenerationPlanner.generate(metadata.primaryKeyGeneration)
+                if (generated !== undefined)
+                    nextPayload[metadata.primaryKey] = generated
+            }
 
-            const generated = PrimaryKeyGenerationPlanner.generate(metadata.primaryKeyGeneration)
-            if (generated === undefined)
-                return nextPayload as DelegateCreateData<TDelegate>
+            for (const column of metadata.timestampColumns ?? []) {
+                if (nextPayload[column.column] !== undefined && nextPayload[column.column] !== null)
+                    continue
 
-            nextPayload[metadata.primaryKey] = generated
+                if (column.default === 'now()' || column.updatedAt)
+                    nextPayload[column.column] = now
+            }
 
             return nextPayload as DelegateCreateData<TDelegate>
         })
+    }
+
+    private normalizeUpdatePayload (values: DelegateUpdateData<TDelegate>): DelegateUpdateData<TDelegate> {
+        const metadata = this.model.getModelMetadata()
+        const nextPayload = { ...(values as Record<string, unknown>) }
+        const now = new Date()
+
+        for (const column of metadata.timestampColumns ?? []) {
+            if (column.updatedAt)
+                nextPayload[column.column] = now
+        }
+
+        return nextPayload as DelegateUpdateData<TDelegate>
     }
 
     private resolveAffectedCount (result: unknown, fallback: number): number {
@@ -1965,6 +1986,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             table: metadata.table,
             primaryKey: metadata.primaryKey,
             primaryKeyGeneration: metadata.primaryKeyGeneration,
+            timestampColumns: metadata.timestampColumns,
             columns: metadata.columns,
             softDelete: metadata.softDelete,
         }
@@ -2527,7 +2549,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return (await adapter.selectOne({ ...spec, limit: 1 })) != null
     }
     private async executeInsertRow (values: DelegateCreateData<TDelegate>): Promise<DatabaseRow> {
-        return await this.requireAdapter().insert(this.tryBuildInsertSpec(values))
+        const [payload] = this.normalizeInsertPayloads(values)
+
+        return await this.requireAdapter().insert(this.tryBuildInsertSpec(payload))
     }
 
     private async executeInsertManyRows (
@@ -2535,17 +2559,18 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         ignoreDuplicates = false,
     ): Promise<number> {
         const adapter = this.requireAdapter()
+        const payloads = this.normalizeInsertPayloads(values)
 
         if (typeof adapter.insertMany === 'function') {
             return await adapter.insertMany(
                 ignoreDuplicates
-                    ? this.tryBuildInsertOrIgnoreManySpec(values)
-                    : this.tryBuildInsertManySpec(values)
+                    ? this.tryBuildInsertOrIgnoreManySpec(payloads)
+                    : this.tryBuildInsertManySpec(payloads)
             )
         }
 
         let inserted = 0
-        for (const value of values) {
+        for (const value of payloads) {
             try {
                 await adapter.insert(this.tryBuildInsertSpec(value))
                 inserted += 1
@@ -2564,6 +2589,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         updateColumns?: string[],
     ): Promise<number> {
         const adapter = this.requireAdapter()
+        const payloads = this.normalizeInsertPayloads(values as DelegateCreateData<TDelegate>[]) as Array<Record<string, unknown>>
+        const timestampUpdateColumns = (this.model.getModelMetadata().timestampColumns ?? [])
+            .filter(column => column.updatedAt)
+            .map(column => column.column)
+        const normalizedUpdateColumns = updateColumns
+            ? Array.from(new Set([...updateColumns, ...timestampUpdateColumns]))
+            : updateColumns
 
         if (typeof adapter.upsert !== 'function') {
             throw new UnsupportedAdapterFeatureException('Upsert is not supported by the current adapter.', {
@@ -2572,7 +2604,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             })
         }
 
-        return await adapter.upsert(this.tryBuildUpsertSpec(values, uniqueBy, updateColumns))
+        return await adapter.upsert(this.tryBuildUpsertSpec(payloads, uniqueBy, normalizedUpdateColumns))
     }
 
     private async executeUpdateRow (
@@ -2580,7 +2612,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         values: DelegateUpdateData<TDelegate>
     ): Promise<DatabaseRow> {
         const adapter = this.requireAdapter()
-        const spec = this.tryBuildUpdateSpec(where, values)
+        const spec = this.tryBuildUpdateSpec(where, this.normalizeUpdatePayload(values))
         if (!spec)
             throw new UnsupportedAdapterFeatureException('Update could not be compiled into an Arkorm update specification.', {
                 operation: 'query.update',
@@ -2601,7 +2633,8 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         values: DelegateUpdateData<TDelegate>
     ): Promise<number> {
         const adapter = this.requireAdapter()
-        const spec = this.tryBuildUpdateManySpec(where, values)
+        const normalizedValues = this.normalizeUpdatePayload(values)
+        const spec = this.tryBuildUpdateManySpec(where, normalizedValues)
         if (!spec)
             throw new UnsupportedAdapterFeatureException('Update-many could not be compiled into an Arkorm update specification.', {
                 operation: 'query.updateMany',
@@ -2625,7 +2658,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             const result = await adapter.update({
                 target: spec.target,
                 where: rowWhere,
-                values: spec.values,
+                values: normalizedValues as DatabaseRow,
             })
             if (result)
                 updated += 1

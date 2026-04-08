@@ -210,6 +210,37 @@ describe('persisted column mappings', () => {
         }))
     })
 
+    it('exposes persisted timestamp metadata on model metadata', () => {
+        const workspace = makeTempDir('arkormx-column-mappings-timestamps-')
+        process.chdir(workspace)
+
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                posts: {
+                    columns: {},
+                    enums: {},
+                    timestampColumns: [
+                        { column: 'createdAt', default: 'now()' },
+                        { column: 'updatedAt', updatedAt: true },
+                    ],
+                },
+            },
+        }, null, 2))
+
+        class Post extends Model {
+            protected static override table = 'posts'
+        }
+
+        expect(Post.getModelMetadata()).toEqual(expect.objectContaining({
+            timestampColumns: [
+                { column: 'createdAt', default: 'now()' },
+                { column: 'updatedAt', updatedAt: true },
+            ],
+        }))
+    })
+
     it('generates missing primary keys for non-Prisma adapter inserts', async () => {
         const workspace = makeTempDir('arkormx-column-mappings-pk-fallback-')
         process.chdir(workspace)
@@ -265,6 +296,74 @@ describe('persisted column mappings', () => {
             expect(created.getAttribute('id')).toBe(insertedId)
         } finally {
             ApiToken.setAdapter(undefined)
+        }
+    })
+
+    it('hydrates missing timestamp columns for non-Prisma inserts and updates', async () => {
+        const workspace = makeTempDir('arkormx-column-mappings-timestamp-fallback-')
+        process.chdir(workspace)
+
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                posts: {
+                    columns: {},
+                    enums: {},
+                    timestampColumns: [
+                        { column: 'createdAt', default: 'now()' },
+                        { column: 'updatedAt', updatedAt: true },
+                    ],
+                },
+            },
+        }, null, 2))
+
+        class Post extends Model {
+            protected static override table = 'posts'
+        }
+
+        const insertSpecs: Array<InsertSpec<any>> = []
+        const updateSpecs: Array<UpdateSpec<any>> = []
+        const adapter: DatabaseAdapter = {
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async <TModel = unknown> (spec: InsertSpec<TModel>) => {
+                insertSpecs.push(spec)
+
+                return { id: 1, ...spec.values }
+            },
+            update: async <TModel = unknown> (spec: UpdateSpec<TModel>) => {
+                updateSpecs.push(spec)
+
+                return { id: 1, title: 'Updated', ...spec.values }
+            },
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            transaction: async <TResult = unknown> (
+                callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(adapter),
+        }
+
+        Post.setAdapter(adapter)
+
+        try {
+            const created = await Post.query().create({ title: 'Draft' } as never)
+            const createdValues = insertSpecs[0]?.values
+
+            expect(createdValues?.createdAt).toBeInstanceOf(Date)
+            expect(createdValues?.updatedAt).toBeInstanceOf(Date)
+            expect(created.getAttribute('createdAt')).toBeInstanceOf(Date)
+            expect(created.getAttribute('updatedAt')).toBeInstanceOf(Date)
+
+            await Post.query().where({ id: 1 } as never).update({ title: 'Updated' } as never)
+            const updatedValues = updateSpecs[0]?.values
+
+            expect(updatedValues?.title).toBe('Updated')
+            expect(updatedValues?.updatedAt).toBeInstanceOf(Date)
+            expect(updatedValues?.createdAt).toBeUndefined()
+        } finally {
+            Post.setAdapter(undefined)
         }
     })
 })
