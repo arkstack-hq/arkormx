@@ -1,0 +1,467 @@
+import type { AppliedMigrationsState, MigrationClass, SchemaColumn, SchemaOperation } from '../types'
+import type { ArkormConfig } from '../types/core'
+
+import { ArkormException } from '../Exceptions/ArkormException'
+import { buildMigrationIdentity } from './migration-history'
+import { dirname, join, resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { getMigrationPlan } from './migrations'
+
+export interface PersistedMetadataFeatures {
+    persistedColumnMappings: boolean
+    persistedEnums: boolean
+}
+
+export interface PersistedTableMetadata {
+    columns: Record<string, string>
+    enums: Record<string, string[]>
+}
+
+export interface PersistedColumnMappingsState {
+    version: 1
+    tables: Record<string, PersistedTableMetadata>
+}
+
+let cachedColumnMappingsPath: string | undefined
+let cachedColumnMappingsState: PersistedColumnMappingsState | undefined
+
+export const resolvePersistedMetadataFeatures = (
+    features?: ArkormConfig['features']
+): PersistedMetadataFeatures => {
+    return {
+        persistedColumnMappings: features?.persistedColumnMappings !== false,
+        persistedEnums: features?.persistedEnums !== false,
+    }
+}
+
+export const createEmptyPersistedColumnMappingsState = (): PersistedColumnMappingsState => ({
+    version: 1,
+    tables: {},
+})
+
+export const resolveColumnMappingsFilePath = (
+    cwd: string,
+    configuredPath?: string
+): string => {
+    if (configuredPath && configuredPath.trim().length > 0)
+        return resolve(configuredPath)
+
+    return join(cwd, '.arkormx', 'column-mappings.json')
+}
+
+const normalizePersistedEnumValues = (values: unknown): string[] => {
+    if (!Array.isArray(values))
+        return []
+
+    return values.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+}
+
+const normalizeLegacyTableColumns = (columns: Record<string, unknown>): Record<string, string> => {
+    return Object.entries(columns).reduce<Record<string, string>>((mapped, [attribute, column]) => {
+        if (attribute.trim().length === 0)
+            return mapped
+
+        if (typeof column !== 'string' || column.trim().length === 0)
+            return mapped
+
+        mapped[attribute] = column
+
+        return mapped
+    }, {})
+}
+
+const normalizePersistedTableMetadata = (table: unknown): PersistedTableMetadata => {
+    if (!table || typeof table !== 'object' || Array.isArray(table))
+        return { columns: {}, enums: {} }
+
+    const candidate = table as {
+        columns?: Record<string, unknown>
+        enums?: Record<string, unknown>
+    }
+
+    const hasStructuredMetadata = Object.prototype.hasOwnProperty.call(candidate, 'columns')
+        || Object.prototype.hasOwnProperty.call(candidate, 'enums')
+
+    if (!hasStructuredMetadata)
+        return {
+            columns: normalizeLegacyTableColumns(candidate as Record<string, unknown>),
+            enums: {},
+        }
+
+    const columns = normalizeLegacyTableColumns(candidate.columns ?? {})
+    const enums = Object.entries(candidate.enums ?? {}).reduce<Record<string, string[]>>((all, [columnName, values]) => {
+        if (columnName.trim().length === 0)
+            return all
+
+        const normalizedValues = normalizePersistedEnumValues(values)
+        if (normalizedValues.length > 0)
+            all[columnName] = normalizedValues
+
+        return all
+    }, {})
+
+    return { columns, enums }
+}
+
+const normalizePersistedColumnMappingsState = (
+    state: Partial<PersistedColumnMappingsState> | undefined
+): PersistedColumnMappingsState => {
+    const tables = Object.entries(state?.tables ?? {}).reduce<Record<string, PersistedTableMetadata>>((all, [tableName, tableMetadata]) => {
+        if (tableName.trim().length === 0)
+            return all
+
+        const normalized = normalizePersistedTableMetadata(tableMetadata)
+        if (Object.keys(normalized.columns).length > 0 || Object.keys(normalized.enums).length > 0)
+            all[tableName] = normalized
+
+        return all
+    }, {})
+
+    return {
+        version: 1,
+        tables,
+    }
+}
+
+const buildPersistedFeatureDisabledError = (
+    feature: 'persistedColumnMappings' | 'persistedEnums',
+    table: string,
+): ArkormException => {
+    const label = feature === 'persistedColumnMappings'
+        ? 'persisted column mappings'
+        : 'persisted enum metadata'
+    const configKey = feature === 'persistedColumnMappings'
+        ? 'features.persistedColumnMappings'
+        : 'features.persistedEnums'
+
+    return new ArkormException(`Table [${table}] requires ${label}, but ${configKey} is disabled in arkormx.config.*.`, {
+        operation: 'metadata.persisted',
+        meta: {
+            feature,
+            table,
+        },
+    })
+}
+
+const assertPersistedTableMetadataEnabled = (
+    table: string,
+    metadata: PersistedTableMetadata,
+    features: PersistedMetadataFeatures,
+    strict: boolean,
+): void => {
+    if (!strict)
+        return
+
+    if (!features.persistedColumnMappings && Object.keys(metadata.columns).length > 0)
+        throw buildPersistedFeatureDisabledError('persistedColumnMappings', table)
+
+    if (!features.persistedEnums && Object.keys(metadata.enums).length > 0)
+        throw buildPersistedFeatureDisabledError('persistedEnums', table)
+}
+
+const buildEnumUnionType = (values: string[]): string => {
+    return values
+        .map((value) => {
+            const escapedValue = value.replace(/'/g, String.raw`\'`)
+
+            return `'${escapedValue}'`
+        })
+        .join(' | ')
+}
+
+export const resetPersistedColumnMappingsCache = (): void => {
+    cachedColumnMappingsPath = undefined
+    cachedColumnMappingsState = undefined
+}
+
+export const readPersistedColumnMappingsState = (
+    filePath: string
+): PersistedColumnMappingsState => {
+    if (cachedColumnMappingsPath === filePath && cachedColumnMappingsState)
+        return cachedColumnMappingsState
+
+    if (!existsSync(filePath)) {
+        const empty = createEmptyPersistedColumnMappingsState()
+        cachedColumnMappingsPath = filePath
+        cachedColumnMappingsState = empty
+
+        return empty
+    }
+
+    try {
+        const parsed = JSON.parse(readFileSync(filePath, 'utf-8')) as Partial<PersistedColumnMappingsState>
+        const normalized = normalizePersistedColumnMappingsState(parsed)
+        cachedColumnMappingsPath = filePath
+        cachedColumnMappingsState = normalized
+
+        return normalized
+    } catch {
+        const empty = createEmptyPersistedColumnMappingsState()
+        cachedColumnMappingsPath = filePath
+        cachedColumnMappingsState = empty
+
+        return empty
+    }
+}
+
+export const writePersistedColumnMappingsState = (
+    filePath: string,
+    state: PersistedColumnMappingsState
+): void => {
+    const normalized = normalizePersistedColumnMappingsState(state)
+    const directory = dirname(filePath)
+
+    if (!existsSync(directory))
+        mkdirSync(directory, { recursive: true })
+
+    writeFileSync(filePath, JSON.stringify(normalized, null, 2))
+    cachedColumnMappingsPath = filePath
+    cachedColumnMappingsState = normalized
+}
+
+export const deletePersistedColumnMappingsState = (
+    filePath: string
+): void => {
+    if (existsSync(filePath))
+        rmSync(filePath, { force: true })
+
+    resetPersistedColumnMappingsCache()
+}
+
+export const getPersistedTableMetadata = (
+    table: string,
+    options: {
+        cwd?: string
+        configuredPath?: string
+        features?: PersistedMetadataFeatures
+        strict?: boolean
+    } = {},
+): PersistedTableMetadata => {
+    const state = readPersistedColumnMappingsState(resolveColumnMappingsFilePath(options.cwd ?? process.cwd(), options.configuredPath))
+    const metadata = state.tables[table] ?? { columns: {}, enums: {} }
+
+    assertPersistedTableMetadataEnabled(
+        table,
+        metadata,
+        options.features ?? resolvePersistedMetadataFeatures(),
+        options.strict ?? false,
+    )
+
+    return {
+        columns: { ...metadata.columns },
+        enums: Object.entries(metadata.enums).reduce<Record<string, string[]>>((all, [columnName, values]) => {
+            all[columnName] = [...values]
+
+            return all
+        }, {}),
+    }
+}
+
+export const getPersistedColumnMap = (
+    table: string,
+    options: {
+        cwd?: string
+        configuredPath?: string
+        features?: PersistedMetadataFeatures
+        strict?: boolean
+    } = {},
+): Record<string, string> => {
+    return getPersistedTableMetadata(table, options).columns
+}
+
+export const getPersistedEnumMap = (
+    table: string,
+    options: {
+        cwd?: string
+        configuredPath?: string
+        features?: PersistedMetadataFeatures
+        strict?: boolean
+    } = {},
+): Record<string, string[]> => {
+    return getPersistedTableMetadata(table, options).enums
+}
+
+const applyMappedColumn = (
+    tableColumns: Record<string, string>,
+    column: SchemaColumn,
+    features: PersistedMetadataFeatures,
+    table: string,
+): void => {
+    if (typeof column.map === 'string' && column.map.trim().length > 0 && column.map !== column.name) {
+        if (!features.persistedColumnMappings)
+            throw buildPersistedFeatureDisabledError('persistedColumnMappings', table)
+
+        tableColumns[column.name] = column.map
+
+        return
+    }
+
+    delete tableColumns[column.name]
+}
+
+const applyEnumColumn = (
+    tableEnums: Record<string, string[]>,
+    column: SchemaColumn,
+    features: PersistedMetadataFeatures,
+    table: string,
+): void => {
+    const values = column.enumValues ?? []
+    if (column.type === 'enum' && values.length > 0) {
+        if (!features.persistedEnums)
+            throw buildPersistedFeatureDisabledError('persistedEnums', table)
+
+        tableEnums[column.name] = [...values]
+
+        return
+    }
+
+    delete tableEnums[column.name]
+}
+
+const removePersistedColumnMetadata = (
+    tableMetadata: PersistedTableMetadata,
+    columnName: string,
+): void => {
+    delete tableMetadata.columns[columnName]
+    delete tableMetadata.enums[columnName]
+
+    Object.entries(tableMetadata.columns).forEach(([attribute, mappedColumn]) => {
+        if (mappedColumn === columnName)
+            delete tableMetadata.columns[attribute]
+    })
+}
+
+export const applyOperationsToPersistedColumnMappingsState = (
+    state: PersistedColumnMappingsState,
+    operations: SchemaOperation[],
+    features: PersistedMetadataFeatures = resolvePersistedMetadataFeatures(),
+): PersistedColumnMappingsState => {
+    const nextTables = Object.entries(state.tables).reduce<Record<string, PersistedTableMetadata>>((all, [table, metadata]) => {
+        all[table] = {
+            columns: { ...metadata.columns },
+            enums: Object.entries(metadata.enums).reduce<Record<string, string[]>>((nextEnums, [columnName, values]) => {
+                nextEnums[columnName] = [...values]
+
+                return nextEnums
+            }, {}),
+        }
+
+        return all
+    }, {})
+
+    operations.forEach((operation) => {
+        if (operation.type === 'createTable') {
+            const tableMetadata = nextTables[operation.table] ?? { columns: {}, enums: {} }
+            operation.columns.forEach((column) => {
+                applyMappedColumn(tableMetadata.columns, column, features, operation.table)
+                applyEnumColumn(tableMetadata.enums, column, features, operation.table)
+            })
+
+            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0)
+                nextTables[operation.table] = tableMetadata
+            else
+                delete nextTables[operation.table]
+
+            return
+        }
+
+        if (operation.type === 'alterTable') {
+            const tableMetadata = nextTables[operation.table] ?? { columns: {}, enums: {} }
+            operation.addColumns.forEach((column) => {
+                applyMappedColumn(tableMetadata.columns, column, features, operation.table)
+                applyEnumColumn(tableMetadata.enums, column, features, operation.table)
+            })
+            operation.dropColumns.forEach((columnName) => {
+                removePersistedColumnMetadata(tableMetadata, columnName)
+            })
+
+            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0)
+                nextTables[operation.table] = tableMetadata
+            else
+                delete nextTables[operation.table]
+
+            return
+        }
+
+        delete nextTables[operation.table]
+    })
+
+    return {
+        version: 1,
+        tables: nextTables,
+    }
+}
+
+export const rebuildPersistedColumnMappingsState = async (
+    state: AppliedMigrationsState,
+    availableMigrations: [MigrationClass, string][],
+    features: PersistedMetadataFeatures = resolvePersistedMetadataFeatures(),
+): Promise<PersistedColumnMappingsState> => {
+    const availableByIdentity = new Map<string, MigrationClass>(
+        availableMigrations.map(([migrationClass, file]) => [buildMigrationIdentity(file, migrationClass.name), migrationClass])
+    )
+
+    let nextState = createEmptyPersistedColumnMappingsState()
+    const orderedMigrations = state.migrations
+        .map((migration, index) => ({ migration, index }))
+        .sort((left, right) => {
+            const appliedAtOrder = left.migration.appliedAt.localeCompare(right.migration.appliedAt)
+            if (appliedAtOrder !== 0)
+                return appliedAtOrder
+
+            return left.index - right.index
+        })
+
+    for (const { migration } of orderedMigrations) {
+        const migrationClass = availableByIdentity.get(migration.id)
+        if (!migrationClass) {
+            throw new ArkormException(`Unable to rebuild persisted column mappings because migration [${migration.id}] could not be resolved from the current migration files.`, {
+                operation: 'migration.columnMappings',
+                meta: {
+                    migrationId: migration.id,
+                    file: migration.file,
+                    className: migration.className,
+                },
+            })
+        }
+
+        const operations = await getMigrationPlan(migrationClass, 'up')
+        nextState = applyOperationsToPersistedColumnMappingsState(nextState, operations, features)
+    }
+
+    return nextState
+}
+
+export const syncPersistedColumnMappingsFromState = async (
+    cwd: string,
+    state: AppliedMigrationsState,
+    availableMigrations: [MigrationClass, string][],
+    features: PersistedMetadataFeatures = resolvePersistedMetadataFeatures(),
+): Promise<void> => {
+    const filePath = resolveColumnMappingsFilePath(cwd)
+    const nextState = await rebuildPersistedColumnMappingsState(state, availableMigrations, features)
+
+    if (Object.keys(nextState.tables).length === 0) {
+        deletePersistedColumnMappingsState(filePath)
+
+        return
+    }
+
+    writePersistedColumnMappingsState(filePath, nextState)
+}
+
+export const validatePersistedMetadataFeaturesForMigrations = async (
+    migrations: [MigrationClass, string][],
+    features: PersistedMetadataFeatures = resolvePersistedMetadataFeatures(),
+): Promise<void> => {
+    let nextState = createEmptyPersistedColumnMappingsState()
+
+    for (const [migrationClass] of migrations) {
+        const operations = await getMigrationPlan(migrationClass, 'up')
+        nextState = applyOperationsToPersistedColumnMappingsState(nextState, operations, features)
+    }
+}
+
+export const getPersistedEnumTsType = (values: string[]): string => {
+    return buildEnumUnionType(values)
+}

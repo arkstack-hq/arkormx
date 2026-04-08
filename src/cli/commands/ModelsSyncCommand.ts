@@ -13,10 +13,16 @@ export class ModelsSyncCommand extends Command<CliApp> {
     async handle () {
         this.app.command = this
 
-        const result = await this.app.syncModels({
-            schemaPath: this.option('schema') ? resolve(String(this.option('schema'))) : undefined,
-            modelsDir: this.option('models') ? resolve(String(this.option('models'))) : undefined,
-        })
+        let result
+
+        try {
+            result = await this.app.syncModels({
+                schemaPath: this.option('schema') ? resolve(String(this.option('schema'))) : undefined,
+                modelsDir: this.option('models') ? resolve(String(this.option('models'))) : undefined,
+            })
+        } catch (error) {
+            return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+        }
 
         const updatedLines = result.updated.length === 0
             ? [this.app.splitLogger('Updated', 'none')]

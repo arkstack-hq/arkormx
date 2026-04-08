@@ -1,5 +1,6 @@
 import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
 import { PRISMA_ENUM_REGEX, applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
+import { getPersistedEnumMap, getPersistedEnumTsType, resolvePersistedMetadataFeatures } from '../helpers/column-mappings'
 import { dirname, extname, join, relative } from 'path'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
@@ -843,6 +844,33 @@ export class CliApp {
         return { updated, skipped }
     }
 
+    private applyPersistedEnumMetadata (structure: AdapterModelStructure): AdapterModelStructure {
+        const persistedEnums = getPersistedEnumMap(structure.table, {
+            features: resolvePersistedMetadataFeatures(this.getConfig('features')),
+            strict: true,
+        })
+
+        if (Object.keys(persistedEnums).length === 0)
+            return structure
+
+        return {
+            ...structure,
+            fields: structure.fields.map((field) => {
+                const enumValues = persistedEnums[field.name]
+                if (!enumValues || enumValues.length === 0)
+                    return field
+
+                const enumType = getPersistedEnumTsType(enumValues)
+                const isArray = /^Array<.+>$/.test(field.type)
+
+                return {
+                    ...field,
+                    type: isArray ? `Array<${enumType}>` : enumType,
+                }
+            }),
+        }
+    }
+
     /**
      * Parse Prisma enum definitions from a schema and return their member names.
      *
@@ -1067,7 +1095,11 @@ export class CliApp {
             const discovered = await adapter.introspectModels({
                 tables: [...new Set([...sources.values()].map(source => source.table))],
             })
-            const structuresByTable = new Map(discovered.map(model => [model.table, model]))
+            const structuresByTable = new Map(discovered.map(model => {
+                const enriched = this.applyPersistedEnumMetadata(model)
+
+                return [enriched.table, enriched]
+            }))
             const result = this.syncModelFiles(
                 modelFiles,
                 (filePath) => {

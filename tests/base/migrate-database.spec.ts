@@ -2,7 +2,7 @@ import type { AggregateSpec, DatabaseAdapter, DeleteSpec, InsertSpec, SelectSpec
 import type { AppliedMigrationsState, SchemaOperation } from '../../src'
 import { CliApp, configureArkormRuntime, resetArkormRuntimeForTests } from '../../src'
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 import { Kernel } from '@h3ravel/musket'
 import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
@@ -128,6 +128,7 @@ describe('database-backed migration command fallback', () => {
             '    schema.createTable(\'users\', (table) => {',
             '      table.id()',
             '      table.string(\'email\')',
+            '      table.string(\'emailVerificationCode\').nullable().map(\'email_verification_code\')',
             '    })',
             '  }',
             '',
@@ -164,6 +165,17 @@ describe('database-backed migration command fallback', () => {
         expect(adapter.executed).toHaveLength(1)
         expect(adapter.executed[0]?.[0]).toMatchObject({ type: 'createTable', table: 'users' })
         expect(adapter.state.migrations).toHaveLength(1)
+        expect(JSON.parse(readFileSync(join(workspace, '.arkormx', 'column-mappings.json'), 'utf-8'))).toEqual({
+            version: 1,
+            tables: {
+                users: {
+                    columns: {
+                        emailVerificationCode: 'email_verification_code',
+                    },
+                    enums: {},
+                },
+            },
+        })
 
         const historyCommand = new MigrationHistoryCommand(app, new Kernel(app));
         (historyCommand as unknown as { app: CliApp }).app = app
@@ -187,6 +199,7 @@ describe('database-backed migration command fallback', () => {
         expect(adapter.executed).toHaveLength(2)
         expect(adapter.executed[1]?.[0]).toMatchObject({ type: 'dropTable', table: 'users' })
         expect(adapter.state.migrations).toHaveLength(0)
+        expect(existsSync(join(workspace, '.arkormx', 'column-mappings.json'))).toBe(false)
     })
 
     it('resets adapter-backed databases before reapplying tracked migrations', async () => {
@@ -249,5 +262,184 @@ describe('database-backed migration command fallback', () => {
         expect(adapter.executed[0]?.[0]).toMatchObject({ type: 'createTable', table: 'users' })
         expect(adapter.state.migrations).toHaveLength(1)
         expect(adapter.state.migrations[0]?.id).toContain('CreateUsersMigration')
+    })
+
+    it('reports an error when persisted column mappings are disabled for database-backed migrations', async () => {
+        const workspace = makeTempDir('arkormx-db-migrate-no-column-map-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'emailVerificationCode\').map(\'email_verification_code\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            executed: SchemaOperation[][]
+        }
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            features: {
+                persistedColumnMappings: false,
+            },
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateCommand(app, new Kernel(app))
+        ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, {
+            all: true,
+        })
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('persisted column mappings'))).toBe(true)
+        expect(adapter.executed).toHaveLength(0)
+    })
+
+    it('reports an error when persisted enums are disabled for database-backed migrations', async () => {
+        const workspace = makeTempDir('arkormx-db-migrate-no-enums-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.enum(\'status\', [\'draft\', \'published\'])',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            executed: SchemaOperation[][]
+        }
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            features: {
+                persistedEnums: false,
+            },
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateCommand(app, new Kernel(app))
+        ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, {
+            all: true,
+        })
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('persisted enum metadata'))).toBe(true)
+        expect(adapter.executed).toHaveLength(0)
+    })
+
+    it('does not modify prisma schema files when adapter-backed fresh reset support is unavailable', async () => {
+        const workspace = makeTempDir('arkormx-db-fresh-no-reset-')
+        process.chdir(workspace)
+
+        const schemaPath = join(workspace, 'prisma', 'schema.prisma')
+        mkdirSync(join(workspace, 'prisma'), { recursive: true })
+        writeFileSync(schemaPath, [
+            'generator client {',
+            '  provider = "prisma-client-js"',
+            '}',
+            '',
+            'datasource db {',
+            '  provider = "postgresql"',
+            '  url = env("DATABASE_URL")',
+            '}',
+            '',
+            'model Legacy {',
+            '  id Int @id',
+            '}',
+            '',
+        ].join('\n'))
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            executed: SchemaOperation[][]
+            resetDatabase?: () => Promise<void>
+        }
+        delete adapter.resetDatabase
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+        ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, {
+            schema: schemaPath,
+        })
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('requires adapter.resetDatabase() support'))).toBe(true)
+        expect(adapter.executed).toHaveLength(0)
+        expect(readFileSync(schemaPath, 'utf-8')).toContain('model Legacy')
     })
 })

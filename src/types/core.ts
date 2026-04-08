@@ -64,6 +64,21 @@ export interface ArkormConfig {
         resolveCurrentPage?: PaginationCurrentPageResolver
     }
     /**
+     * @property features Optional feature flags for persisted non-Prisma runtime metadata.
+     */
+    features?: {
+        /**
+         * @property persistedColumnMappings Persist migration-defined column mappings for non-Prisma adapters.
+         * Defaults to true.
+         */
+        persistedColumnMappings?: boolean
+        /**
+         * @property persistedEnums Persist migration-defined enum values for non-Prisma adapters.
+         * Defaults to true.
+         */
+        persistedEnums?: boolean
+    }
+    /**
      * @property paths Optional custom paths for various generated files.
      */
     paths?: {

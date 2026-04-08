@@ -369,9 +369,38 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
-    private introspectionTypeToTs (typeName: string, enumValues: string[] | null): string {
-        if (enumValues && enumValues.length > 0)
-            return enumValues.map(value => `'${value.replace(/'/g, '\\\'')}'`).join(' | ')
+    private normalizeIntrospectionEnumValues (enumValues: unknown): string[] | null {
+        if (Array.isArray(enumValues))
+            return enumValues.filter((value): value is string => typeof value === 'string')
+
+        if (typeof enumValues !== 'string')
+            return null
+
+        const trimmed = enumValues.trim()
+        if (!trimmed.startsWith('{') || !trimmed.endsWith('}'))
+            return null
+
+        const inner = trimmed.slice(1, -1)
+        if (inner.length === 0)
+            return []
+
+        return inner
+            .split(',')
+            .map(value => value.trim().replace(/^"|"$/g, '').replace(/\\"/g, '"'))
+            .filter(Boolean)
+    }
+
+    private introspectionTypeToTs (typeName: string, enumValues: unknown): string {
+        const normalizedEnumValues = this.normalizeIntrospectionEnumValues(enumValues)
+        if (normalizedEnumValues && normalizedEnumValues.length > 0) {
+            return normalizedEnumValues
+                .map((value) => {
+                    const escapedValue = value.replace(/'/g, String.raw`\'`)
+
+                    return `'${escapedValue}'`
+                })
+                .join(' | ')
+        }
 
         switch (typeName) {
             case 'bool':
