@@ -5,6 +5,39 @@ Arkormˣ query builder is fluent, typed, and adapter-backed.
 For multi-step write flows that need atomic commit/rollback behavior, see
 [Transactions](./transactions.md).
 
+## Raw table access
+
+Use `DB.table(...)` when you want the fluent query builder without model
+hydration, scopes, relations, or lifecycle behavior.
+
+```ts
+import { DB } from 'arkormx';
+
+const users = await DB.table<{ id: number; name: string }>('users')
+  .where({ name: 'Jane' })
+  .get();
+
+const rows = users.all();
+```
+
+You can pass table metadata when the builder needs help resolving updates,
+deletes, mapped columns, soft deletes, or generated keys.
+
+```ts
+await DB.table('users', {
+  primaryKey: 'uuid',
+  columns: {
+    createdAt: 'created_at',
+  },
+  softDelete: {
+    enabled: true,
+    column: 'deletedAt',
+  },
+})
+  .where({ email: 'jane@example.com' })
+  .update({ name: 'Jane Updated' });
+```
+
 ## Common reads
 
 ```ts

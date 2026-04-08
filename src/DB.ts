@@ -1,7 +1,8 @@
+import type { AdapterTransactionContext, DatabaseAdapter } from './types/adapter'
 import type { PrismaDelegateLike, SoftDeleteConfig } from './types/core'
 import { getActiveTransactionClient, getRuntimeAdapter, getRuntimePrismaClient } from './helpers/runtime-config'
 
-import type { DatabaseAdapter } from './types/adapter'
+import { ArkormException } from './Exceptions/ArkormException'
 import type { DatabaseTableOptions } from './types/db'
 import type { ModelMetadata } from './types/metadata'
 import type { ModelStatic } from './types/ModelStatic'
@@ -24,6 +25,11 @@ const defaultSoftDeleteConfig: SoftDeleteConfig = {
 
 export class DB {
     private static adapter?: DatabaseAdapter
+    private readonly scopedAdapter?: DatabaseAdapter
+
+    private constructor(adapter?: DatabaseAdapter) {
+        this.scopedAdapter = adapter
+    }
 
     public static setAdapter (adapter?: DatabaseAdapter): void {
         this.adapter = adapter
@@ -44,16 +50,51 @@ export class DB {
         return createPrismaCompatibilityAdapter(client)
     }
 
+    public getAdapter (): DatabaseAdapter | undefined {
+        return this.scopedAdapter ?? DB.getAdapter()
+    }
+
     public static table<TRow extends Record<string, unknown> = Record<string, unknown>> (
         table: string,
         options: DatabaseTableOptions = {},
     ): QueryBuilder<TRow, PrismaDelegateLike> {
-        return this.createTableModel<TRow>(table, options).query()
+        return new DB().table<TRow>(table, options)
+    }
+
+    public table<TRow extends Record<string, unknown> = Record<string, unknown>> (
+        table: string,
+        options: DatabaseTableOptions = {},
+    ): QueryBuilder<TRow, PrismaDelegateLike> {
+        return DB.createTableModel<TRow>(table, options, this.getAdapter()).query()
+    }
+
+    public static async transaction<TResult> (
+        callback: (db: DB) => TResult | Promise<TResult>,
+        context?: AdapterTransactionContext,
+    ): Promise<TResult> {
+        return await new DB().transaction(callback, context)
+    }
+
+    public async transaction<TResult> (
+        callback: (db: DB) => TResult | Promise<TResult>,
+        context?: AdapterTransactionContext,
+    ): Promise<TResult> {
+        const adapter = this.getAdapter()
+        if (!adapter)
+            throw new ArkormException('DB transactions require a configured database adapter.', {
+                code: 'ADAPTER_NOT_CONFIGURED',
+                operation: 'db.transaction',
+            })
+
+        return await adapter.transaction(async (transactionAdapter) => {
+            return await callback(new DB(transactionAdapter))
+        }, context)
     }
 
     private static createTableModel<TRow extends Record<string, unknown>> (
         table: string,
         options: DatabaseTableOptions,
+        adapter?: DatabaseAdapter,
     ): ModelStatic<TRow, PrismaDelegateLike> {
         const primaryKey = options.primaryKey ?? 'id'
         const columns = { ...(options.columns ?? {}) }
@@ -81,7 +122,7 @@ export class DB {
             hydrateMany: (attributes: Record<string, unknown>[]): TRow[] => attributes.map(attribute => ({ ...attribute }) as TRow),
             hydrateRetrieved: async (attributes: Record<string, unknown>): Promise<TRow> => ({ ...attributes }) as TRow,
             hydrateManyRetrieved: async (attributes: Record<string, unknown>[]): Promise<TRow[]> => attributes.map(attribute => ({ ...attribute }) as TRow),
-            getAdapter: (): DatabaseAdapter | undefined => options.adapter ?? DB.getAdapter(),
+            getAdapter: (): DatabaseAdapter | undefined => options.adapter ?? adapter ?? DB.getAdapter(),
             getColumnMap: (): Record<string, string> => ({ ...columns }),
             getColumnName: (attribute: string): string => columns[attribute] ?? attribute,
             getDelegate: (): PrismaDelegateLike => noopDelegate,
