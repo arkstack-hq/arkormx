@@ -133,4 +133,53 @@ describe('DB facade', () => {
         expect(insertSpecs[0]?.values.updatedAt).toBeInstanceOf(Date)
         expect(created.id).toBe(insertSpecs[0]?.values.id)
     })
+
+    it('runs raw table queries against the transaction-scoped adapter', async () => {
+        const rootSelectSpecs: Array<SelectSpec<any>> = []
+        const transactionSelectSpecs: Array<SelectSpec<any>> = []
+
+        const transactionAdapter: DatabaseAdapter = {
+            select: async <TModel = unknown> (spec: SelectSpec<TModel>) => {
+                transactionSelectSpecs.push(spec)
+
+                return [{ id: 1, name: 'tx' }]
+            },
+            selectOne: async () => null,
+            insert: async () => ({}),
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            transaction: async <TResult = unknown> (
+                callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(transactionAdapter),
+        }
+
+        const adapter: DatabaseAdapter = {
+            select: async <TModel = unknown> (spec: SelectSpec<TModel>) => {
+                rootSelectSpecs.push(spec)
+
+                return [{ id: 0, name: 'root' }]
+            },
+            selectOne: async () => null,
+            insert: async () => ({}),
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            transaction: async <TResult = unknown> (
+                callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(transactionAdapter),
+        }
+
+        DB.setAdapter(adapter)
+
+        const rows = await DB.transaction(async (db) => {
+            return (await db.table<{ id: number, name: string }>('users').get()).all()
+        })
+
+        expect(rows).toEqual([{ id: 1, name: 'tx' }])
+        expect(rootSelectSpecs).toHaveLength(0)
+        expect(transactionSelectSpecs).toHaveLength(1)
+    })
 })

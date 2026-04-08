@@ -87,6 +87,31 @@ await User.transaction(async () => {
 
 If the outer transaction rolls back, the inner work rolls back with it.
 
+## Raw table transactions with DB
+
+When you want transaction-scoped table queries without defining a model, use
+`DB.transaction(...)` together with `db.table(...)`.
+
+```ts
+import { DB } from 'arkormx';
+
+await DB.transaction(async (db) => {
+  await db.table('users').insert({
+    name: 'Mia',
+    email: 'mia@example.com',
+    isActive: 1,
+  });
+
+  await db
+    .table('users')
+    .where({ email: 'john@example.com' })
+    .updateFrom({ isActive: 1 });
+});
+```
+
+Inside the callback, every query created through that `db` instance uses the
+transaction-scoped adapter.
+
 ## Using the transaction client directly
 
 The callback also receives the active Prisma transaction client.
@@ -142,8 +167,9 @@ configureArkormRuntime(() => prisma);
 ```
 
 If your app uses an adapter-first runtime path such as Kysely, prefer the
-adapter's own `transaction(...)` method and bind the transaction-scoped adapter
-inside that callback.
+adapter's own `transaction(...)` method or `DB.transaction(...)` when you want
+table-centric access without model classes.
 
 If your current adapter does not expose transaction support, Arkorm throws an
-unsupported-adapter error when `Model.transaction()` is called.
+unsupported-adapter error when `Model.transaction()` or `DB.transaction()` is
+called.
