@@ -1,9 +1,9 @@
 import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
 import { PRISMA_ENUM_REGEX, applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
-import { getPersistedEnumMap, getPersistedEnumTsType, resolvePersistedMetadataFeatures } from '../helpers/column-mappings'
 import { dirname, extname, join, relative } from 'path'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
+import { getPersistedEnumTsType, getPersistedTableMetadata, resolvePersistedMetadataFeatures } from '../helpers/column-mappings'
 
 import { Command } from '@h3ravel/musket'
 import { Logger } from '@h3ravel/shared'
@@ -844,27 +844,40 @@ export class CliApp {
         return { updated, skipped }
     }
 
-    private applyPersistedEnumMetadata (structure: AdapterModelStructure): AdapterModelStructure {
-        const persistedEnums = getPersistedEnumMap(structure.table, {
+    private applyPersistedFieldMetadata (structure: AdapterModelStructure): AdapterModelStructure {
+        const persistedMetadata = getPersistedTableMetadata(structure.table, {
             features: resolvePersistedMetadataFeatures(this.getConfig('features')),
             strict: true,
         })
 
-        if (Object.keys(persistedEnums).length === 0)
+        if (Object.keys(persistedMetadata.columns).length === 0 && Object.keys(persistedMetadata.enums).length === 0)
             return structure
+
+        const attributesByColumn = Object.entries(persistedMetadata.columns).reduce<Record<string, string>>((all, [attribute, column]) => {
+            all[column] = attribute
+
+            return all
+        }, {})
 
         return {
             ...structure,
             fields: structure.fields.map((field) => {
-                const enumValues = persistedEnums[field.name]
-                if (!enumValues || enumValues.length === 0)
-                    return field
+                const logicalName = attributesByColumn[field.name] ?? field.name
+                const enumValues = persistedMetadata.enums[logicalName] ?? persistedMetadata.enums[field.name]
+
+                if (!enumValues || enumValues.length === 0) {
+                    return {
+                        ...field,
+                        name: logicalName,
+                    }
+                }
 
                 const enumType = getPersistedEnumTsType(enumValues)
                 const isArray = /^Array<.+>$/.test(field.type)
 
                 return {
                     ...field,
+                    name: logicalName,
                     type: isArray ? `Array<${enumType}>` : enumType,
                 }
             }),
@@ -876,7 +889,7 @@ export class CliApp {
      *
      * @param schema The Prisma schema source.
      * @returns      A map of enum names to their declared member names.
-     */
+        */
     private parsePrismaEnums (schema: string): Map<string, string[]> {
         const enums = new Map<string, string[]>()
 
@@ -1096,7 +1109,7 @@ export class CliApp {
                 tables: [...new Set([...sources.values()].map(source => source.table))],
             })
             const structuresByTable = new Map(discovered.map(model => {
-                const enriched = this.applyPersistedEnumMetadata(model)
+                const enriched = this.applyPersistedFieldMetadata(model)
 
                 return [enriched.table, enriched]
             }))
