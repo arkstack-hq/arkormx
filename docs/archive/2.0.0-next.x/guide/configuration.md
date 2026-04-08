@@ -46,6 +46,10 @@ class AppURLDriver extends URLDriver {}
 
 export default defineConfig({
   adapter: createKyselyAdapter(db),
+  features: {
+    persistedColumnMappings: true,
+    persistedEnums: true,
+  },
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
@@ -79,6 +83,8 @@ export default defineConfig({
 
 - `prisma` (optional): Prisma client instance or resolver function for compatibility mode, CLI flows, and Prisma-backed `Model.transaction(...)`.
 - `adapter`: optional global adapter applied automatically to models that do not define their own adapter.
+- `features.persistedColumnMappings`: enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`.
+- `features.persistedEnums`: enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.
 - `boot`: optional low-level synchronous hook for advanced runtime binding work.
 - `pagination.urlDriver`: custom URL driver factory for paginator links.
 - `pagination.resolveCurrentPage`: runtime hook used when `paginate()` or `simplePaginate()` is called without an explicit page argument.
