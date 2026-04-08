@@ -222,8 +222,8 @@ export const buildFieldLine = (column: SchemaColumn): string => {
     const updatedAt = column.updatedAt ? ' @updatedAt' : ''
     const defaultValue = column.type === 'enum'
         ? formatEnumDefaultValue(column.default)
-        : formatDefaultValue(column.default)
-        ?? (column.type === 'uuid' && column.primary ? '@default(uuid())' : undefined)
+        : column.primaryKeyGeneration?.prismaDefault
+        ?? formatDefaultValue(column.default)
     const defaultSuffix = defaultValue ? ` ${defaultValue}` : ''
 
 

@@ -148,6 +148,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     }
 
     private resolveSchemaColumnDefault (column: SchemaColumn): string | null {
+        if (column.primaryKeyGeneration?.databaseDefault)
+            return column.primaryKeyGeneration.databaseDefault
+
         const value = column.default ?? (column.updatedAt ? 'now()' : undefined)
 
         if (value === undefined)

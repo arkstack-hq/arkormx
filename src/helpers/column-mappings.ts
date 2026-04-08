@@ -1,4 +1,4 @@
-import type { AppliedMigrationsState, MigrationClass, SchemaColumn, SchemaOperation } from '../types'
+import type { AppliedMigrationsState, MigrationClass, PrimaryKeyGeneration, SchemaColumn, SchemaOperation } from '../types'
 import type { ArkormConfig } from '../types/core'
 
 import { ArkormException } from '../Exceptions/ArkormException'
@@ -15,6 +15,11 @@ export interface PersistedMetadataFeatures {
 export interface PersistedTableMetadata {
     columns: Record<string, string>
     enums: Record<string, string[]>
+    primaryKeyGeneration?: PersistedPrimaryKeyGeneration
+}
+
+export interface PersistedPrimaryKeyGeneration extends PrimaryKeyGeneration {
+    column: string
 }
 
 export interface PersistedColumnMappingsState {
@@ -77,6 +82,7 @@ const normalizePersistedTableMetadata = (table: unknown): PersistedTableMetadata
     const candidate = table as {
         columns?: Record<string, unknown>
         enums?: Record<string, unknown>
+        primaryKeyGeneration?: unknown
     }
 
     const hasStructuredMetadata = Object.prototype.hasOwnProperty.call(candidate, 'columns')
@@ -100,7 +106,34 @@ const normalizePersistedTableMetadata = (table: unknown): PersistedTableMetadata
         return all
     }, {})
 
-    return { columns, enums }
+    return {
+        columns,
+        enums,
+        primaryKeyGeneration: normalizePersistedPrimaryKeyGeneration(candidate.primaryKeyGeneration),
+    }
+}
+
+const normalizePersistedPrimaryKeyGeneration = (value: unknown): PersistedPrimaryKeyGeneration | undefined => {
+    if (!value || typeof value !== 'object' || Array.isArray(value))
+        return undefined
+
+    const candidate = value as Record<string, unknown>
+    if (candidate.strategy !== 'uuid' || typeof candidate.column !== 'string' || candidate.column.trim().length === 0)
+        return undefined
+
+    return {
+        column: candidate.column,
+        strategy: 'uuid',
+        prismaDefault: typeof candidate.prismaDefault === 'string' && candidate.prismaDefault.trim().length > 0
+            ? candidate.prismaDefault
+            : undefined,
+        databaseDefault: typeof candidate.databaseDefault === 'string' && candidate.databaseDefault.trim().length > 0
+            ? candidate.databaseDefault
+            : undefined,
+        runtimeFactory: candidate.runtimeFactory === 'uuid'
+            ? 'uuid'
+            : undefined,
+    }
 }
 
 const normalizePersistedColumnMappingsState = (
@@ -111,7 +144,7 @@ const normalizePersistedColumnMappingsState = (
             return all
 
         const normalized = normalizePersistedTableMetadata(tableMetadata)
-        if (Object.keys(normalized.columns).length > 0 || Object.keys(normalized.enums).length > 0)
+        if (Object.keys(normalized.columns).length > 0 || Object.keys(normalized.enums).length > 0 || normalized.primaryKeyGeneration)
             all[tableName] = normalized
 
         return all
@@ -254,6 +287,7 @@ export const getPersistedTableMetadata = (
 
             return all
         }, {}),
+        primaryKeyGeneration: metadata.primaryKeyGeneration ? { ...metadata.primaryKeyGeneration } : undefined,
     }
 }
 
@@ -279,6 +313,18 @@ export const getPersistedEnumMap = (
     } = {},
 ): Record<string, string[]> => {
     return getPersistedTableMetadata(table, options).enums
+}
+
+export const getPersistedPrimaryKeyGeneration = (
+    table: string,
+    options: {
+        cwd?: string
+        configuredPath?: string
+        features?: PersistedMetadataFeatures
+        strict?: boolean
+    } = {},
+): PersistedPrimaryKeyGeneration | undefined => {
+    return getPersistedTableMetadata(table, options).primaryKeyGeneration
 }
 
 const applyMappedColumn = (
@@ -329,6 +375,26 @@ const removePersistedColumnMetadata = (
         if (mappedColumn === columnName)
             delete tableMetadata.columns[attribute]
     })
+
+    if (tableMetadata.primaryKeyGeneration?.column === columnName)
+        delete tableMetadata.primaryKeyGeneration
+}
+
+const applyPrimaryKeyGeneration = (
+    tableMetadata: PersistedTableMetadata,
+    column: SchemaColumn,
+): void => {
+    if (!column.primary || !column.primaryKeyGeneration) {
+        if (tableMetadata.primaryKeyGeneration?.column === column.name)
+            delete tableMetadata.primaryKeyGeneration
+
+        return
+    }
+
+    tableMetadata.primaryKeyGeneration = {
+        column: column.name,
+        ...column.primaryKeyGeneration,
+    }
 }
 
 export const applyOperationsToPersistedColumnMappingsState = (
@@ -344,6 +410,7 @@ export const applyOperationsToPersistedColumnMappingsState = (
 
                 return nextEnums
             }, {}),
+            primaryKeyGeneration: metadata.primaryKeyGeneration ? { ...metadata.primaryKeyGeneration } : undefined,
         }
 
         return all
@@ -355,9 +422,10 @@ export const applyOperationsToPersistedColumnMappingsState = (
             operation.columns.forEach((column) => {
                 applyMappedColumn(tableMetadata.columns, column, features, operation.table)
                 applyEnumColumn(tableMetadata.enums, column, features, operation.table)
+                applyPrimaryKeyGeneration(tableMetadata, column)
             })
 
-            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0)
+            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0 || tableMetadata.primaryKeyGeneration)
                 nextTables[operation.table] = tableMetadata
             else
                 delete nextTables[operation.table]
@@ -370,12 +438,13 @@ export const applyOperationsToPersistedColumnMappingsState = (
             operation.addColumns.forEach((column) => {
                 applyMappedColumn(tableMetadata.columns, column, features, operation.table)
                 applyEnumColumn(tableMetadata.enums, column, features, operation.table)
+                applyPrimaryKeyGeneration(tableMetadata, column)
             })
             operation.dropColumns.forEach((columnName) => {
                 removePersistedColumnMetadata(tableMetadata, columnName)
             })
 
-            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0)
+            if (Object.keys(tableMetadata.columns).length > 0 || Object.keys(tableMetadata.enums).length > 0 || tableMetadata.primaryKeyGeneration)
                 nextTables[operation.table] = tableMetadata
             else
                 delete nextTables[operation.table]

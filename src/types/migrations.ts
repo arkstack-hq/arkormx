@@ -13,6 +13,13 @@ export type SchemaColumnType =
     | 'date'
     | 'timestamp'
 
+export interface PrimaryKeyGeneration {
+    strategy: 'uuid'
+    prismaDefault?: string
+    databaseDefault?: string
+    runtimeFactory?: 'uuid'
+}
+
 export interface SchemaColumn {
     name: string
     type: SchemaColumnType
@@ -26,6 +33,7 @@ export interface SchemaColumn {
     after?: string
     default?: unknown
     updatedAt?: boolean
+    primaryKeyGeneration?: PrimaryKeyGeneration
 }
 
 export interface SchemaIndex {

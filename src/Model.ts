@@ -35,7 +35,7 @@ import {
 
 import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, ModelUpdateData, RelatedModelClass, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
-import { getPersistedColumnMap, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
+import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
@@ -160,12 +160,13 @@ export abstract class Model<
     public static getColumnMap (): Record<string, string> {
         const adapter = this.getAdapter()
         const shouldStrictlyValidatePersistedMappings = Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
+        const persistedMetadata = getPersistedTableMetadata(this.getTable(), {
+            features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+            strict: shouldStrictlyValidatePersistedMappings,
+        })
 
         return {
-            ...getPersistedColumnMap(this.getTable(), {
-                features: resolvePersistedMetadataFeatures(getUserConfig('features')),
-                strict: shouldStrictlyValidatePersistedMappings,
-            }),
+            ...persistedMetadata.columns,
             ...this.columns,
         }
     }
@@ -175,11 +176,29 @@ export abstract class Model<
     }
 
     public static getModelMetadata (): ModelMetadata {
+        const adapter = this.getAdapter()
+        const shouldStrictlyValidatePersistedMappings = Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
+        const persistedMetadata = getPersistedTableMetadata(this.getTable(), {
+            features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+            strict: shouldStrictlyValidatePersistedMappings,
+        })
+
         return {
             table: this.getTable(),
             primaryKey: this.getPrimaryKey(),
-            columns: this.getColumnMap(),
+            columns: {
+                ...persistedMetadata.columns,
+                ...this.columns,
+            },
             softDelete: this.getSoftDeleteConfig(),
+            primaryKeyGeneration: persistedMetadata.primaryKeyGeneration?.column === this.getPrimaryKey()
+                ? {
+                    strategy: persistedMetadata.primaryKeyGeneration.strategy,
+                    prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
+                    databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
+                    runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
+                }
+                : undefined,
         }
     }
 

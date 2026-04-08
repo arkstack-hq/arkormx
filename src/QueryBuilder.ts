@@ -34,6 +34,7 @@ import type {
 import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
 import type { ModelStatic } from './types/ModelStatic'
 import { LengthAwarePaginator, Paginator } from './Paginator'
+import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -1174,7 +1175,8 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     public async create (data: ModelCreateData<TModel, TDelegate>): Promise<TModel> {
-        const created = await this.executeInsertRow(data as DelegateCreateData<TDelegate>)
+        const [payload] = this.normalizeInsertPayloads(data)
+        const created = await this.executeInsertRow(payload)
 
         return this.model.hydrate(created as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1189,7 +1191,8 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (values.length === 0)
             return []
 
-        const created = await Promise.all(values.map(async value => await this.create(value)))
+        const payloads = this.normalizeInsertPayloads(values)
+        const created = await Promise.all(payloads.map(async value => await this.create(value as ModelCreateData<TModel, TDelegate>)))
 
         return created
     }
@@ -1575,10 +1578,25 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     private normalizeInsertPayloads (
         values: ModelCreateData<TModel, TDelegate> | ModelCreateData<TModel, TDelegate>[]
     ): DelegateCreateData<TDelegate>[] {
-        if (Array.isArray(values))
-            return values as DelegateCreateData<TDelegate>[]
+        const payloads = Array.isArray(values)
+            ? values as DelegateCreateData<TDelegate>[]
+            : [values as DelegateCreateData<TDelegate>]
+        const metadata = this.model.getModelMetadata()
 
-        return [values as DelegateCreateData<TDelegate>]
+        return payloads.map((payload) => {
+            const nextPayload = { ...(payload as Record<string, unknown>) }
+            const primaryKeyValue = nextPayload[metadata.primaryKey]
+            if (primaryKeyValue !== undefined && primaryKeyValue !== null)
+                return nextPayload as DelegateCreateData<TDelegate>
+
+            const generated = PrimaryKeyGenerationPlanner.generate(metadata.primaryKeyGeneration)
+            if (generated === undefined)
+                return nextPayload as DelegateCreateData<TDelegate>
+
+            nextPayload[metadata.primaryKey] = generated
+
+            return nextPayload as DelegateCreateData<TDelegate>
+        })
     }
 
     private resolveAffectedCount (result: unknown, fallback: number): number {
@@ -1946,6 +1964,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             modelName: this.model.name,
             table: metadata.table,
             primaryKey: metadata.primaryKey,
+            primaryKeyGeneration: metadata.primaryKeyGeneration,
             columns: metadata.columns,
             softDelete: metadata.softDelete,
         }
