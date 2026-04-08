@@ -250,7 +250,7 @@ describe('database-backed migration command fallback', () => {
 
         const app = new CliApp()
         const freshCommand = new MigrateFreshCommand(app, new Kernel(app))
-        ; (freshCommand as unknown as { app: CliApp }).app = app
+            ; (freshCommand as unknown as { app: CliApp }).app = app
         const freshIo = attachCommandIo(freshCommand as unknown as any)
 
         await freshCommand.handle()
@@ -306,7 +306,7 @@ describe('database-backed migration command fallback', () => {
 
         const app = new CliApp()
         const command = new MigrateCommand(app, new Kernel(app))
-        ; (command as unknown as { app: CliApp }).app = app
+            ; (command as unknown as { app: CliApp }).app = app
         const io = attachCommandIo(command as unknown as any, {
             all: true,
         })
@@ -360,7 +360,7 @@ describe('database-backed migration command fallback', () => {
 
         const app = new CliApp()
         const command = new MigrateCommand(app, new Kernel(app))
-        ; (command as unknown as { app: CliApp }).app = app
+            ; (command as unknown as { app: CliApp }).app = app
         const io = attachCommandIo(command as unknown as any, {
             all: true,
         })
@@ -429,8 +429,8 @@ describe('database-backed migration command fallback', () => {
         })
 
         const app = new CliApp()
-        const command = new MigrateFreshCommand(app, new Kernel(app))
-        ; (command as unknown as { app: CliApp }).app = app
+        const command = new MigrateFreshCommand(app, new Kernel(app));
+        (command as unknown as { app: CliApp }).app = app
         const io = attachCommandIo(command as unknown as any, {
             schema: schemaPath,
         })
@@ -438,7 +438,7 @@ describe('database-backed migration command fallback', () => {
         await command.handle()
 
         expect(io.successLines).toHaveLength(0)
-        expect(io.errorLines.some(line => line.includes('requires adapter.resetDatabase() support'))).toBe(true)
+        expect(io.errorLines.some(line => line.includes('does not support database reset'))).toBe(true)
         expect(adapter.executed).toHaveLength(0)
         expect(readFileSync(schemaPath, 'utf-8')).toContain('model Legacy')
     })

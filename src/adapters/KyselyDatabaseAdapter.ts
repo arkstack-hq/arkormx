@@ -1,8 +1,8 @@
 import type { AccessMode, IsolationLevel, Kysely, RawBuilder, Transaction } from 'kysely'
 import type {
+    AdapterCapabilities,
     AdapterModelIntrospectionOptions,
     AdapterModelStructure,
-    AdapterCapabilities,
     AdapterTransactionContext,
     AggregateSpec,
     DatabaseAdapter,
@@ -41,8 +41,8 @@ import type {
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
-import { str } from '@h3ravel/support'
 import { sql } from 'kysely'
+import { str } from '@h3ravel/support'
 
 type KyselyExecutor = Kysely<any> | Transaction<any>
 type KyselyTableMapping = Record<string, string>
@@ -1300,29 +1300,29 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             return
 
         await this.transaction(async (adapter) => {
-            const transactionAdapter = adapter as KyselyDatabaseAdapter
+            const trxAdapter = adapter as KyselyDatabaseAdapter
 
             for (const operation of operations) {
                 if (operation.type === 'createTable') {
-                    await transactionAdapter.executeCreateTableOperation(operation, transactionAdapter.db)
+                    await trxAdapter.executeCreateTableOperation(operation, trxAdapter.db)
                     continue
                 }
 
                 if (operation.type === 'alterTable') {
-                    await transactionAdapter.executeAlterTableOperation(operation, transactionAdapter.db)
+                    await trxAdapter.executeAlterTableOperation(operation, trxAdapter.db)
                     continue
                 }
 
-                await transactionAdapter.executeDropTableOperation(operation, transactionAdapter.db)
+                await trxAdapter.executeDropTableOperation(operation, trxAdapter.db)
             }
         })
     }
 
     public async resetDatabase (): Promise<void> {
         await this.transaction(async (adapter) => {
-            const transactionAdapter = adapter as KyselyDatabaseAdapter
+            const trxAdapter = adapter as KyselyDatabaseAdapter
 
-            await transactionAdapter.resetDatabaseInternal(transactionAdapter.db)
+            await trxAdapter.resetDatabaseInternal(trxAdapter.db)
         })
     }
 
@@ -1374,9 +1374,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     public async writeAppliedMigrationsState (state: AppliedMigrationsState): Promise<void> {
         await this.transaction(async (adapter) => {
-            const transactionAdapter = adapter as KyselyDatabaseAdapter
+            const trxAdapter = adapter as KyselyDatabaseAdapter
 
-            await transactionAdapter.writeAppliedMigrationsStateInternal(state, transactionAdapter.db)
+            await trxAdapter.writeAppliedMigrationsStateInternal(state, trxAdapter.db)
         })
     }
 

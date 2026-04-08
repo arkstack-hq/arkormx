@@ -3,10 +3,10 @@ import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaComman
 import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, createEmptyAppliedMigrationsState, markMigrationApplied, markMigrationRun, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
-import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -57,7 +57,7 @@ export class MigrateFreshCommand extends Command<CliApp> {
         if (useDatabaseMigrations) {
             if (!supportsDatabaseReset(adapter)) {
                 return void this.error(
-                    'Error: Adapter-backed migrate:fresh requires adapter.resetDatabase() support and will not modify prisma/schema.prisma.'
+                    'Error: Your current database adapter does not support database reset.'
                 )
             }
 
