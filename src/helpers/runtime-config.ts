@@ -15,6 +15,7 @@ import type { DatabaseAdapter } from '../types/adapter'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { AsyncLocalStorage } from 'async_hooks'
+import { resetPersistedColumnMappingsCache } from './column-mappings'
 import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { createRequire } from 'module'
@@ -43,6 +44,10 @@ const resolveDefaultStubsPath = (): string => {
 }
 
 const baseConfig: Partial<ArkormConfig> = {
+    features: {
+        persistedColumnMappings: true,
+        persistedEnums: true,
+    },
     paths: {
         stubs: resolveDefaultStubsPath(),
         seeders: path.join(process.cwd(), 'database', 'seeders'),
@@ -55,6 +60,9 @@ const baseConfig: Partial<ArkormConfig> = {
 }
 const userConfig: Partial<ArkormConfig> = {
     ...baseConfig,
+    features: {
+        ...(baseConfig.features ?? {}),
+    },
     paths: {
         ...(baseConfig.paths ?? {}),
     },
@@ -86,6 +94,17 @@ const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfi
         ...defaults,
         ...current,
         ...incoming,
+    }
+}
+
+const mergeFeatureConfig = (features?: ArkormConfig['features']): NonNullable<ArkormConfig['features']> => {
+    const defaults = baseConfig.features ?? {}
+    const current = userConfig.features ?? {}
+
+    return {
+        ...defaults,
+        ...current,
+        ...(features ?? {}),
     }
 }
 
@@ -136,6 +155,7 @@ export const configureArkormRuntime = (
 ): void => {
     const nextConfig: Partial<ArkormConfig> = {
         ...userConfig,
+        features: mergeFeatureConfig(options.features),
         paths: mergePathConfig(options.paths),
     }
 
@@ -175,6 +195,9 @@ export const configureArkormRuntime = (
 export const resetArkormRuntimeForTests = (): void => {
     Object.assign(userConfig, {
         ...baseConfig,
+        features: {
+            ...(baseConfig.features ?? {}),
+        },
         paths: {
             ...(baseConfig.paths ?? {}),
         },
@@ -185,6 +208,7 @@ export const resetArkormRuntimeForTests = (): void => {
     runtimeAdapter = undefined
     runtimePaginationURLDriverFactory = undefined
     runtimePaginationCurrentPageResolver = undefined
+    resetPersistedColumnMappingsCache()
 }
 
 /**
@@ -225,6 +249,7 @@ const resolveAndApplyConfig = (imported: unknown): void => {
     configureArkormRuntime(config.prisma, {
         adapter: config.adapter,
         boot: config.boot,
+        features: config.features,
         pagination: config.pagination,
         paths: config.paths,
         outputExt: config.outputExt,

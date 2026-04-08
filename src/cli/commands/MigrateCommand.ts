@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -71,6 +72,7 @@ export class MigrateCommand extends Command<CliApp> {
             : undefined
         const adapter = this.app.getConfig('adapter')
         const useDatabaseMigrations = supportsDatabaseMigrationExecution(adapter)
+        const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
 
         const skipped: [MigrationClass, string][] = []
         const changed: [MigrationClass, string][] = []
@@ -97,9 +99,25 @@ export class MigrateCommand extends Command<CliApp> {
         })
 
         if (pending.length === 0) {
+            if (appliedState) {
+                try {
+                    await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
+                } catch (error) {
+                    return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+                }
+            }
+
             this.success('No pending migration classes to apply.')
 
             return
+        }
+
+        if (useDatabaseMigrations) {
+            try {
+                await validatePersistedMetadataFeaturesForMigrations(pending, persistedFeatures)
+            } catch (error) {
+                return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+            }
         }
 
         for (const [MigrationClassItem] of pending) {
@@ -133,6 +151,11 @@ export class MigrateCommand extends Command<CliApp> {
             })
 
             await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+            try {
+                await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
+            } catch (error) {
+                return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+            }
         }
 
         if (!useDatabaseMigrations && !this.option('skip-generate'))

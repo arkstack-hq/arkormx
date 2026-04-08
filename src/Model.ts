@@ -10,7 +10,7 @@ import {
     MorphToManyRelation,
     Relation,
 } from './relationship'
-import { createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
+import { PrismaDatabaseAdapter, createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
 import type { ModelFactory } from './database/factories'
 import type { DatabaseAdapter } from './types/adapter'
 import type {
@@ -28,12 +28,14 @@ import {
     getActiveTransactionClient,
     getRuntimeAdapter,
     getRuntimePrismaClient,
+    getUserConfig,
     isDelegateLike,
     runArkormTransaction,
 } from './helpers/runtime-config'
 
 import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, ModelUpdateData, RelatedModelClass, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
+import { getPersistedColumnMap, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
@@ -156,7 +158,16 @@ export abstract class Model<
     }
 
     public static getColumnMap (): Record<string, string> {
-        return { ...this.columns }
+        const adapter = this.getAdapter()
+        const shouldStrictlyValidatePersistedMappings = Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
+
+        return {
+            ...getPersistedColumnMap(this.getTable(), {
+                features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+                strict: shouldStrictlyValidatePersistedMappings,
+            }),
+            ...this.columns,
+        }
     }
 
     public static getColumnName (attribute: string): string {

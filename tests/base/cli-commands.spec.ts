@@ -396,6 +396,130 @@ describe('CLI command classes', () => {
         expect(successLines.some(line => line.includes('adapter introspection'))).toBe(true)
     })
 
+    it('ModelsSyncCommand applies persisted enum metadata to adapter introspection results', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-enums-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                users: {
+                    columns: {},
+                    enums: {
+                        status: ['draft', 'published'],
+                        tags: ['draft', 'published'],
+                    },
+                },
+            },
+        }, null, 2))
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'id', type: 'number', nullable: false },
+                            { name: 'status', type: 'string', nullable: false },
+                            { name: 'tags', type: 'Array<string>', nullable: false },
+                        ],
+                    },
+                ]),
+            } as any,
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        const updatedSource = readFileSync(userModelPath, 'utf-8')
+        expect(updatedSource).toContain('declare status: \'draft\' | \'published\'')
+        expect(updatedSource).toContain('declare tags: Array<\'draft\' | \'published\'>')
+        expect(updatedSource).not.toContain('@prisma/client')
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('adapter introspection'))).toBe(true)
+    })
+
+    it('ModelsSyncCommand reports a clear error when persisted enum metadata is disabled', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-enums-disabled-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                users: {
+                    columns: {},
+                    enums: {
+                        status: ['draft', 'published'],
+                    },
+                },
+            },
+        }, null, 2))
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'status', type: 'string', nullable: false },
+                        ],
+                    },
+                ]),
+            } as any,
+            features: {
+                persistedEnums: false,
+            },
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        expect(successLines).toHaveLength(0)
+        expect(errorLines.some(line => line.includes('persisted enum metadata'))).toBe(true)
+    })
+
     it('SeedCommand loads and runs TypeScript seeder classes from configured directory', async () => {
         const workspace = makeTempDir('arkormx-cmd-seed-')
         process.chdir(workspace)

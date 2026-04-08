@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -51,6 +52,7 @@ export class MigrateRollbackCommand extends Command<CliApp> {
         )
         const adapter = this.app.getConfig('adapter')
         const useDatabaseMigrations = supportsDatabaseMigrationExecution(adapter)
+        const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
         let appliedState = await readAppliedMigrationsStateFromStore(adapter, stateFilePath)
 
         const stepOption = this.option('step')
@@ -108,6 +110,11 @@ export class MigrateRollbackCommand extends Command<CliApp> {
         }
 
         await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+        try {
+            await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, available, persistedFeatures)
+        } catch (error) {
+            return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+        }
 
         if (!useDatabaseMigrations && !this.option('skip-generate'))
             runPrismaCommand(['generate'], process.cwd())

@@ -6,6 +6,7 @@ import { join, resolve } from 'node:path'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -32,6 +33,7 @@ export class MigrateFreshCommand extends Command<CliApp> {
 
         const adapter = this.app.getConfig('adapter')
         const useDatabaseMigrations = supportsDatabaseMigrationExecution(adapter)
+        const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
         const schemaPath = this.option('schema')
             ? resolve(String(this.option('schema')))
             : join(process.cwd(), 'prisma', 'schema.prisma')
@@ -44,7 +46,21 @@ export class MigrateFreshCommand extends Command<CliApp> {
         if (migrations.length === 0)
             return void this.error('Error: No migration classes found to run.')
 
-        if (supportsDatabaseReset(adapter)) {
+        if (useDatabaseMigrations) {
+            try {
+                await validatePersistedMetadataFeaturesForMigrations(migrations, persistedFeatures)
+            } catch (error) {
+                return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+            }
+        }
+
+        if (useDatabaseMigrations) {
+            if (!supportsDatabaseReset(adapter)) {
+                return void this.error(
+                    'Error: Adapter-backed migrate:fresh requires adapter.resetDatabase() support and will not modify prisma/schema.prisma.'
+                )
+            }
+
             await adapter.resetDatabase()
         } else {
             if (!existsSync(schemaPath))
@@ -83,6 +99,11 @@ export class MigrateFreshCommand extends Command<CliApp> {
         })
 
         await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+        try {
+            await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, migrations, persistedFeatures)
+        } catch (error) {
+            return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+        }
 
         if (!useDatabaseMigrations) {
             const schemaArgs = this.option('schema') ? ['--schema', schemaPath] : []

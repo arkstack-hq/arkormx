@@ -1,4 +1,5 @@
 import { existsSync, rmSync } from 'node:fs'
+import { deletePersistedColumnMappingsState, resolveColumnMappingsFilePath } from '../../helpers/column-mappings'
 import { createEmptyAppliedMigrationsState, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, supportsDatabaseMigrationState, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 
 import { CliApp } from '../CliApp'
@@ -33,6 +34,7 @@ export class MigrationHistoryCommand extends Command<CliApp> {
         if (this.option('delete')) {
             if (usesDatabaseState) {
                 await adapter.writeAppliedMigrationsState(createEmptyAppliedMigrationsState())
+                deletePersistedColumnMappingsState(resolveColumnMappingsFilePath(process.cwd()))
                 this.success('Deleted tracked migration state from database.')
 
                 return
@@ -45,6 +47,7 @@ export class MigrationHistoryCommand extends Command<CliApp> {
             }
 
             rmSync(stateFilePath)
+            deletePersistedColumnMappingsState(resolveColumnMappingsFilePath(process.cwd()))
             this.success(`Deleted migration state file: ${this.app.formatPathForLog(stateFilePath)}`)
 
             return
@@ -52,6 +55,7 @@ export class MigrationHistoryCommand extends Command<CliApp> {
 
         if (this.option('reset')) {
             await writeAppliedMigrationsStateToStore(adapter, stateFilePath, createEmptyAppliedMigrationsState())
+            deletePersistedColumnMappingsState(resolveColumnMappingsFilePath(process.cwd()))
             this.success(usesDatabaseState
                 ? 'Reset migration state in database.'
                 : `Reset migration state: ${this.app.formatPathForLog(stateFilePath)}`)
