@@ -3,7 +3,9 @@ import {
     bindAdapterToModels,
     configureArkormRuntime,
     getDefaultStubsPath,
+    getRuntimeAdapter,
     getUserConfig,
+    getRuntimePrismaClient,
     loadArkormConfig,
     resetArkormRuntimeForTests,
 } from '../../src/helpers/runtime-config'
@@ -130,6 +132,59 @@ describe('runtime config defaults', () => {
         expect(paths.stubs).toBe(getDefaultStubsPath())
     })
 
+    it.each([
+        ['arkormx.config.cjs', [
+            'module.exports = {',
+            '  adapter: { capabilities: {}, source: "cjs" },',
+            '}',
+            '',
+        ].join('\n')],
+        ['arkormx.config.js', [
+            'export default {',
+            '  adapter: { capabilities: {}, source: "js" },',
+            '}',
+            '',
+        ].join('\n')],
+        ['arkormx.config.ts', [
+            'export default {',
+            '  adapter: { capabilities: {}, source: "ts" },',
+            '}',
+            '',
+        ].join('\n')],
+    ])('loads %s through RuntimeModuleLoader for sync and async access', async (fileName, contents) => {
+        const workspace = makeTempDir('arkormx-runtime-config-loader-')
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, fileName), contents)
+
+        expect(getRuntimeAdapter()).toEqual({ capabilities: {}, source: fileName.split('.').at(-1) })
+
+        resetArkormRuntimeForTests()
+        await loadArkormConfig()
+
+        expect(getUserConfig('adapter')).toEqual({ capabilities: {}, source: fileName.split('.').at(-1) })
+    })
+
+    it.each([
+        ['arkormx.config.mjs', 'mjs'],
+        ['arkormx.config.cts', 'cts'],
+        ['arkormx.config.mts', 'mts'],
+    ])('supports additional config module variants: %s', async (fileName, source) => {
+        const workspace = makeTempDir('arkormx-runtime-config-variants-')
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, fileName), [
+            'export default {',
+            `  adapter: { capabilities: {}, source: "${source}" },`,
+            '  prisma: () => ({ label: "client" }),',
+            '}',
+            '',
+        ].join('\n'))
+
+        expect(getRuntimeAdapter()).toEqual({ capabilities: {}, source })
+        expect(getRuntimePrismaClient()).toEqual({ label: 'client' })
+    })
+
     it('runs boot hooks when loading config files', async () => {
         const workspace = makeTempDir('arkormx-runtime-config-boot-')
         process.chdir(workspace)
@@ -145,8 +200,7 @@ describe('runtime config defaults', () => {
             '',
         ].join('\n'))
 
-        await loadArkormConfig()
-
+        expect(getRuntimeAdapter()).toEqual({ capabilities: {} })
         expect((globalThis as { __arkormBootRan__?: number }).__arkormBootRan__).toBe(1)
         expect(getUserConfig('adapter')).toEqual({ capabilities: {} })
     })
@@ -165,8 +219,7 @@ describe('runtime config defaults', () => {
             '',
         ].join('\n'))
 
-        await loadArkormConfig()
-
+        expect(getRuntimeAdapter()).toEqual({ capabilities: {} })
         expect(getUserConfig('adapter')).toEqual({ capabilities: {} })
         expect(getUserConfig('prisma')).toBeUndefined()
         expect(getUserConfig('paths')?.models).toBe(resolve(process.cwd(), 'src', 'domain', 'models'))

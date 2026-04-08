@@ -18,10 +18,15 @@ import { AsyncLocalStorage } from 'async_hooks'
 import { resetPersistedColumnMappingsCache } from './column-mappings'
 import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
-import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
+
+const supportedConfigExtensions = ['cjs', 'js', 'mjs', 'ts', 'cts', 'mts'] as const
+
+const getRuntimeConfigPaths = (): string[] => {
+    return supportedConfigExtensions.map(extension => path.join(process.cwd(), `arkormx.config.${extension}`))
+}
 
 const resolveDefaultStubsPath = (): string => {
     let current = path.dirname(fileURLToPath(import.meta.url))
@@ -181,6 +186,8 @@ export const configureArkormRuntime = (
     runtimeAdapter = options.adapter
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
     runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
+    runtimeConfigLoaded = true
+    runtimeConfigLoadingPromise = undefined
 
     options.boot?.({
         prisma: resolveClient(prisma),
@@ -193,6 +200,10 @@ export const configureArkormRuntime = (
  * This is primarily intended for testing purposes.
  */
 export const resetArkormRuntimeForTests = (): void => {
+    Object.keys(userConfig).forEach((key) => {
+        delete userConfig[key as keyof ArkormConfig]
+    })
+
     Object.assign(userConfig, {
         ...baseConfig,
         features: {
@@ -240,11 +251,11 @@ const resolveClient = (resolver: ClientResolver | undefined): PrismaClientLike |
  * @param imported 
  * @returns 
  */
-const resolveAndApplyConfig = (imported: unknown): void => {
+const resolveAndApplyConfig = (imported: unknown): boolean => {
     const candidate = imported as { default?: unknown }
     const config = (candidate?.default ?? imported) as Partial<ArkormConfig>
     if (!config || typeof config !== 'object')
-        return
+        return false
 
     configureArkormRuntime(config.prisma, {
         adapter: config.adapter,
@@ -255,6 +266,8 @@ const resolveAndApplyConfig = (imported: unknown): void => {
         outputExt: config.outputExt,
     })
     runtimeConfigLoaded = true
+
+    return true
 }
 
 /**
@@ -269,20 +282,16 @@ const importConfigFile = (configPath: string): Promise<unknown> => {
 }
 
 const loadRuntimeConfigSync = (): boolean => {
-    const require = createRequire(import.meta.url)
-    const syncConfigPaths = [
-        path.join(process.cwd(), 'arkormx.config.cjs'),
-    ]
+    const syncConfigPaths = getRuntimeConfigPaths()
 
     for (const configPath of syncConfigPaths) {
         if (!existsSync(configPath))
             continue
 
         try {
-            const imported = require(configPath)
-            resolveAndApplyConfig(imported)
-
-            return true
+            const imported = RuntimeModuleLoader.loadSync(configPath)
+            if (resolveAndApplyConfig(imported))
+                return true
         } catch {
             continue
         }
@@ -303,14 +312,8 @@ export const loadArkormConfig = async (): Promise<void> => {
     if (runtimeConfigLoadingPromise)
         return await runtimeConfigLoadingPromise
 
-    if (loadRuntimeConfigSync())
-        return
-
     runtimeConfigLoadingPromise = (async () => {
-        const configPaths = [
-            path.join(process.cwd(), 'arkormx.config.js'),
-            path.join(process.cwd(), 'arkormx.config.ts'),
-        ]
+        const configPaths = getRuntimeConfigPaths()
 
         for (const configPath of configPaths) {
             if (!existsSync(configPath))
@@ -318,9 +321,8 @@ export const loadArkormConfig = async (): Promise<void> => {
 
             try {
                 const imported = await importConfigFile(configPath)
-                resolveAndApplyConfig(imported)
-
-                return
+                if (resolveAndApplyConfig(imported))
+                    return
             } catch {
                 continue
             }
@@ -456,5 +458,3 @@ export const isDelegateLike = (value: unknown): value is PrismaDelegateLike => {
     return ['findMany', 'findFirst', 'create', 'update', 'delete', 'count']
         .every(method => typeof candidate[method] === 'function')
 }
-
-void loadArkormConfig()

@@ -7,10 +7,24 @@ export class RuntimeModuleLoader {
     static async load<T = unknown> (filePath: string): Promise<T> {
         const resolvedPath = resolve(filePath)
         const jiti = createJiti(pathToFileURL(resolvedPath).href, {
+            fsCache: false,
             interopDefault: false,
+            moduleCache: false,
             tsconfigPaths: true,
         })
 
         return await jiti.import<T>(resolvedPath)
+    }
+
+    static loadSync<T = unknown> (filePath: string): T {
+        const resolvedPath = resolve(filePath)
+        const jiti = createJiti(pathToFileURL(resolvedPath).href, {
+            fsCache: false,
+            interopDefault: false,
+            moduleCache: false,
+            tsconfigPaths: true,
+        })
+
+        return jiti(resolvedPath) as T
     }
 }           
