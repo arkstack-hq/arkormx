@@ -1,14 +1,11 @@
-import { ArkormCollection, QueryBuilder, createPrismaDatabaseAdapter } from '../../src'
+import { ArkormCollection, PivotModel, QueryBuilder, createPrismaDatabaseAdapter } from '../../src'
 import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { createCoreClient } from './helpers/core-fixtures'
 
 describe('Model relationships', () => {
-    class MembershipPivot {
-        public constructor(private readonly attributes: Record<string, unknown> = {}) {
-        }
-
+    class MembershipPivot extends PivotModel {
         public getAttribute (key: string): unknown {
             return this.attributes[key]
         }
