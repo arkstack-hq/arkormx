@@ -43,6 +43,29 @@ export interface ArkormBootContext {
     bindAdapter: (adapter: DatabaseAdapter, models: AdapterBindableModel[]) => DatabaseAdapter
 }
 
+export interface AdapterQueryInspection {
+    adapter: string
+    operation: string
+    target?: string
+    sql?: string
+    parameters?: ReadonlyArray<unknown>
+    detail?: Record<string, unknown>
+}
+
+export interface ArkormDebugEvent {
+    type: 'query'
+    phase: 'before' | 'after' | 'error'
+    adapter: string
+    operation: string
+    target?: string
+    inspection?: AdapterQueryInspection | null
+    meta?: Record<string, unknown>
+    durationMs?: number
+    error?: unknown
+}
+
+export type ArkormDebugHandler = (event: ArkormDebugEvent) => void
+
 export interface ArkormConfig {
     /**
      * @property prisma Optional Prisma client instance or resolver used for compatibility, CLI flows, and Prisma-backed transactions.
@@ -56,6 +79,11 @@ export interface ArkormConfig {
      * @property boot Optional synchronous runtime boot hook for central adapter binding.
      */
     boot?: (context: ArkormBootContext) => void
+    /**
+     * @property debug Optional runtime query debugging. `true` logs through Arkorm's default logger;
+     * a callback receives structured debug events for custom handling.
+     */
+    debug?: boolean | ArkormDebugHandler
     /**
      * @property pagination Configuration options related to pagination behavior and URL generation.
      */

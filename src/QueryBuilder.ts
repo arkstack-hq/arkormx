@@ -1,5 +1,7 @@
 import type {
     AggregateSpec,
+    AdapterQueryInspection,
+    AdapterQueryOperation,
     DatabaseAdapter,
     DatabaseRow,
     DatabaseValue,
@@ -953,6 +955,51 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      */
     public limit (value: number): this {
         return this.take(value)
+    }
+
+    /**
+     * Returns a representation of the query that can be used for debugging or logging purposes.
+     * 
+     * @param operation 
+     * @returns 
+     */
+    public inspect (
+        operation: Extract<AdapterQueryOperation, 'select' | 'selectOne' | 'count' | 'exists'> = 'select'
+    ): AdapterQueryInspection | null {
+        const adapter = this.requireAdapter()
+        if (typeof adapter.inspectQuery !== 'function')
+            return null
+
+        if (operation === 'count') {
+            const spec = this.tryBuildAggregateSpec()
+            if (!spec) {
+                throw new UnsupportedAdapterFeatureException('Query shape could not be compiled into an Arkorm aggregate specification.', {
+                    operation: 'query.inspect',
+                    model: this.model.name,
+                })
+            }
+
+            return adapter.inspectQuery({ operation, spec })
+        }
+
+        const spec = this.tryBuildSelectSpec(this.buildWhere())
+        if (!spec) {
+            throw new UnsupportedAdapterFeatureException('Query shape could not be compiled into an Arkorm select specification.', {
+                operation: 'query.inspect',
+                model: this.model.name,
+            })
+        }
+
+        if (operation === 'select')
+            return adapter.inspectQuery({ operation, spec })
+
+        return adapter.inspectQuery({
+            operation,
+            spec: {
+                ...spec,
+                limit: spec.limit ?? 1,
+            },
+        })
     }
 
     /**
