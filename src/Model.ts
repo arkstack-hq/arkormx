@@ -627,9 +627,9 @@ export abstract class Model<
         this: new (attributes: Record<string, unknown>) => TModel,
         attributes: Record<string, unknown>
     ): TModel {
-        const model = new this(attributes)
-            ; (model as unknown as Model).syncOriginal()
-            ; (model as unknown as Model).syncChanges({})
+        const model = new this(attributes);
+        (model as unknown as Model).syncOriginal();
+        (model as unknown as Model).syncChanges({})
 
         return model
     }
