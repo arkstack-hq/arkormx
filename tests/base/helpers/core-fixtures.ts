@@ -276,7 +276,7 @@ export class User extends Model<'user'> {
         return String(value).trim()
     }
 
-    public scopeActive (query: QueryBuilder<User>) {
+    public scopeActive (query: QueryBuilder<User>): QueryBuilder<User> {
         return query.whereKey('isActive', 1)
     }
 }

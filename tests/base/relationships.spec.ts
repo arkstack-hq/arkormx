@@ -6,7 +6,7 @@ import { createCoreClient } from './helpers/core-fixtures'
 
 describe('Model relationships', () => {
     class MembershipPivot extends PivotModel {
-        public getAttribute (key: string): unknown {
+        public getAttribute (key: string): any {
             return this.attributes[key]
         }
     }
@@ -31,12 +31,14 @@ describe('Model relationships', () => {
     it('keeps strong typing for relationship collections', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
 
-        const posts = await user?.posts().getResults() as ArkormCollection<Post>
+        const posts = await user.posts().getResults()
         expectTypeOf(posts.all()).toEqualTypeOf<Post[]>()
 
-        await user?.load('posts')
-        const eagerLoadedPosts = user?.getAttribute('posts') as ArkormCollection<Post>
+        await user.load('posts')
+        const eagerLoadedPosts = user.getAttribute('posts')
         expectTypeOf(eagerLoadedPosts.all()).toEqualTypeOf<Post[]>()
     })
 
@@ -175,18 +177,94 @@ describe('Model relationships', () => {
         expect((hasOneDefault as Profile).getAttribute('id')).toBe(500)
 
         const throughDefault = await missingUser.avatar()
-            .withDefault((parent) => new Image({ id: 9010, profileId: parent.getAttribute('id'), url: 'fallback.png' }))
+            .withDefault((parent: User) => new Image({ id: 9010, profileId: parent.getAttribute('id'), url: 'fallback.png' }))
             .getResults()
 
         expect(throughDefault).toBeInstanceOf(Image)
         expect((throughDefault as Image).getAttribute('url')).toBe('fallback.png')
 
         const morphDefault = await missingUser.primaryComment()
-            .withDefault((parent) => ({ body: `No comment for ${String(parent.getAttribute('name'))}` }))
+            .withDefault((parent: User) => ({ body: `No comment for ${String(parent.getAttribute('name'))}` }))
             .getResults()
 
         expect(morphDefault).toBeInstanceOf(Comment)
         expect((morphDefault as Comment).getAttribute('body')).toBe('No comment for Ghost')
+    })
+
+    it('supports belongsToMany make, create, save, and attach helpers', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        const draft = user.roles().make({ name: 'draft-role' })
+        expect(draft).toBeInstanceOf(Role)
+        expect(draft.getAttribute('name')).toBe('draft-role')
+
+        const created = await user.roles()
+            .withPivot('approved')
+            .as('membership')
+            .create({ id: 502, name: 'reviewer' }, { approved: true })
+
+        expect(created).toBeInstanceOf(Role)
+        expect(created.getAttribute('name')).toBe('reviewer')
+        expect(created.getAttribute('membership')).toMatchObject({ approved: true })
+
+        const saved = await user.roles().save(new Role({ id: 503, name: 'auditor' }))
+        expect(saved).toBeInstanceOf(Role)
+        expect(saved.getAttribute('name')).toBe('auditor')
+
+        const attached = await user.roles().attach(500, { approved: false, priority: 99 })
+        expect(attached).toBe(1)
+
+        const attachedRole = await user.roles()
+            .withPivot('priority', 'approved')
+            .as('membership')
+            .wherePivot('priority', 99)
+            .first()
+
+        expect(attachedRole).not.toBeNull()
+        expect(attachedRole?.getAttribute('name')).toBe('admin')
+        expect(attachedRole?.getAttribute('membership')).toMatchObject({ approved: false, priority: 99 })
+
+        const allRoles = await user.roles().orderBy({ id: 'asc' }).getResults()
+        expect(allRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'editor', 'reviewer', 'auditor'])
+    })
+
+    it('supports belongsToMany detach and sync helpers', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        const detached = await user.roles().detach(500)
+        expect(detached).toBe(1)
+
+        const rolesAfterDetach = await user.roles().orderBy({ id: 'asc' }).getResults()
+        expect(rolesAfterDetach.all().map(role => role.getAttribute('name'))).toEqual(['editor'])
+
+        await user.roles().create({ id: 502, name: 'reviewer' }, { approved: true, priority: 2 })
+
+        const changes = await user.roles().sync({
+            500: { approved: true, priority: 10 },
+            502: { approved: false, priority: 20 },
+        })
+
+        expect(changes).toEqual({ attached: 1, detached: 1, updated: 1 })
+
+        const syncedRoles = await user.roles()
+            .withPivot('approved', 'priority')
+            .as('membership')
+            .orderBy({ id: 'asc' })
+            .getResults()
+
+        expect(syncedRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'reviewer'])
+        expect(syncedRoles.all()[0]?.getAttribute('membership')).toMatchObject({ approved: true, priority: 10 })
+        expect(syncedRoles.all()[1]?.getAttribute('membership')).toMatchObject({ approved: false, priority: 20 })
+
+        const detachedAll = await user.roles().detach()
+        expect(detachedAll).toBe(2)
+        expect((await user.roles().getResults()).all()).toEqual([])
     })
 
     it('supports fluent relation query chaining', async () => {
@@ -500,11 +578,13 @@ describe('Model relationships', () => {
     it('loads relations by string and list syntax', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
 
-        await user?.load(['profile', 'posts'])
+        await user.load(['profile', 'posts'])
 
-        const profile = user?.getAttribute('profile')
-        const posts = user?.getAttribute('posts') as ArkormCollection<Post>
+        const profile = user.getAttribute('profile')
+        const posts = user.getAttribute('posts')
 
         expect(profile).not.toBeNull()
         expect(posts).toBeInstanceOf(ArkormCollection)
