@@ -1,5 +1,6 @@
 import {
     DbArticle,
+    DbRole,
     DbUser,
     acquirePostgresTestLock,
     prisma,
@@ -283,6 +284,45 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('and "name" = $1')
         expect(normalizedSql).toContain('exists( select 1 from "roles" inner join "role_users"')
         expect(normalizedSql).toContain('sum("roles"."id")::double precision')
+    })
+
+    it('supports belongsToMany write helpers through the Kysely adapter', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const user = await DbUser.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        const draft = user.roles().make({ name: 'draft-role' })
+        expect(draft).toBeInstanceOf(DbRole)
+        expect(draft.getAttribute('name')).toBe('draft-role')
+
+        const created = await user.roles().create({ name: 'reviewer' })
+        const saved = await user.roles().save(new DbRole({ name: 'auditor' }))
+        const observer = await DbRole.query().create({ name: 'observer' })
+        const attached = await user.roles().attach(observer.getAttribute('id'))
+
+        expect(created.getAttribute('name')).toBe('reviewer')
+        expect(saved.getAttribute('name')).toBe('auditor')
+        expect(attached).toBe(1)
+
+        const reviewerId = created.getAttribute('id')
+        const observerId = observer.getAttribute('id')
+
+        const detached = await user.roles().detach(reviewerId)
+        expect(detached).toBe(1)
+
+        const syncChanges = await user.roles().sync([1, reviewerId, observerId])
+        expect(syncChanges).toEqual({ attached: 1, detached: 2, updated: 0 })
+
+        const finalRoles = await user.roles().orderBy({ id: 'asc' }).getResults()
+        expect(finalRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'reviewer', 'observer'])
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('insert into "roles"')
+        expect(normalizedSql).toContain('insert into "role_users"')
+        expect(normalizedSql).toContain('delete from "role_users"')
     })
 
     it('supports SQL-backed through relation filters and aggregates through QueryBuilder', async () => {

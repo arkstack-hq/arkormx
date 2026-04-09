@@ -1,3 +1,4 @@
+import type { DelegateForModelSchema, GlobalScope, ModelAttributeValue, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventName, ModelLifecycleState, ModelUpdateData, RelatedModelClass } from './types/model'
 import {
     BelongsToManyRelation,
     BelongsToRelation,
@@ -33,7 +34,7 @@ import {
     runArkormTransaction,
 } from './helpers/runtime-config'
 
-import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, ModelRelationshipKey, ModelRelationshipResult, ModelUpdateData, RelatedModelClass, RelationMetadata } from './types'
+import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
@@ -498,8 +499,8 @@ export abstract class Model<
      * @returns 
      */
     public static query<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
-        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
+        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
         TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -548,8 +549,8 @@ export abstract class Model<
      * @returns 
      */
     public static withTrashed<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
-        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
+        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
         TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -567,8 +568,8 @@ export abstract class Model<
      * @returns 
      */
     public static onlyTrashed<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
-        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
+        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
         TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -590,8 +591,8 @@ export abstract class Model<
      * @returns 
      */
     public static scope<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any>,
-        TModel extends InstanceType<TThis> = InstanceType<TThis>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
+        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
         TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -719,13 +720,10 @@ export abstract class Model<
      * @param key 
      * @returns 
      */
-    public getAttribute<TKey extends ModelRelationshipKey<this>> (
+    public getAttribute<TSelf extends this, TKey extends string> (
+        this: TSelf,
         key: TKey
-    ): ModelRelationshipResult<this, TKey>
-    public getAttribute<TKey extends keyof this & string> (
-        key: TKey
-    ): this[TKey] extends (...args: any[]) => any ? unknown : this[TKey]
-    public getAttribute<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey]
+    ): ModelAttributeValue<TSelf, TAttributes, TKey>
     public getAttribute (key: string): unknown
     public getAttribute (key: string): unknown {
         const attributeMutator = this.resolveAttributeMutator(key)
@@ -752,17 +750,10 @@ export abstract class Model<
      * @param value 
      * @returns 
      */
-    public setAttribute<TKey extends ModelRelationshipKey<this>> (
+    public setAttribute<TSelf extends this, TKey extends string> (
+        this: TSelf,
         key: TKey,
-        value: ModelRelationshipResult<this, TKey>
-    ): this
-    public setAttribute<TKey extends keyof this & string> (
-        key: TKey,
-        value: this[TKey] extends (...args: any[]) => any ? never : this[TKey]
-    ): this
-    public setAttribute<TKey extends keyof TAttributes & string> (
-        key: TKey,
-        value: TAttributes[TKey]
+        value: ModelAttributeValue<TSelf, TAttributes, TKey>
     ): this
     public setAttribute (key: string, value: unknown): this
     public setAttribute (key: string, value: unknown): this {
