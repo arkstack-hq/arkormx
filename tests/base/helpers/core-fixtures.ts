@@ -389,8 +389,26 @@ export function createCoreClient () {
             { id: 501, name: 'editor' },
         ],
         roleUsers: [
-            { userId: 1, roleId: 500 },
-            { userId: 1, roleId: 501 },
+            {
+                userId: 1,
+                roleId: 500,
+                approved: true,
+                priority: 1,
+                assignedAt: '2026-03-05T12:00:00.000Z',
+                createdAt: '2026-03-05T12:00:00.000Z',
+                updatedAt: '2026-03-06T12:00:00.000Z',
+                revokedAt: null,
+            },
+            {
+                userId: 1,
+                roleId: 501,
+                approved: false,
+                priority: 3,
+                assignedAt: '2026-03-07T12:00:00.000Z',
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-08T12:00:00.000Z',
+                revokedAt: '2026-03-09T12:00:00.000Z',
+            },
         ],
         images: [
             { id: 900, profileId: 10, postId: 100, url: 'a.png' },
