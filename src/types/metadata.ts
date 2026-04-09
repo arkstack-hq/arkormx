@@ -1,8 +1,14 @@
 import type { RelationshipModelStatic } from './ModelStatic'
 import type { SoftDeleteConfig } from './core'
 import type { PrimaryKeyGeneration, TimestampColumnBehavior } from './migrations'
+import type { QueryCondition } from './adapter'
 
 export type ColumnMap = Record<string, string>
+
+export interface PivotModelStatic {
+    new(attributes?: Record<string, unknown>): any
+    hydrate?: (attributes: Record<string, unknown>) => any
+}
 
 export interface ModelMetadata {
     table: string
@@ -54,6 +60,12 @@ export interface BelongsToManyRelationMetadata extends BaseRelationMetadata {
     relatedPivotKey: string
     parentKey: string
     relatedKey: string
+    pivotAccessor?: string
+    pivotColumns?: string[]
+    pivotCreatedAtColumn?: string
+    pivotUpdatedAtColumn?: string
+    pivotWhere?: QueryCondition
+    pivotModel?: PivotModelStatic
 }
 
 export interface HasOneThroughRelationMetadata extends BaseRelationMetadata {

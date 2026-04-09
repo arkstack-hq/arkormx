@@ -10,6 +10,12 @@ type EagerLoadableModel = {
     setLoadedRelation: (name: string, value: unknown) => void
 }
 
+type RawAttributeReadable = {
+    getRawAttributes: () => Record<string, unknown>
+    setAttribute: (key: string, value: unknown) => unknown
+    getAttribute: (key: string) => unknown
+}
+
 type RelationResolver = (this: EagerLoadableModel) => Relation<unknown>
 
 /**
@@ -227,12 +233,8 @@ export class SetBasedEagerLoader {
 
         const pivotRows = await this.createRelationTableLoader().selectRows({
             table: metadata.throughTable,
-            where: {
-                type: 'comparison',
-                column: metadata.foreignPivotKey,
-                operator: 'in',
-                value: parentKeys as never[],
-            },
+            where: this.buildBelongsToManyPivotWhere(metadata, parentKeys),
+            columns: this.getBelongsToManyPivotColumns(metadata).map(column => ({ column })),
         })
 
         const relatedIds = this.collectUniqueRowValues(pivotRows, metadata.relatedPivotKey)
@@ -261,6 +263,7 @@ export class SetBasedEagerLoader {
         })
 
         const relatedKeysByParent = new Map<string, unknown[]>()
+        const pivotByParentAndRelated = new Map<string, DatabaseRow>()
         pivotRows.forEach((row: DatabaseRow) => {
             const parentValue = row[metadata.foreignPivotKey]
             const relatedValue = row[metadata.relatedPivotKey]
@@ -270,6 +273,7 @@ export class SetBasedEagerLoader {
             const bucket = relatedKeysByParent.get(this.toLookupKey(parentValue)) ?? []
             bucket.push(relatedValue)
             relatedKeysByParent.set(this.toLookupKey(parentValue), bucket)
+            pivotByParentAndRelated.set(`${this.toLookupKey(parentValue)}:${this.toLookupKey(relatedValue)}`, row)
         })
 
         this.models.forEach(model => {
@@ -280,13 +284,91 @@ export class SetBasedEagerLoader {
             const related = relatedValues.reduce<unknown[]>((all, relatedValue) => {
                 const candidate = relatedByKey.get(this.toLookupKey(relatedValue))
                 if (candidate)
-                    all.push(candidate)
+                    all.push(this.attachBelongsToManyPivot(metadata, candidate, pivotByParentAndRelated.get(`${this.toLookupKey(parentValue)}:${this.toLookupKey(relatedValue)}`)))
 
                 return all
             }, [])
 
             model.setLoadedRelation(name, new ArkormCollection(related))
         })
+    }
+
+    private buildBelongsToManyPivotWhere (
+        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+        parentKeys: unknown[],
+    ) {
+        const baseCondition = {
+            type: 'comparison' as const,
+            column: metadata.foreignPivotKey,
+            operator: 'in' as const,
+            value: parentKeys as never[],
+        }
+
+        if (!metadata.pivotWhere)
+            return baseCondition
+
+        return {
+            type: 'group' as const,
+            operator: 'and' as const,
+            conditions: [baseCondition, metadata.pivotWhere],
+        }
+    }
+
+    private getBelongsToManyPivotColumns (
+        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    ): string[] {
+        return [
+            metadata.foreignPivotKey,
+            metadata.relatedPivotKey,
+            ...(metadata.pivotColumns ?? []),
+        ].filter((column, index, all) => all.indexOf(column) === index)
+    }
+
+    private shouldAttachBelongsToManyPivot (
+        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    ): boolean {
+        return Boolean(metadata.pivotModel)
+            || Boolean(metadata.pivotCreatedAtColumn)
+            || Boolean(metadata.pivotUpdatedAtColumn)
+            || (metadata.pivotColumns?.length ?? 0) > 0
+            || Boolean(metadata.pivotAccessor)
+    }
+
+    private createBelongsToManyPivotRecord (
+        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+        row: DatabaseRow,
+    ): unknown {
+        const attributes = this.getBelongsToManyPivotColumns(metadata).reduce<Record<string, unknown>>((all, column) => {
+            all[column] = row[column]
+
+            return all
+        }, {})
+
+        if (!metadata.pivotModel)
+            return attributes
+
+        if (typeof metadata.pivotModel.hydrate === 'function')
+            return metadata.pivotModel.hydrate(attributes)
+
+        return new metadata.pivotModel(attributes)
+    }
+
+    private attachBelongsToManyPivot (
+        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+        related: unknown,
+        row?: DatabaseRow,
+    ): unknown {
+        if (!row || !this.shouldAttachBelongsToManyPivot(metadata))
+            return related
+
+        const rawReader = related as RawAttributeReadable
+        if (typeof rawReader.getRawAttributes !== 'function' || typeof rawReader.setAttribute !== 'function')
+            return related
+
+        const cloned = metadata.relatedModel.hydrate(rawReader.getRawAttributes()) as RawAttributeReadable
+        cloned.setAttribute(metadata.pivotAccessor ?? 'pivot', this.createBelongsToManyPivotRecord(metadata, row))
+
+        return cloned
     }
 
     /**

@@ -5,6 +5,15 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 import { createCoreClient } from './helpers/core-fixtures'
 
 describe('Model relationships', () => {
+    class MembershipPivot {
+        public constructor(private readonly attributes: Record<string, unknown> = {}) {
+        }
+
+        public getAttribute (key: string): unknown {
+            return this.attributes[key]
+        }
+    }
+
     beforeEach(() => {
         setupCoreRuntime()
     })
@@ -202,6 +211,78 @@ describe('Model relationships', () => {
         expect((profile as Profile).getAttribute('id')).toBe(10)
     })
 
+    it('supports belongsToMany pivot helpers for filtering and attached pivot payloads', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const roles = await user?.roles()
+            .withPivot('approved', 'priority', 'assignedAt', 'revokedAt')
+            .withTimestamps()
+            .as('membership')
+            .using(MembershipPivot)
+            .wherePivot('approved', true)
+            .wherePivotNotIn('roleId', [501])
+            .wherePivotBetween('priority', [1, 2])
+            .wherePivotNull('revokedAt')
+            .getResults()
+
+        expect(roles).toBeInstanceOf(ArkormCollection)
+        expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
+        expect((roles as ArkormCollection<Role>).all()[0]?.getAttribute('name')).toBe('admin')
+
+        const membership = (roles as ArkormCollection<Role>).all()[0]?.getAttribute('membership') as MembershipPivot
+        expect(membership).toBeInstanceOf(MembershipPivot)
+        expect(membership.getAttribute('userId')).toBe(1)
+        expect(membership.getAttribute('roleId')).toBe(500)
+        expect(membership.getAttribute('approved')).toBe(true)
+        expect(membership.getAttribute('assignedAt')).toBe('2026-03-05T12:00:00.000Z')
+        expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
+        expect(membership.getAttribute('updatedAt')).toBe('2026-03-06T12:00:00.000Z')
+    })
+
+    it('supports negative and null pivot helpers on belongsToMany relations', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const roles = await user?.roles()
+            .wherePivotNotBetween('priority', [1, 2])
+            .wherePivotNotNull('revokedAt')
+            .getResults()
+
+        expect(roles).toBeInstanceOf(ArkormCollection)
+        expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
+        expect((roles as ArkormCollection<Role>).all()[0]?.getAttribute('name')).toBe('editor')
+    })
+
+    it('applies configured pivot metadata during eager loading for belongsToMany relations', async () => {
+        class UserWithMembershipRoles extends User {
+            public override roles () {
+                return this.belongsToMany(Role, 'roleUsers', 'userId', 'roleId')
+                    .withPivot('approved')
+                    .withTimestamps()
+                    .as('membership')
+                    .using(MembershipPivot)
+                    .wherePivot('approved', true)
+            }
+        }
+
+        const user = await UserWithMembershipRoles.query().find(1)
+        expect(user).not.toBeNull()
+
+        await user?.load('roles')
+
+        const roles = user?.getAttribute('roles') as ArkormCollection<Role>
+        expect(roles).toBeInstanceOf(ArkormCollection)
+        expect(roles.all()).toHaveLength(1)
+        expect(roles.all()[0]?.getAttribute('name')).toBe('admin')
+
+        const membership = roles.all()[0]?.getAttribute('membership') as MembershipPivot
+        expect(membership).toBeInstanceOf(MembershipPivot)
+        expect(membership.getAttribute('approved')).toBe(true)
+        expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
+        expect(membership.getAttribute('updatedAt')).toBe('2026-03-06T12:00:00.000Z')
+    })
+
     it('supports relation get() and first() helpers', async () => {
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
@@ -234,6 +315,35 @@ describe('Model relationships', () => {
 
         expect(firstRole).not.toBeNull()
         expect((firstRole as Role).getAttribute('name')).toBe('editor')
+    })
+
+    it('preserves configured pivot payloads when executing terminal methods from getQuery()', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+
+        const rolesQuery = await user?.roles()
+            .withPivot('approved', 'priority')
+            .withTimestamps()
+            .as('membership')
+            .using(MembershipPivot)
+            .wherePivot('approved', true)
+            .getQuery()
+
+        const roles = await rolesQuery?.get()
+        expect(roles).toBeInstanceOf(ArkormCollection)
+        expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
+
+        const membership = (roles as ArkormCollection<Role>).all()[0]?.getAttribute('membership') as MembershipPivot
+        expect(membership).toBeInstanceOf(MembershipPivot)
+        expect(membership.getAttribute('approved')).toBe(true)
+        expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
+
+        const paginated = await rolesQuery?.clone().paginate(10, 1)
+        expect(paginated?.data.all()).toHaveLength(1)
+
+        const paginatedMembership = paginated?.data.all()[0]?.getAttribute('membership') as MembershipPivot
+        expect(paginatedMembership).toBeInstanceOf(MembershipPivot)
+        expect(paginatedMembership.getAttribute('priority')).toBe(1)
     })
 
     it('supports relation exists() and count() helpers', async () => {
