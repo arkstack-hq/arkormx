@@ -33,7 +33,7 @@ import {
     runArkormTransaction,
 } from './helpers/runtime-config'
 
-import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, ModelUpdateData, RelatedModelClass, RelationMetadata } from './types'
+import { DelegateForModelSchema, GlobalScope, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventHandlerConstructor, ModelEventListener, ModelEventName, ModelLifecycleState, ModelMetadata, ModelRelationshipKey, ModelRelationshipResult, ModelUpdateData, RelatedModelClass, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
@@ -719,6 +719,12 @@ export abstract class Model<
      * @param key 
      * @returns 
      */
+    public getAttribute<TKey extends ModelRelationshipKey<this>> (
+        key: TKey
+    ): ModelRelationshipResult<this, TKey>
+    public getAttribute<TKey extends keyof this & string> (
+        key: TKey
+    ): this[TKey] extends (...args: any[]) => any ? unknown : this[TKey]
     public getAttribute<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey]
     public getAttribute (key: string): unknown
     public getAttribute (key: string): unknown {
@@ -746,6 +752,14 @@ export abstract class Model<
      * @param value 
      * @returns 
      */
+    public setAttribute<TKey extends ModelRelationshipKey<this>> (
+        key: TKey,
+        value: ModelRelationshipResult<this, TKey>
+    ): this
+    public setAttribute<TKey extends keyof this & string> (
+        key: TKey,
+        value: this[TKey] extends (...args: any[]) => any ? never : this[TKey]
+    ): this
     public setAttribute<TKey extends keyof TAttributes & string> (
         key: TKey,
         value: TAttributes[TKey]
