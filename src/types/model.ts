@@ -143,6 +143,27 @@ export type ModelAttributes<TModel> = TModel extends Model<any, infer TAttribute
     ? TAttributes
     : Record<string, any>
 
+type RelationshipResultProvider<TResult = unknown> = {
+    getResults: (...args: any[]) => Promise<TResult>
+}
+
+export type ModelRelationshipKey<TModel> = {
+    [TKey in keyof TModel & string]: TModel[TKey] extends (...args: any[]) => infer TReturn
+        ? TReturn extends RelationshipResultProvider<any>
+            ? TKey
+            : never
+        : never
+}[keyof TModel & string]
+
+export type ModelRelationshipResult<
+    TModel,
+    TKey extends ModelRelationshipKey<TModel>,
+> = TModel[TKey] extends (...args: any[]) => infer TReturn
+    ? TReturn extends RelationshipResultProvider<infer TResult>
+        ? TResult
+        : never
+    : never
+
 export type ModelCreateData<TModel, TDelegate extends PrismaDelegateLike> =
     TModel extends Model<any, infer TAttributes>
     ? TDelegate extends AttributeSchemaDelegate<TAttributes>
