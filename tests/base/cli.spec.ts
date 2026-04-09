@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 import type { ArkormConfig } from '../../src/types'
-import { CliApp } from '../../src'
+import { CliApp, createPrismaDatabaseAdapter } from '../../src'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -63,6 +63,7 @@ describe('CLI application', () => {
         const workspace = process.cwd()
 
         const app = createCliApp({
+            adapter: createPrismaDatabaseAdapter({} as never),
             outputExt: 'ts',
             paths: {
                 stubs: join(originalCwd, 'stubs'),
@@ -89,6 +90,52 @@ describe('CLI application', () => {
         const schemaSource = readFileSync(join(workspace, 'prisma', 'schema.prisma'), 'utf-8')
         expect(schemaSource).toContain('model User')
         expect(schemaSource).toContain('@@map("users")')
+    })
+
+    it('generates models without Prisma schema side effects when no schema file exists', () => {
+        const tempWorkspace = makeTempDir('arkormx-cli-no-prisma-schema-')
+        process.chdir(tempWorkspace)
+        const workspace = process.cwd()
+
+        const app = createCliApp({
+            outputExt: 'ts',
+            paths: {
+                stubs: join(originalCwd, 'stubs'),
+                models: join(workspace, 'src', 'models'),
+            },
+        })
+        ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
+
+        const created = app.makeModel('User')
+
+        expect(existsSync(created.model.path)).toBe(true)
+        expect(created.prisma).toBeUndefined()
+        expect(existsSync(join(workspace, 'prisma', 'schema.prisma'))).toBe(false)
+    })
+
+    it('does not mutate Prisma schema files when the active adapter is not Prisma-backed', () => {
+        const tempWorkspace = makeTempDir('arkormx-cli-non-prisma-adapter-')
+        const schemaPath = writePrismaSchema(tempWorkspace)
+        process.chdir(tempWorkspace)
+        const workspace = process.cwd()
+
+        const app = createCliApp({
+            adapter: { capabilities: {} } as never,
+            outputExt: 'ts',
+            paths: {
+                stubs: join(originalCwd, 'stubs'),
+                models: join(workspace, 'src', 'models'),
+            },
+        })
+        ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
+
+        const before = readFileSync(schemaPath, 'utf-8')
+        const created = app.makeModel('User')
+        const after = readFileSync(schemaPath, 'utf-8')
+
+        expect(existsSync(created.model.path)).toBe(true)
+        expect(created.prisma).toBeUndefined()
+        expect(after).toBe(before)
     })
 
     it('falls back to JS file generation when TypeScript is not installed in current cwd', () => {

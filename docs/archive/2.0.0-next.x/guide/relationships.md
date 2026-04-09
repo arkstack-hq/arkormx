@@ -36,6 +36,19 @@ Supported relationships:
 
 Use `hasOne` when the current model owns exactly one related record.
 
+Example table structure:
+
+```
+users
+  id - integer
+  name - string
+
+profiles
+  id - integer
+  user_id - integer, unique, references users.id
+  bio - string | null
+```
+
 ```ts
 class User extends Model {
   profile() {
@@ -47,6 +60,19 @@ class User extends Model {
 ### hasMany
 
 Use `hasMany` when the current model owns many related records.
+
+Example table structure:
+
+```
+users
+  id - integer
+  name - string
+
+posts
+  id - integer
+  author_id - integer, references users.id
+  title - string
+```
 
 ```ts
 class User extends Model {
@@ -60,6 +86,19 @@ class User extends Model {
 
 Use `belongsTo` on the child side that contains the foreign key.
 
+Example table structure:
+
+```
+users
+  id - integer
+  name - string
+
+posts
+  id - integer
+  author_id - integer, references users.id
+  title - string
+```
+
 ```ts
 class Post extends Model {
   author() {
@@ -71,6 +110,29 @@ class Post extends Model {
 ### belongsToMany
 
 Use `belongsToMany` for many-to-many relations through a pivot table.
+
+Example table structure:
+
+```
+users
+  id - integer
+  name - string
+
+roles
+  id - integer
+  name - string, unique
+
+role_users
+  user_id - integer, references users.id
+  role_id - integer, references roles.id
+  approved - boolean
+  priority - integer | null
+  assigned_at - datetime | null
+  revoked_at - datetime | null
+  created_at - datetime | null
+  updated_at - datetime | null
+  primary key - (user_id, role_id)
+```
 
 ```ts
 class User extends Model {
@@ -87,9 +149,69 @@ class User extends Model {
 }
 ```
 
+#### Pivot helpers
+
+- `withPivot(...columns)` includes additional pivot columns on each related model.
+- `withTimestamps(createdAtColumn = 'createdAt', updatedAtColumn = 'updatedAt')` includes pivot timestamps.
+- `as(accessor)` renames the pivot payload accessor from the default `pivot`.
+- `using(PivotModel)` hydrates the pivot payload into a custom class.
+- `wherePivot(column, value)` adds an equality filter on the pivot table.
+- `wherePivot(column, operator, value)` adds an operator-based pivot filter.
+- `wherePivotNotIn(column, values)` excludes pivot rows by value list.
+- `wherePivotBetween(column, [min, max])` constrains pivot rows to a range.
+- `wherePivotNotBetween(column, [min, max])` excludes pivot rows inside a range.
+- `wherePivotNull(column)` requires a null pivot column.
+- `wherePivotNotNull(column)` requires a non-null pivot column.
+
+```ts
+import { PivotModel } from 'arkormx';
+
+class MembershipPivot extends PivotModel {
+  isActive() {
+    return this.revokedAt == null;
+  }
+}
+
+class User extends Model {
+  roles() {
+    return this.belongsToMany(Role, 'roleUsers', 'userId', 'roleId', 'id', 'id')
+      .as('membership')
+      .using(MembershipPivot)
+      .withPivot('approved', 'priority', 'assignedAt', 'revokedAt')
+      .withTimestamps()
+      .wherePivot('approved', true)
+      .wherePivotBetween('priority', [1, 5])
+      .wherePivotNull('revokedAt');
+  }
+}
+
+const roles = await user.roles().getResults();
+
+roles.all()[0]?.getAttribute('membership');
+```
+
+When you call `withPivot()`, `withTimestamps()`, `as()`, or `using()`, Arkorm attaches the pivot payload to the related model during direct relation execution and eager loading.
+
 ### hasOneThrough
 
 Use `hasOneThrough` to access one distant relation via an intermediate model.
+
+Example table structure:
+
+```
+mechanics
+  id - integer
+  name - string
+
+cars
+  id - integer
+  mechanic_id - integer, references mechanics.id
+
+owners
+  id - integer
+  car_id - integer, unique, references cars.id
+  name - string
+```
 
 ```ts
 class Mechanic extends Model {
@@ -103,6 +225,24 @@ class Mechanic extends Model {
 
 Use `hasManyThrough` to access many distant relations via an intermediate model.
 
+Example table structure:
+
+```
+countries
+  id - integer
+  name - string
+
+users
+  id - integer
+  country_id - integer, references countries.id
+  name - string
+
+posts
+  id - integer
+  author_id - integer, references users.id
+  title - string
+```
+
 ```ts
 class Country extends Model {
   posts() {
@@ -114,6 +254,20 @@ class Country extends Model {
 ### morphOne
 
 Use `morphOne` for one polymorphic relation.
+
+Example table structure:
+
+```
+users
+  id - integer
+  name - string
+
+images
+  id - integer
+  imageable_id - integer
+  imageable_type - string
+  url - string
+```
 
 ```ts
 class User extends Model {
@@ -127,6 +281,20 @@ class User extends Model {
 
 Use `morphMany` for many polymorphic related records.
 
+Example table structure:
+
+```
+posts
+  id - integer
+  title - string
+
+comments
+  id - integer
+  commentable_id - integer
+  commentable_type - string
+  body - string
+```
+
 ```ts
 class Post extends Model {
   comments() {
@@ -138,6 +306,24 @@ class Post extends Model {
 ### morphToMany
 
 Use `morphToMany` for polymorphic many-to-many relation through a pivot table.
+
+Example table structure:
+
+```
+posts
+  id - integer
+  title - string
+
+tags
+  id - integer
+  name - string, unique
+
+taggables
+  taggable_id - integer
+  taggable_type - string
+  tag_id - integer, references tags.id
+  primary key - (taggable_id, taggable_type, tag_id)
+```
 
 ```ts
 class Post extends Model {

@@ -1,5 +1,5 @@
 import { Model } from 'arkormx'
 {{FactoryImport}}
 export class {{ModelName}} extends Model {
-    static delegate = '{{DelegateName}}'{{FactoryLink}}
+    static table = '{{DelegateName}}'{{FactoryLink}}
 }

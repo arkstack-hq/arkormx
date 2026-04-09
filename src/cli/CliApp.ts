@@ -1,4 +1,5 @@
 import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
+import { PrismaDatabaseAdapter } from '../adapters/PrismaDatabaseAdapter'
 import { PRISMA_ENUM_REGEX, applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { dirname, extname, join, relative } from 'path'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
@@ -70,6 +71,12 @@ export class CliApp {
      * @returns The entire configuration object or the value of the specified key
      */
     getConfig: GetUserConfig = getUserConfig
+
+    private isUsingPrismaAdapter (): boolean {
+        const adapter = this.getConfig('adapter')
+
+        return adapter instanceof PrismaDatabaseAdapter
+    }
 
     /**
      * Utility to ensure directory exists
@@ -360,11 +367,12 @@ export class CliApp {
             factory?: boolean
             seeder?: boolean
             migration?: boolean
+            pivot?: boolean
             all?: boolean
         } = {}
     ): {
         model: { name: string, path: string }
-        prisma: { path: string, updated: boolean }
+        prisma?: { path: string, updated: boolean }
         factory?: { name: string, path: string }
         seeder?: { name: string, path: string }
         migration?: { name: string, path: string }
@@ -386,7 +394,13 @@ export class CliApp {
             .replace(/\\/g, '/')
             .replace(/\.(ts|tsx|mts|cts|js|mjs|cjs)$/i, '')}${outputExt === 'js' ? '.js' : ''}`
 
-        const stubPath = this.resolveStubPath(outputExt === 'js' ? 'model.js.stub' : 'model.stub')
+        let stubPath: string
+
+        if (options.pivot) {
+            stubPath = this.resolveStubPath('pivot-model.stub')
+        } else {
+            stubPath = this.resolveStubPath(outputExt === 'js' ? 'model.js.stub' : 'model.stub')
+        }
 
         const modelPath = this.generateFile(stubPath, outputPath, {
             ModelName: modelName,
@@ -401,7 +415,9 @@ export class CliApp {
                 : '',
         }, options)
 
-        const prisma = this.ensurePrismaModelEntry(modelName, delegateName)
+        const prisma = this.isUsingPrismaAdapter()
+            ? this.ensurePrismaModelEntry(modelName, delegateName)
+            : undefined
 
         const created = {
             model: { name: modelName, path: modelPath },
@@ -441,10 +457,10 @@ export class CliApp {
     private ensurePrismaModelEntry (
         modelName: string,
         delegateName: string
-    ): { path: string, updated: boolean } {
+    ): { path: string, updated: boolean } | undefined {
         const schemaPath = join(process.cwd(), 'prisma', 'schema.prisma')
         if (!existsSync(schemaPath))
-            return { path: schemaPath, updated: false }
+            return undefined
 
         const source = readFileSync(schemaPath, 'utf-8')
         const existingByTable = findModelBlock(source, delegateName)

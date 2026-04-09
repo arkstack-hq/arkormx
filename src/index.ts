@@ -43,6 +43,7 @@ export * from './helpers/runtime-config'
 export * from './helpers/runtime-module-loader'
 export * from './Model'
 export * from './Paginator'
+export * from './PivotModel'
 export * from './QueryBuilder'
 export * from './URLDriver'
 // barrelize-end
