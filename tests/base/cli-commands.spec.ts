@@ -3,6 +3,7 @@ import * as migrationHelpers from '../../src/helpers/migrations'
 import {
     CliApp,
     configureArkormRuntime,
+    createPrismaDatabaseAdapter,
     resetArkormRuntimeForTests,
 } from '../../src'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -95,6 +96,7 @@ describe('CLI command classes', () => {
         process.chdir(workspace)
 
         configureArkormRuntime(() => ({}), {
+            adapter: createPrismaDatabaseAdapter({} as never),
             outputExt: 'js',
             paths: {
                 stubs: join(originalCwd, 'stubs'),
@@ -212,6 +214,64 @@ describe('CLI command classes', () => {
         expect(errorLines).toHaveLength(0)
         expect(successLines.some(line => line.includes('Created files:'))).toBe(true)
         expect(successLines.some(line => line.includes('Model'))).toBe(true)
+    })
+
+    it('MakeModelCommand skips Prisma schema output when no schema file exists', async () => {
+        const workspace = makeTempDir('arkormx-cmd-make-model-no-prisma-')
+        process.chdir(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            outputExt: 'js',
+            paths: {
+                stubs: join(originalCwd, 'stubs'),
+                models: join(workspace, 'src', 'models'),
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MakeModelCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {}, {
+            name: 'User',
+        })
+
+        await command.handle()
+
+        expect(existsSync(join(workspace, 'src', 'models', 'User.js'))).toBe(true)
+        expect(existsSync(join(workspace, 'prisma', 'schema.prisma'))).toBe(false)
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('Prisma schema'))).toBe(false)
+    })
+
+    it('MakeModelCommand does not mutate prisma schema files for non-Prisma adapters', async () => {
+        const workspace = makeTempDir('arkormx-cmd-make-model-non-prisma-adapter-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const schemaBefore = readFileSync(schemaPath, 'utf-8')
+
+        configureArkormRuntime(() => ({}), {
+            adapter: { capabilities: {} } as never,
+            outputExt: 'js',
+            paths: {
+                stubs: join(originalCwd, 'stubs'),
+                models: join(workspace, 'src', 'models'),
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MakeModelCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {}, {
+            name: 'User',
+        })
+
+        await command.handle()
+
+        expect(existsSync(join(workspace, 'src', 'models', 'User.js'))).toBe(true)
+        expect(readFileSync(schemaPath, 'utf-8')).toBe(schemaBefore)
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('Prisma schema'))).toBe(false)
     })
 
     it('InitCommand creates arkormx.config.js from configured stub path', async () => {

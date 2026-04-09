@@ -1,0 +1,4 @@
+import { PivotModel } from 'arkormx'
+{{FactoryImport}}
+export class {{ModelName}} extends PivotModel {
+}
