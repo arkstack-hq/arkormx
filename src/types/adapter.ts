@@ -1,7 +1,7 @@
 import type { AppliedMigrationsState, PrimaryKeyGeneration, SchemaOperation, TimestampColumnBehavior } from './migrations'
 
 import type { ModelStatic } from './ModelStatic'
-import type { SoftDeleteConfig } from './core'
+import type { AdapterQueryInspection, SoftDeleteConfig } from './core'
 
 export type DatabasePrimitive = string | number | boolean | bigint | Date | null
 
@@ -207,6 +207,36 @@ export interface RelationLoadSpec<TModel = unknown> {
     relations: RelationLoadPlan[]
 }
 
+export type AdapterQueryOperation =
+    | 'select'
+    | 'selectOne'
+    | 'count'
+    | 'exists'
+    | 'insert'
+    | 'insertMany'
+    | 'upsert'
+    | 'update'
+    | 'updateFirst'
+    | 'updateMany'
+    | 'delete'
+    | 'deleteFirst'
+    | 'deleteMany'
+
+export type AdapterInspectionRequest<TModel = unknown> =
+    | { operation: 'select', spec: SelectSpec<TModel> }
+    | { operation: 'selectOne', spec: SelectSpec<TModel> }
+    | { operation: 'count', spec: AggregateSpec<TModel> }
+    | { operation: 'exists', spec: SelectSpec<TModel> }
+    | { operation: 'insert', spec: InsertSpec<TModel> }
+    | { operation: 'insertMany', spec: InsertManySpec<TModel> }
+    | { operation: 'upsert', spec: UpsertSpec<TModel> }
+    | { operation: 'update', spec: UpdateSpec<TModel> }
+    | { operation: 'updateFirst', spec: UpdateSpec<TModel> }
+    | { operation: 'updateMany', spec: UpdateManySpec<TModel> }
+    | { operation: 'delete', spec: DeleteSpec<TModel> }
+    | { operation: 'deleteFirst', spec: DeleteSpec<TModel> }
+    | { operation: 'deleteMany', spec: DeleteManySpec<TModel> }
+
 export interface AdapterTransactionContext {
     isolationLevel?: string
     readOnly?: boolean
@@ -246,6 +276,7 @@ export interface DatabaseAdapter {
     count: <TModel = unknown>(spec: AggregateSpec<TModel>) => Promise<number>
     exists?: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<boolean>
     loadRelations?: <TModel = unknown>(spec: RelationLoadSpec<TModel>) => Promise<void>
+    inspectQuery?: <TModel = unknown>(request: AdapterInspectionRequest<TModel>) => AdapterQueryInspection | null
     introspectModels?: (options?: AdapterModelIntrospectionOptions) => Promise<AdapterModelStructure[]>
     executeSchemaOperations?: (operations: SchemaOperation[]) => Promise<void>
     resetDatabase?: () => Promise<void>

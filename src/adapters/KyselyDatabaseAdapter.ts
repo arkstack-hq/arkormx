@@ -1,6 +1,7 @@
 import type { AccessMode, IsolationLevel, Kysely, RawBuilder, Transaction } from 'kysely'
 import type {
     AdapterCapabilities,
+    AdapterInspectionRequest,
     AdapterModelIntrospectionOptions,
     AdapterModelStructure,
     AdapterTransactionContext,
@@ -28,8 +29,8 @@ import type {
     UpdateSpec,
     UpsertSpec,
 } from '../types/adapter'
-import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaOperation } from '../types/migrations'
 import type {
+    AdapterQueryInspection,
     BelongsToManyRelationMetadata,
     BelongsToRelationMetadata,
     HasManyRelationMetadata,
@@ -38,9 +39,12 @@ import type {
     HasOneThroughRelationMetadata,
     ModelStatic,
 } from '../types'
+import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaOperation } from '../types/migrations'
 
 import { ArkormException } from '../Exceptions/ArkormException'
+import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
+import { emitRuntimeDebugEvent } from '../helpers/runtime-config'
 import { sql } from 'kysely'
 import { str } from '@h3ravel/support'
 
@@ -921,6 +925,139 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
+    private buildSelectStatement<TModel = unknown> (
+        spec: SelectSpec<TModel>
+    ): RawBuilder<Record<string, unknown>> {
+        this.assertNoRelationLoads(spec)
+
+        return sql<Record<string, unknown>>`
+            select ${this.buildSelectList(spec.target, spec.columns)}
+            ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)}
+            from ${sql.table(this.resolveTable(spec.target))}
+            ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
+            ${this.buildOrderBy(spec.target, spec.orderBy)}
+            ${this.buildPaginationClause(spec)}
+        `
+    }
+
+    private buildCountStatement<TModel = unknown> (spec: AggregateSpec<TModel>): RawBuilder<{ count: number | string }> {
+        return sql<{ count: number | string }>`
+            select count(*)::int as count
+            from ${sql.table(this.resolveTable(spec.target))}
+            ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
+        `
+    }
+
+    private buildExistsStatement<TModel = unknown> (spec: SelectSpec<TModel>): RawBuilder<{ exists: boolean }> {
+        return sql<{ exists: boolean }>`
+            select exists(
+                select 1
+                from ${sql.table(this.resolveTable(spec.target))}
+                ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
+                limit 1
+            ) as exists
+        `
+    }
+
+    private compileInspection (
+        operation: string,
+        target: QueryTarget<any>,
+        statement: RawBuilder<unknown>,
+    ): AdapterQueryInspection {
+        const compiled = statement.compile(this.db)
+
+        return {
+            adapter: 'kysely',
+            operation,
+            target: target.table,
+            sql: compiled.sql,
+            parameters: [...compiled.parameters],
+        }
+    }
+
+    private emitDebugQuery (
+        phase: 'before' | 'after' | 'error',
+        operation: string,
+        target: QueryTarget<any>,
+        inspection: AdapterQueryInspection | null,
+        meta?: Record<string, unknown>,
+        durationMs?: number,
+        error?: unknown,
+    ): void {
+        emitRuntimeDebugEvent({
+            type: 'query',
+            phase,
+            adapter: 'kysely',
+            operation,
+            target: target.table,
+            inspection,
+            meta,
+            durationMs,
+            error,
+        })
+    }
+
+    private wrapExecutionError (
+        error: unknown,
+        operation: string,
+        target: QueryTarget<any>,
+        inspection: AdapterQueryInspection | null,
+        meta?: Record<string, unknown>,
+    ): Error {
+        if (error instanceof ArkormException)
+            return error
+
+        return new QueryExecutionException(`Failed to execute ${operation} query.`, {
+            operation: `adapter.${operation}`,
+            model: target.modelName,
+            delegate: target.table,
+            inspection,
+            meta,
+            cause: error,
+        })
+    }
+
+    private async executeWithDebug<TResult> (
+        operation: string,
+        target: QueryTarget<any>,
+        statement: RawBuilder<unknown>,
+        transform: (rows: Record<string, unknown>[]) => TResult,
+        meta?: Record<string, unknown>,
+    ): Promise<TResult> {
+        const inspection = this.compileInspection(operation, target, statement)
+        const startedAt = Date.now()
+        this.emitDebugQuery('before', operation, target, inspection, meta)
+
+        try {
+            const result = await statement.execute(this.db)
+            this.emitDebugQuery('after', operation, target, inspection, meta, Date.now() - startedAt)
+
+            return transform(result.rows as unknown as Record<string, unknown>[])
+        } catch (error) {
+            const wrapped = this.wrapExecutionError(error, operation, target, inspection, meta)
+            this.emitDebugQuery('error', operation, target, inspection, meta, Date.now() - startedAt, wrapped)
+            throw wrapped
+        }
+    }
+
+    public inspectQuery<TModel = unknown> (request: AdapterInspectionRequest<TModel>): AdapterQueryInspection | null {
+        switch (request.operation) {
+            case 'select':
+                return this.compileInspection('select', request.spec.target, this.buildSelectStatement(request.spec))
+            case 'selectOne':
+                return this.compileInspection('selectOne', request.spec.target, this.buildSelectStatement({
+                    ...request.spec,
+                    limit: request.spec.limit ?? 1,
+                }))
+            case 'count':
+                return this.compileInspection('count', request.spec.target, this.buildCountStatement(request.spec))
+            case 'exists':
+                return this.compileInspection('exists', request.spec.target, this.buildExistsStatement(request.spec))
+            default:
+                return null
+        }
+    }
+
     /**
      * Selects records from the database matching the specified criteria and returns 
      * them as an array of database rows.
@@ -929,18 +1066,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
      * @returns     A promise that resolves to an array of database rows.
      */
     public async select<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow[]> {
-        this.assertNoRelationLoads(spec)
-
-        const result = await sql<Record<string, unknown>>`
-            select ${this.buildSelectList(spec.target, spec.columns)}
-            ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)}
-            from ${sql.table(this.resolveTable(spec.target))}
-            ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
-            ${this.buildOrderBy(spec.target, spec.orderBy)}
-            ${this.buildPaginationClause(spec)}
-        `.execute(this.db)
-
-        return this.mapRows(spec.target, result.rows as unknown as Record<string, unknown>[])
+        return await this.executeWithDebug('select', spec.target, this.buildSelectStatement(spec), rows => {
+            return this.mapRows(spec.target, rows)
+        }, {
+            where: spec.where,
+            relationFilters: spec.relationFilters,
+            orderBy: spec.orderBy,
+            limit: spec.limit,
+            offset: spec.offset,
+        })
     }
 
     /**
@@ -971,19 +1105,21 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         const values = this.mapValues(spec.target, spec.values)
         const columns = Object.keys(values)
 
-        const result = columns.length === 0
-            ? await sql<Record<string, unknown>>`
+        const statement = columns.length === 0
+            ? sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))}
                 default values
                 returning *
-            `.execute(this.db)
-            : await sql<Record<string, unknown>>`
+            `
+            : sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(columns.map(column => sql.id(column)), sql`, `)})
                 values (${sql.join(columns.map(column => values[column]), sql`, `)})
                 returning *
-            `.execute(this.db)
+            `
 
-        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>) as DatabaseRow
+        return await this.executeWithDebug('insert', spec.target, statement, rows => {
+            return this.mapRow(spec.target, rows[0]) as DatabaseRow
+        }, { values: spec.values })
     }
 
     /**
@@ -1001,28 +1137,34 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         const columns = Array.from(new Set(rows.flatMap(row => Object.keys(row))))
 
         if (columns.length === 0) {
-            const result = await sql<Record<string, unknown>>`
+            const statement = sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))}
                 default values
                 ${spec.ignoreDuplicates ? sql` on conflict do nothing` : sql``}
                 returning ${sql.id(this.resolvePrimaryKey(spec.target))}
-            `.execute(this.db)
+            `
 
-            return result.rows.length
+            return await this.executeWithDebug('insertMany', spec.target, statement, rows => rows.length, {
+                values: spec.values,
+                ignoreDuplicates: spec.ignoreDuplicates,
+            })
         }
 
         const values = sql.join(rows.map(row => {
             return sql`(${sql.join(columns.map(column => row[column] ?? null), sql`, `)})`
         }), sql`, `)
 
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(columns.map(column => sql.id(column)), sql`, `)})
             values ${values}
             ${spec.ignoreDuplicates ? sql` on conflict do nothing` : sql``}
             returning ${sql.id(this.resolvePrimaryKey(spec.target))}
-        `.execute(this.db)
+        `
 
-        return result.rows.length
+        return await this.executeWithDebug('insertMany', spec.target, statement, rows => rows.length, {
+            values: spec.values,
+            ignoreDuplicates: spec.ignoreDuplicates,
+        })
     }
 
     public async upsert<TModel = unknown> (spec: UpsertSpec<TModel>): Promise<number> {
@@ -1038,11 +1180,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         const conflictTarget = sql.join(uniqueColumns.map(column => sql.id(column)), sql`, `)
 
         if (columns.length === 0) {
-            await sql<Record<string, unknown>>`
+            const statement = sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))}
                 default values
                 on conflict (${conflictTarget}) do nothing
-            `.execute(this.db)
+            `
+
+            await this.executeWithDebug('upsert', spec.target, statement, () => undefined, {
+                values: spec.values,
+                uniqueBy: spec.uniqueBy,
+                updateColumns: spec.updateColumns,
+            })
 
             return spec.values.length
         }
@@ -1054,11 +1202,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             ? sql`do nothing`
             : sql`do update set ${sql.join(updateColumns.map(column => sql`${sql.id(column)} = excluded.${sql.id(column)}`), sql`, `)}`
 
-        await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(columns.map(column => sql.id(column)), sql`, `)})
             values ${values}
             on conflict (${conflictTarget}) ${conflictAction}
-        `.execute(this.db)
+        `
+
+        await this.executeWithDebug('upsert', spec.target, statement, () => undefined, {
+            values: spec.values,
+            uniqueBy: spec.uniqueBy,
+            updateColumns: spec.updateColumns,
+        })
 
         return spec.values.length
     }
@@ -1079,14 +1233,16 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         if (assignments.length === 0)
             return await this.selectOne({ target: spec.target, where: spec.where, limit: 1 })
 
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             update ${sql.table(this.resolveTable(spec.target))}
             set ${sql.join(assignments, sql`, `)}
             ${this.buildWhereClause(spec.target, spec.where)}
             returning *
-        `.execute(this.db)
+        `
 
-        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
+        return await this.executeWithDebug('update', spec.target, statement, rows => {
+            return this.mapRow(spec.target, rows[0])
+        }, { where: spec.where, values: spec.values })
     }
 
     /**
@@ -1106,16 +1262,18 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
         const primaryKey = this.resolvePrimaryKey(spec.target)
         const table = this.resolveTable(spec.target)
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             with ${this.buildSingleRowTargetCte(spec.target, spec.where)}
             update ${sql.table(table)}
             set ${sql.join(assignments, sql`, `)}
             from target_row
             where ${this.buildColumnReference(table, primaryKey)} = ${sql`target_row.${sql.id(primaryKey)}`}
             returning ${sql.table(table)}.*
-        `.execute(this.db)
+        `
 
-        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
+        return await this.executeWithDebug('updateFirst', spec.target, statement, rows => {
+            return this.mapRow(spec.target, rows[0])
+        }, { where: spec.where, values: spec.values })
     }
 
     /**
@@ -1134,14 +1292,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         if (assignments.length === 0)
             return 0
 
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             update ${sql.table(this.resolveTable(spec.target))}
             set ${sql.join(assignments, sql`, `)}
             ${this.buildWhereClause(spec.target, spec.where)}
             returning ${sql.id(this.resolvePrimaryKey(spec.target))}
-        `.execute(this.db)
+        `
 
-        return result.rows.length
+        return await this.executeWithDebug('updateMany', spec.target, statement, rows => rows.length, {
+            where: spec.where,
+            values: spec.values,
+        })
     }
 
     /**
@@ -1152,13 +1313,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
      * @returns     A promise that resolves to the deleted record as a database row, or null if no records match the criteria.
      */
     public async delete<TModel = unknown> (spec: DeleteSpec<TModel>): Promise<DatabaseRow | null> {
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             delete from ${sql.table(this.resolveTable(spec.target))}
             ${this.buildWhereClause(spec.target, spec.where)}
             returning *
-        `.execute(this.db)
+        `
 
-        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
+        return await this.executeWithDebug('delete', spec.target, statement, rows => {
+            return this.mapRow(spec.target, rows[0])
+        }, { where: spec.where })
     }
 
     /**
@@ -1170,15 +1333,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     public async deleteFirst<TModel = unknown> (spec: DeleteSpec<TModel>): Promise<DatabaseRow | null> {
         const primaryKey = this.resolvePrimaryKey(spec.target)
         const table = this.resolveTable(spec.target)
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             with ${this.buildSingleRowTargetCte(spec.target, spec.where)}
             delete from ${sql.table(table)}
             using target_row
             where ${this.buildColumnReference(table, primaryKey)} = ${sql`target_row.${sql.id(primaryKey)}`}
             returning ${sql.table(table)}.*
-        `.execute(this.db)
+        `
 
-        return this.mapRow(spec.target, result.rows[0] as unknown as Record<string, unknown>)
+        return await this.executeWithDebug('deleteFirst', spec.target, statement, rows => {
+            return this.mapRow(spec.target, rows[0])
+        }, { where: spec.where })
     }
 
     /**
@@ -1189,13 +1354,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
      * @returns     A promise that resolves to the number of records successfully deleted.
      */
     public async deleteMany<TModel = unknown> (spec: DeleteManySpec<TModel>): Promise<number> {
-        const result = await sql<Record<string, unknown>>`
+        const statement = sql<Record<string, unknown>>`
             delete from ${sql.table(this.resolveTable(spec.target))}
             ${this.buildWhereClause(spec.target, spec.where)}
             returning ${sql.id(this.resolvePrimaryKey(spec.target))}
-        `.execute(this.db)
+        `
 
-        return result.rows.length
+        return await this.executeWithDebug('deleteMany', spec.target, statement, rows => rows.length, {
+            where: spec.where,
+        })
     }
 
     /**
@@ -1206,13 +1373,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
      * @returns     A promise that resolves to the number of records matching the criteria.
      */
     public async count<TModel = unknown> (spec: AggregateSpec<TModel>): Promise<number> {
-        const result = await sql<{ count: number | string }>`
-            select count(*)::int as count
-            from ${sql.table(this.resolveTable(spec.target))}
-            ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
-        `.execute(this.db)
-
-        return Number((result.rows[0] as { count?: number | string } | undefined)?.count ?? 0)
+        return await this.executeWithDebug('count', spec.target, this.buildCountStatement(spec), rows => {
+            return Number((rows[0] as { count?: number | string } | undefined)?.count ?? 0)
+        }, {
+            where: spec.where,
+            relationFilters: spec.relationFilters,
+        })
     }
 
     /**
@@ -1222,16 +1388,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
      * @returns     A promise that resolves to a boolean indicating whether any records match the criteria.
      */
     public async exists<TModel = unknown> (spec: SelectSpec<TModel>): Promise<boolean> {
-        const result = await sql<{ exists: boolean }>`
-            select exists(
-                select 1
-                from ${sql.table(this.resolveTable(spec.target))}
-                ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
-                limit 1
-            ) as exists
-        `.execute(this.db)
-
-        return Boolean((result.rows[0] as { exists?: boolean } | undefined)?.exists)
+        return await this.executeWithDebug('exists', spec.target, this.buildExistsStatement(spec), rows => {
+            return Boolean((rows[0] as { exists?: boolean } | undefined)?.exists)
+        }, {
+            where: spec.where,
+            relationFilters: spec.relationFilters,
+        })
     }
 
     public async introspectModels (options: AdapterModelIntrospectionOptions = {}): Promise<AdapterModelStructure[]> {

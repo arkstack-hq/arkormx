@@ -1,7 +1,8 @@
 import type {
+    AdapterCapabilities,
+    AdapterInspectionRequest,
     AdapterModelIntrospectionOptions,
     AdapterModelStructure,
-    AdapterCapabilities,
     AdapterTransactionContext,
     AggregateSpec,
     DatabaseAdapter,
@@ -25,6 +26,7 @@ import type {
     UpdateSpec,
 } from '../types/adapter'
 import type {
+    AdapterQueryInspection,
     PrismaClientLike,
     PrismaDelegateLike,
     PrismaLikeInclude,
@@ -33,8 +35,11 @@ import type {
     PrismaLikeWhereInput,
 } from '../types/core'
 
+import { ArkormException } from '../Exceptions/ArkormException'
 import { MissingDelegateException } from '../Exceptions/MissingDelegateException'
+import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
+import { emitRuntimeDebugEvent } from '../helpers/runtime-config'
 import { inferDelegateName } from '../helpers/prisma'
 import { isDelegateLike } from '../helpers/runtime-config'
 import { str } from '@h3ravel/support'
@@ -270,6 +275,73 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         }
     }
 
+    private emitDebugQuery (
+        phase: 'before' | 'after' | 'error',
+        operation: string,
+        target: QueryTarget<any>,
+        meta?: Record<string, unknown>,
+        durationMs?: number,
+        error?: unknown,
+        inspection: AdapterQueryInspection | null = null,
+    ): void {
+        emitRuntimeDebugEvent({
+            type: 'query',
+            phase,
+            adapter: 'prisma',
+            operation,
+            target: target.table,
+            inspection,
+            meta,
+            durationMs,
+            error,
+        })
+    }
+
+    private wrapExecutionError (
+        error: unknown,
+        operation: string,
+        target: QueryTarget<any>,
+        meta?: Record<string, unknown>,
+    ): Error {
+        if (error instanceof ArkormException)
+            return error
+
+        return new QueryExecutionException(`Failed to execute ${operation} query.`, {
+            operation: `adapter.${operation}`,
+            model: target.modelName,
+            delegate: target.table,
+            meta,
+            cause: error,
+        })
+    }
+
+    private async runWithDebug<TResult> (
+        operation: string,
+        target: QueryTarget<any>,
+        executor: () => Promise<TResult>,
+        meta?: Record<string, unknown>,
+    ): Promise<TResult> {
+        const startedAt = Date.now()
+        this.emitDebugQuery('before', operation, target, meta)
+
+        try {
+            const result = await executor()
+            this.emitDebugQuery('after', operation, target, meta, Date.now() - startedAt)
+
+            return result
+        } catch (error) {
+            const wrapped = this.wrapExecutionError(error, operation, target, meta)
+            this.emitDebugQuery('error', operation, target, meta, Date.now() - startedAt, wrapped)
+            throw wrapped
+        }
+    }
+
+    public inspectQuery<TModel = unknown> (
+        _request: AdapterInspectionRequest<TModel>
+    ): AdapterQueryInspection | null {
+        return null
+    }
+
     private toQueryInclude (relationLoads?: RelationLoadPlan[]): PrismaLikeInclude | undefined {
         if (!relationLoads || relationLoads.length === 0)
             return undefined
@@ -382,8 +454,11 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
      */
     public async select<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow[]> {
         const delegate = this.resolveDelegate(spec.target)
+        const args = this.buildFindArgs(spec)
 
-        return await delegate.findMany(this.buildFindArgs(spec)) as DatabaseRow[]
+        return await this.runWithDebug('select', spec.target, async () => {
+            return await delegate.findMany(args) as DatabaseRow[]
+        }, { args })
     }
 
     /**
@@ -394,8 +469,11 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
      */
     public async selectOne<TModel = unknown> (spec: SelectSpec<TModel>): Promise<DatabaseRow | null> {
         const delegate = this.resolveDelegate(spec.target)
+        const args = this.buildFindArgs(spec)
 
-        return await delegate.findFirst(this.buildFindArgs(spec)) as DatabaseRow | null
+        return await this.runWithDebug('selectOne', spec.target, async () => {
+            return await delegate.findFirst(args) as DatabaseRow | null
+        }, { args })
     }
 
     /**
@@ -407,7 +485,9 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     public async insert<TModel = unknown> (spec: InsertSpec<TModel>): Promise<DatabaseRow> {
         const delegate = this.resolveDelegate(spec.target)
 
-        return await delegate.create({ data: spec.values }) as DatabaseRow
+        return await this.runWithDebug('insert', spec.target, async () => {
+            return await delegate.create({ data: spec.values }) as DatabaseRow
+        }, { values: spec.values })
     }
 
     /**
@@ -420,12 +500,18 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         const delegate = this.resolveDelegate(spec.target) as PrismaDelegateLike & {
             createMany?: (args: { data: DatabaseRow[], skipDuplicates?: boolean }) => Promise<{ count?: number } | number>
         }
+        const meta = {
+            values: spec.values,
+            ignoreDuplicates: spec.ignoreDuplicates,
+        }
 
         if (typeof delegate.createMany === 'function') {
-            const result = await delegate.createMany({
-                data: spec.values,
-                skipDuplicates: spec.ignoreDuplicates,
-            })
+            const result = await this.runWithDebug('insertMany', spec.target, async () => {
+                return await delegate.createMany?.({
+                    data: spec.values,
+                    skipDuplicates: spec.ignoreDuplicates,
+                })
+            }, meta)
             if (typeof result === 'number')
                 return result
 
@@ -458,7 +544,9 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         if (!where)
             return null
 
-        return await delegate.update({ where, data: spec.values }) as DatabaseRow
+        return await this.runWithDebug('update', spec.target, async () => {
+            return await delegate.update({ where, data: spec.values }) as DatabaseRow
+        }, { where, values: spec.values })
     }
 
     /**
@@ -472,9 +560,12 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             updateMany?: (args: { where?: PrismaLikeWhereInput, data: DatabaseRow }) => Promise<{ count?: number } | number>
         }
         const where = this.toQueryWhere(spec.where)
+        const meta = { where, values: spec.values }
 
         if (typeof delegate.updateMany === 'function') {
-            const result = await delegate.updateMany({ where, data: spec.values })
+            const result = await this.runWithDebug('updateMany', spec.target, async () => {
+                return await delegate.updateMany?.({ where, data: spec.values })
+            }, meta)
             if (typeof result === 'number')
                 return result
 
@@ -501,7 +592,9 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         if (!where)
             return null
 
-        return await delegate.delete({ where }) as DatabaseRow
+        return await this.runWithDebug('delete', spec.target, async () => {
+            return await delegate.delete({ where }) as DatabaseRow
+        }, { where })
     }
 
     /**
@@ -513,7 +606,9 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     public async deleteMany<TModel = unknown> (spec: DeleteManySpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target)
         const where = this.toQueryWhere(spec.where)
-        const rows = await delegate.findMany({ where }) as DatabaseRow[]
+        const rows = await this.runWithDebug('deleteMany', spec.target, async () => {
+            return await delegate.findMany({ where }) as DatabaseRow[]
+        }, { where })
 
         await Promise.all(rows.map(async (row) => {
             await delegate.delete({ where: row })
@@ -530,8 +625,11 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
      */
     public async count<TModel = unknown> (spec: AggregateSpec<TModel>): Promise<number> {
         const delegate = this.resolveDelegate(spec.target)
+        const where = this.toQueryWhere(spec.where)
 
-        return await delegate.count({ where: this.toQueryWhere(spec.where) })
+        return await this.runWithDebug('count', spec.target, async () => {
+            return await delegate.count({ where })
+        }, { where })
     }
 
     /**

@@ -10,6 +10,7 @@ import {
 import { Kysely, PostgresDialect } from 'kysely'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
 import {
+    QueryExecutionException,
     createKyselyAdapter,
     createPrismaDatabaseAdapter,
 } from '../../src'
@@ -487,6 +488,56 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('with target_row as ( select "id" from "users" where "isActive" = $1 limit 1 ) update "users"')
         expect(normalizedSql).toContain('returning "users".*')
         expect(normalizedSql).toContain('with target_row as ( select "id" from "users" where "isActive" = $1 limit 1 ) delete from "users"')
+    })
+
+    it('inspects compiled SQL for supported Kysely queries', () => {
+        const inspection = kyselyAdapter.inspectQuery?.({
+            operation: 'select',
+            spec: {
+                target: { table: 'users' },
+                where: {
+                    type: 'comparison',
+                    column: 'id',
+                    operator: '=',
+                    value: 1,
+                },
+                limit: 1,
+            },
+        })
+
+        expect(inspection).toMatchObject({
+            adapter: 'kysely',
+            operation: 'select',
+            target: 'users',
+        })
+        expect(inspection?.sql).toContain('select')
+        expect(inspection?.sql).toContain('from "users"')
+        expect(inspection?.parameters).toContain(1)
+    })
+
+    it('wraps invalid column errors with compiled SQL context', async () => {
+        const error = await kyselyAdapter.select({
+            target: { table: 'users' },
+            where: {
+                type: 'comparison',
+                column: 'ids',
+                operator: '=',
+                value: 1,
+            },
+        }).catch(caught => caught as QueryExecutionException)
+
+        expect(error).toBeInstanceOf(QueryExecutionException)
+        expect((error as any).getContext()).toMatchObject({
+            code: 'QUERY_EXECUTION_FAILED',
+            operation: 'adapter.select',
+            delegate: 'users',
+        })
+        expect((error as any).getInspection()).toMatchObject({
+            adapter: 'kysely',
+            operation: 'select',
+            target: 'users',
+        })
+        expect((error as any).getInspection()?.sql).toContain('"ids"')
     })
 
     it('runs adapter transactions against Postgres', async () => {

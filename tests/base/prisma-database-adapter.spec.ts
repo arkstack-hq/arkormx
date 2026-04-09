@@ -1,4 +1,6 @@
 import {
+    QueryExecutionException,
+    configureArkormRuntime,
     createPrismaDatabaseAdapter,
     createPrismaDelegateMap,
 } from '../../src'
@@ -145,6 +147,81 @@ describe('Prisma database adapter', () => {
         })
 
         expect(committed).toBe(true)
+    })
+
+    it('emits runtime debug events when debug config is enabled', async () => {
+        const prisma = createCoreClient()
+        const events: Array<Record<string, unknown>> = []
+        const adapter = createPrismaDatabaseAdapter(prisma)
+
+        configureArkormRuntime(() => ({}), {
+            debug: (event) => {
+                events.push({
+                    phase: event.phase,
+                    operation: event.operation,
+                    target: event.target,
+                })
+            },
+        })
+
+        await adapter.select({
+            target: { table: 'users' },
+            where: {
+                type: 'comparison',
+                column: 'id',
+                operator: '=',
+                value: 1,
+            },
+        })
+
+        expect(events).toEqual([
+            { phase: 'before', operation: 'select', target: 'users' },
+            { phase: 'after', operation: 'select', target: 'users' },
+        ])
+    })
+
+    it('wraps raw delegate failures in QueryExecutionException', async () => {
+        const prisma = {
+            users: {
+                findMany: async () => {
+                    throw new Error('Unknown argument `ids`')
+                },
+                findFirst: async () => null,
+                create: async () => ({}),
+                update: async () => ({}),
+                delete: async () => ({}),
+                count: async () => 0,
+            },
+        }
+
+        const adapter = createPrismaDatabaseAdapter(prisma)
+
+        let error: QueryExecutionException | undefined
+
+        try {
+            await adapter.select({
+                target: { table: 'users' },
+                where: {
+                    type: 'comparison',
+                    column: 'ids',
+                    operator: '=',
+                    value: 1,
+                },
+            })
+        } catch (caught) {
+            error = caught as QueryExecutionException
+        }
+
+        expect(error).toBeInstanceOf(QueryExecutionException)
+        if (!error)
+            throw new Error('Expected adapter.select() to throw QueryExecutionException.')
+
+        expect(error.getContext()).toMatchObject({
+            code: 'QUERY_EXECUTION_FAILED',
+            operation: 'adapter.select',
+            delegate: 'users',
+        })
+        expect(error.getInspection()).toBeUndefined()
     })
 
     it('translates Arkorm relation load plans into Prisma include arguments at the adapter edge', async () => {

@@ -53,6 +53,53 @@ describe('QueryBuilder', () => {
         }
     })
 
+    it('inspects the constructed query through adapters that support inspection', () => {
+        const inspectQuery = vi.fn(() => ({
+            adapter: 'fake',
+            operation: 'select',
+            target: 'users',
+            sql: 'select * from users where id = ?',
+            parameters: [1],
+        }))
+
+        const transaction: DatabaseAdapter['transaction'] = async <TResult> (callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>): Promise<TResult> => await callback(adapter)
+
+        const adapter: DatabaseAdapter = {
+            capabilities: {},
+            inspectQuery,
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async () => ({ id: 0 }),
+            insertMany: async () => 0,
+            update: async () => null,
+            updateMany: async () => 0,
+            delete: async () => null,
+            deleteMany: async () => 0,
+            count: async () => 0,
+            exists: async () => false,
+            transaction,
+        }
+
+        User.setAdapter(adapter)
+
+        try {
+            const inspection = User.query().whereKey('id', 1).inspect()
+
+            expect(inspectQuery).toHaveBeenCalledWith(expect.objectContaining({
+                operation: 'select',
+                spec: expect.objectContaining({
+                    target: expect.objectContaining({ table: 'users' }),
+                }),
+            }))
+            expect(inspection).toMatchObject({
+                sql: 'select * from users where id = ?',
+                parameters: [1],
+            })
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
     it('routes core write execution through the configured adapter seam', async () => {
         const prisma = createCoreClient()
         const adapter = createPrismaDatabaseAdapter(prisma)

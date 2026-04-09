@@ -1,6 +1,8 @@
 import type {
     AdapterBindableModel,
     ArkormConfig,
+    ArkormDebugEvent,
+    ArkormDebugHandler,
     ClientResolver,
     GetUserConfig,
     PaginationCurrentPageResolver,
@@ -73,7 +75,34 @@ let runtimeClientResolver: ClientResolver | undefined
 let runtimeAdapter: DatabaseAdapter | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
 let runtimePaginationCurrentPageResolver: PaginationCurrentPageResolver | undefined
+let runtimeDebugHandler: ArkormDebugHandler | undefined
 const transactionClientStorage = new AsyncLocalStorage<PrismaClientLike>()
+
+const defaultDebugHandler: ArkormDebugHandler = (event) => {
+    const prefix = `[arkorm:${event.adapter}] ${event.operation}${event.target ? ` [${event.target}]` : ''}`
+    const payload = {
+        phase: event.phase,
+        durationMs: event.durationMs,
+        inspection: event.inspection ?? undefined,
+        meta: event.meta,
+        error: event.error,
+    }
+
+    if (event.phase === 'error') {
+        console.error(prefix, payload)
+
+        return
+    }
+
+    console.debug(prefix, payload)
+}
+
+const resolveDebugHandler = (debug: ArkormConfig['debug']): ArkormDebugHandler | undefined => {
+    if (debug === true)
+        return defaultDebugHandler
+
+    return typeof debug === 'function' ? debug : undefined
+}
 
 const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfig['paths']> => {
     const defaults = baseConfig.paths ?? {}
@@ -170,6 +199,9 @@ export const configureArkormRuntime = (
     if (options.boot !== undefined)
         nextConfig.boot = options.boot
 
+    if (options.debug !== undefined)
+        nextConfig.debug = options.debug
+
     if (options.outputExt !== undefined)
         nextConfig.outputExt = options.outputExt
 
@@ -181,6 +213,7 @@ export const configureArkormRuntime = (
     runtimeAdapter = options.adapter
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
     runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
+    runtimeDebugHandler = resolveDebugHandler(nextConfig.debug)
 
     options.boot?.({
         prisma: resolveClient(prisma),
@@ -208,6 +241,7 @@ export const resetArkormRuntimeForTests = (): void => {
     runtimeAdapter = undefined
     runtimePaginationURLDriverFactory = undefined
     runtimePaginationCurrentPageResolver = undefined
+    runtimeDebugHandler = undefined
     resetPersistedColumnMappingsCache()
 }
 
@@ -249,6 +283,7 @@ const resolveAndApplyConfig = (imported: unknown): void => {
     configureArkormRuntime(config.prisma, {
         adapter: config.adapter,
         boot: config.boot,
+        debug: config.debug,
         features: config.features,
         pagination: config.pagination,
         paths: config.paths,
@@ -438,6 +473,17 @@ export const getRuntimePaginationCurrentPageResolver = (): PaginationCurrentPage
         loadRuntimeConfigSync()
 
     return runtimePaginationCurrentPageResolver
+}
+
+export const getRuntimeDebugHandler = (): ArkormDebugHandler | undefined => {
+    if (!runtimeConfigLoaded)
+        loadRuntimeConfigSync()
+
+    return runtimeDebugHandler
+}
+
+export const emitRuntimeDebugEvent = (event: ArkormDebugEvent): void => {
+    getRuntimeDebugHandler()?.(event)
 }
 
 /**
