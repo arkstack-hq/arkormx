@@ -141,6 +141,63 @@ describe('PostgreSQL Kysely migration backend', () => {
         }
     })
 
+    it('prefixes implicit enum type names with the table name to avoid collisions across tables', async () => {
+        const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        const usersTable = `arkorm_users_${suffix}`
+        const ordersTable = `arkorm_orders_${suffix}`
+        const usersEnum = `${usersTable}_status_enum`
+        const ordersEnum = `${ordersTable}_status_enum`
+
+        try {
+            await adapter.executeSchemaOperations?.([
+                {
+                    type: 'createTable',
+                    table: usersTable,
+                    columns: [
+                        { name: 'id', type: 'id', primary: true },
+                        { name: 'status', type: 'enum', enumValues: ['draft', 'published'] },
+                    ],
+                    indexes: [],
+                    foreignKeys: [],
+                },
+                {
+                    type: 'createTable',
+                    table: ordersTable,
+                    columns: [
+                        { name: 'id', type: 'id', primary: true },
+                        { name: 'status', type: 'enum', enumValues: ['pending', 'paid'] },
+                    ],
+                    indexes: [],
+                    foreignKeys: [],
+                },
+            ])
+
+            const enumTypes = await sql<{ enum_name: string }>`
+                select typname as enum_name
+                from pg_type
+                where typname in (${sql.join([usersEnum, ordersEnum, 'status_enum'])})
+                order by typname asc
+            `.execute(db)
+
+            expect(enumTypes.rows.map(row => row.enum_name)).toEqual([ordersEnum, usersEnum])
+        } finally {
+            await adapter.executeSchemaOperations?.([
+                {
+                    type: 'dropTable',
+                    table: usersTable,
+                },
+                {
+                    type: 'dropTable',
+                    table: ordersTable,
+                },
+            ])
+
+            await sql.raw(`drop type if exists "${usersEnum}" cascade`).execute(db)
+            await sql.raw(`drop type if exists "${ordersEnum}" cascade`).execute(db)
+            await sql.raw('drop type if exists "status_enum" cascade').execute(db)
+        }
+    })
+
     it('resets database-backed schema objects and migration state', async () => {
         const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
         const schemaName = `arkorm_reset_${suffix}`
