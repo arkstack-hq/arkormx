@@ -120,13 +120,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return `${table}_${foreignKey.column}_fkey`
     }
 
-    private resolveSchemaColumnType (column: SchemaColumn): string {
+    private resolveSchemaEnumName (table: string, column: SchemaColumn): string {
+        return column.enumName ?? `${table}_${column.name}_enum`
+    }
+
+    private resolveSchemaColumnType (table: string, column: SchemaColumn): string {
         if (column.type === 'id')
             return 'integer'
         if (column.type === 'uuid')
             return 'uuid'
         if (column.type === 'enum')
-            return this.quoteIdentifier(column.enumName ?? `${column.name}_enum`)
+            return this.quoteIdentifier(this.resolveSchemaEnumName(table, column))
         if (column.type === 'string')
             return 'varchar(255)'
         if (column.type === 'text')
@@ -172,10 +176,10 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return column.autoIncrement === true
     }
 
-    private buildSchemaColumnDefinition (column: SchemaColumn): string {
+    private buildSchemaColumnDefinition (table: string, column: SchemaColumn): string {
         const parts = [
             this.quoteIdentifier(column.map ?? column.name),
-            this.resolveSchemaColumnType(column),
+            this.resolveSchemaColumnType(table, column),
         ]
 
         if (this.shouldUseIdentity(column))
@@ -216,12 +220,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return `create index if not exists ${this.quoteIdentifier(this.resolveSchemaIndexName(table, index))} on ${this.quoteIdentifier(table)} (${mappedColumns})`
     }
 
-    private async ensureEnumTypes (columns: SchemaColumn[], executor: KyselyExecutor = this.db): Promise<void> {
+    private async ensureEnumTypes (table: string, columns: SchemaColumn[], executor: KyselyExecutor = this.db): Promise<void> {
         for (const column of columns) {
             if (column.type !== 'enum')
                 continue
 
-            const enumName = column.enumName ?? `${column.name}_enum`
+            const enumName = this.resolveSchemaEnumName(table, column)
             const existsResult = await sql<{ exists: boolean }>`
                 select exists(
                     select 1
@@ -246,9 +250,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     private async executeCreateTableOperation (operation: Extract<SchemaOperation, { type: 'createTable' }>, executor: KyselyExecutor): Promise<void> {
         const table = this.resolveMappedTable(operation.table)
-        await this.ensureEnumTypes(operation.columns, executor)
+        await this.ensureEnumTypes(table, operation.columns, executor)
 
-        const columnDefinitions = operation.columns.map((column: SchemaColumn) => this.buildSchemaColumnDefinition(column))
+        const columnDefinitions = operation.columns.map((column: SchemaColumn) => this.buildSchemaColumnDefinition(table, column))
         const foreignKeys = (operation.foreignKeys ?? []).map((foreignKey: SchemaForeignKey) => this.buildSchemaForeignKeyConstraint(table, foreignKey, operation.columns))
         const definitions = [...columnDefinitions, ...foreignKeys].join(', ')
 
@@ -260,11 +264,11 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     private async executeAlterTableOperation (operation: Extract<SchemaOperation, { type: 'alterTable' }>, executor: KyselyExecutor): Promise<void> {
         const table = this.resolveMappedTable(operation.table)
-        await this.ensureEnumTypes(operation.addColumns, executor)
+        await this.ensureEnumTypes(table, operation.addColumns, executor)
 
         for (const column of operation.addColumns) {
             await this.executeRawStatement(
-                `alter table ${this.quoteIdentifier(table)} add column if not exists ${this.buildSchemaColumnDefinition(column)}`,
+                `alter table ${this.quoteIdentifier(table)} add column if not exists ${this.buildSchemaColumnDefinition(table, column)}`,
                 executor,
             )
         }
