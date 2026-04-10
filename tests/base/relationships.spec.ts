@@ -1,4 +1,4 @@
-import { ArkormCollection, PivotModel, QueryBuilder, createPrismaDatabaseAdapter } from '../../src'
+import { ArkormCollection, PivotModel, QueryBuilder, RelationResolutionException, createPrismaDatabaseAdapter } from '../../src'
 import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
@@ -601,5 +601,48 @@ describe('Model relationships', () => {
         expect(profile).not.toBeNull()
         expect(posts).toBeInstanceOf(ArkormCollection)
         expect(posts.all().length).toBe(2)
+    })
+
+    it('supports nested eager loading through with() and load()', async () => {
+        const user = await User.query()
+            .with(['profile.image', 'posts.comments'])
+            .find(1)
+
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        const profile = user.getAttribute('profile') as Profile
+        expect(profile).toBeInstanceOf(Profile)
+        expect(profile.getAttribute('image')).toBeInstanceOf(Image)
+
+        const posts = user.getAttribute('posts') as ArkormCollection<Post>
+        expect(posts).toBeInstanceOf(ArkormCollection)
+        expect(posts.all()).toHaveLength(2)
+        expect(posts.all()[0]?.getAttribute('comments')).toBeInstanceOf(ArkormCollection)
+        expect((posts.all()[0]?.getAttribute('comments') as ArkormCollection<Comment>).all()).toHaveLength(1)
+
+        const reloadUser = await User.query().find(1)
+        expect(reloadUser).not.toBeNull()
+        if (!reloadUser)
+            throw new Error('Expected reload user to exist.')
+
+        await reloadUser.load(['posts.comments'])
+
+        const reloadedPosts = reloadUser.getAttribute('posts') as ArkormCollection<Post>
+        expect(reloadedPosts.all()).toHaveLength(2)
+        expect((reloadedPosts.all()[0]?.getAttribute('comments') as ArkormCollection<Comment>).all()).toHaveLength(1)
+    })
+
+    it('throws when eager loaded relationships do not exist', async () => {
+        await expect(User.query().with(['posts.missing']).find(1)).rejects.toBeInstanceOf(RelationResolutionException)
+
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        await expect(user.load(['missing'])).rejects.toBeInstanceOf(RelationResolutionException)
+        await expect(user.load(['posts.missing'])).rejects.toBeInstanceOf(RelationResolutionException)
     })
 })
