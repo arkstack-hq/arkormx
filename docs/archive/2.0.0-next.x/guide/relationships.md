@@ -38,7 +38,7 @@ Use `hasOne` when the current model owns exactly one related record.
 
 Example table structure:
 
-```
+```txt
 users
   id - integer
   name - string
@@ -63,7 +63,7 @@ Use `hasMany` when the current model owns many related records.
 
 Example table structure:
 
-```
+```txt
 users
   id - integer
   name - string
@@ -88,7 +88,7 @@ Use `belongsTo` on the child side that contains the foreign key.
 
 Example table structure:
 
-```
+```txt
 users
   id - integer
   name - string
@@ -113,7 +113,7 @@ Use `belongsToMany` for many-to-many relations through a pivot table.
 
 Example table structure:
 
-```
+```txt
 users
   id - integer
   name - string
@@ -198,7 +198,7 @@ Use `hasOneThrough` to access one distant relation via an intermediate model.
 
 Example table structure:
 
-```
+```txt
 mechanics
   id - integer
   name - string
@@ -227,7 +227,7 @@ Use `hasManyThrough` to access many distant relations via an intermediate model.
 
 Example table structure:
 
-```
+```txt
 countries
   id - integer
   name - string
@@ -257,7 +257,7 @@ Use `morphOne` for one polymorphic relation.
 
 Example table structure:
 
-```
+```txt
 users
   id - integer
   name - string
@@ -283,7 +283,7 @@ Use `morphMany` for many polymorphic related records.
 
 Example table structure:
 
-```
+```txt
 posts
   id - integer
   title - string
@@ -309,7 +309,7 @@ Use `morphToMany` for polymorphic many-to-many relation through a pivot table.
 
 Example table structure:
 
-```
+```txt
 posts
   id - integer
   title - string
