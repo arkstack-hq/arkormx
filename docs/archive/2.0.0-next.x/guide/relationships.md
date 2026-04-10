@@ -382,12 +382,26 @@ user.avatar().withDefault((parent) => ({
 ```ts
 await User.query().with('posts').get();
 
+await User.query().with(['requester', 'pocket', 'consents', 'consents.user']).get();
+
 await User.query()
   .with({
     posts: (query) => query.latest().limit(5),
   })
   .get();
+
+const user = await User.query().firstOrFail();
+
+await user.load(['posts.comments']);
 ```
+
+Use dotted relation paths when a child relationship should be eager loaded from
+an already eager loaded parent. For example, `consents.user` first loads
+`consents` and then eager loads `user` on every consent model in that result set.
+
+Arkorm now throws a `RelationResolutionException` when an eager loaded
+relationship path does not exist. That applies to both direct names such as
+`with(['missing'])` and nested paths such as `load(['consents.missing'])`.
 
 ## Relationship filters and aggregates
 
