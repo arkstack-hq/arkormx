@@ -520,6 +520,27 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('excluded."isActive"')
     })
 
+    it('falls back for updateOrInsert when conflict keys are not backed by a unique constraint', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        await expect(DbUser.query().updateOrInsert(
+            { name: 'Casey Fallback' },
+            { email: 'casey@example.com', isActive: 1 }
+        )).resolves.toBe(true)
+
+        await expect(DbUser.query().updateOrInsert(
+            { name: 'Casey Fallback' },
+            { email: 'casey.updated@example.com', isActive: 0 }
+        )).resolves.toBe(true)
+
+        await expect(DbUser.query().where({ name: 'Casey Fallback' }).value('email')).resolves.toBe('casey.updated@example.com')
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('select * from "users" where "name" = $1 limit $2')
+        expect(normalizedSql).toContain('insert into "users" ("name", "email", "isActive") values')
+        expect(normalizedSql).toContain('update "users"')
+    })
+
     it('uses RETURNING-aware single-row update and delete for non-unique QueryBuilder writes', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 

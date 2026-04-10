@@ -39,6 +39,7 @@ import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
+import { QueryExecutionException } from './Exceptions/QueryExecutionException'
 import type { ModelStatic } from './types/ModelStatic'
 import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
 import { QueryConstraintException } from './Exceptions/QueryConstraintException'
@@ -1449,17 +1450,25 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         values: Record<string, unknown> | ((exists: boolean) => Record<string, unknown> | Promise<Record<string, unknown>>) = {}
     ): Promise<boolean> {
         if (typeof values !== 'function' && this.adapter?.capabilities?.upsert && typeof this.requireAdapter().upsert === 'function') {
-            await this.executeUpsertRows([
-                {
-                    ...attributes,
-                    ...values,
-                },
-            ], Object.keys(attributes), Object.keys(values))
+            try {
+                await this.executeUpsertRows([
+                    {
+                        ...attributes,
+                        ...values,
+                    },
+                ], Object.keys(attributes), Object.keys(values))
 
-            return true
+                return true
+            } catch (error) {
+                if (!this.shouldFallbackUpdateOrInsertUpsert(error))
+                    throw error
+            }
         }
 
-        const existing = await this.clone().where(attributes as DelegateWhere<TDelegate>).first()
+        const existing = await this.clone()
+            .where(attributes as DelegateWhere<TDelegate>)
+            .first()
+
         const exists = existing != null
         const resolvedValues = typeof values === 'function'
             ? await values(exists)
@@ -1474,9 +1483,25 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
             return true
         }
 
-        const updated = await this.clone().where(attributes as DelegateWhere<TDelegate>).update(resolvedValues as ModelUpdateData<TModel, TDelegate>)
+        const updated = await this.clone()
+            .where(attributes as DelegateWhere<TDelegate>)
+            .update(resolvedValues as ModelUpdateData<TModel, TDelegate>)
 
         return updated != null
+    }
+
+    private shouldFallbackUpdateOrInsertUpsert (error: unknown): boolean {
+        if (!(error instanceof QueryExecutionException))
+            return false
+
+        const cause = error.cause as { code?: unknown, message?: unknown } | undefined
+        const code = typeof cause?.code === 'string' ? cause.code : undefined
+        const message = typeof cause?.message === 'string'
+            ? cause.message
+            : error.message
+
+        return code === '42P10'
+            || message.includes('there is no unique or exclusion constraint matching the ON CONFLICT specification')
     }
 
     /**
