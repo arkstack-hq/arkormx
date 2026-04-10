@@ -58,6 +58,38 @@ await User.query()
   .get();
 ```
 
+String matching helpers are available on both top-level queries and relation
+queries:
+
+```ts
+await User.query().whereLike('email', '@example.com').get();
+await User.query().whereStartsWith('email', 'jane').get();
+await User.query().whereEndsWith('email', '@example.com').get();
+
+const posts = await user.posts().whereStartsWith('title', 'Ann').getResults();
+```
+
+## Raw where clauses
+
+Use raw where clauses when you need SQL expressions that do not map cleanly to
+the fluent helpers.
+
+```ts
+const normalizedLocalPart = 'jane';
+
+const users = await User.query()
+  .whereRaw('LOWER("email") = ? OR LOWER("email") LIKE ?', [
+    `${normalizedLocalPart}@example.com`,
+    `%${normalizedLocalPart}@%`,
+  ])
+  .get();
+```
+
+- `whereRaw(sql, bindings?)` adds a raw clause with `AND` semantics.
+- `orWhereRaw(sql, bindings?)` adds a raw clause with `OR` semantics.
+- Raw where clauses are currently supported by the Kysely adapter.
+- Raw where clauses are not supported by the Prisma compatibility adapter.
+
 ## Date and range helpers
 
 ```ts
