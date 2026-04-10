@@ -75,7 +75,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         relationLoads: false,
         relationAggregates: true,
         relationFilters: true,
-        rawWhere: false,
+        rawWhere: true,
     }
 
     public constructor(
@@ -578,6 +578,30 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return sql<boolean>`${column} ${operator} ${condition.value}`
     }
 
+    private buildRawWhereCondition (condition: QueryRawCondition): RawBuilder<boolean> {
+        const segments = condition.sql.split('?')
+        const bindings = condition.bindings ?? []
+
+        if (segments.length !== bindings.length + 1) {
+            throw new ArkormException('Raw where bindings do not match the number of placeholders.')
+        }
+
+        const parts: RawBuilder<unknown>[] = []
+
+        segments.forEach((segment, index) => {
+            if (segment.length > 0)
+                parts.push(sql.raw(segment))
+
+            if (index < bindings.length)
+                parts.push(sql`${bindings[index]}`)
+        })
+
+        if (parts.length === 0)
+            return sql<boolean>`1 = 1`
+
+        return sql<boolean>`${sql.join(parts, sql``)}`
+    }
+
     private buildWhereCondition (target: QueryTarget<any>, condition?: QueryCondition): RawBuilder<boolean> {
         if (!condition)
             return sql<boolean>`1 = 1`
@@ -607,13 +631,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             return sql<boolean>`not (${this.buildWhereCondition(target, notCondition.condition)})`
         }
 
-        throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the Kysely adapter.', {
-            operation: 'adapter.where',
-            meta: {
-                feature: 'rawWhere',
-                sql: (condition as QueryRawCondition).sql,
-            },
-        })
+        return this.buildRawWhereCondition(condition as QueryRawCondition)
     }
 
     private buildWhereClause (target: QueryTarget<any>, condition?: QueryCondition): RawBuilder<unknown> {

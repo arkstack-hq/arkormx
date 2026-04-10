@@ -469,6 +469,15 @@ describe('QueryBuilder', () => {
         const orWhereNotIn = await User.query().whereKey('id', 1).orWhereNotIn('id', [1]).orderBy({ id: 'asc' }).get()
         expect(orWhereNotIn.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
 
+        const whereLike = await User.query().whereLike('email', '@example.com').orderBy({ id: 'asc' }).get()
+        expect(whereLike.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
+        const whereStartsWith = await User.query().whereStartsWith('email', 'jane').get()
+        expect(whereStartsWith.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const whereEndsWith = await User.query().whereEndsWith('email', '@example.com').orderBy({ id: 'asc' }).get()
+        expect(whereEndsWith.all().map(user => user.getAttribute('id'))).toEqual([1, 2])
+
         const whereDate = await User.query().whereDate('createdAt', '2026-03-04').get()
         expect(whereDate.all().length).toBe(2)
 

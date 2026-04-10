@@ -204,6 +204,23 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(trashedArticles.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
     })
 
+    it('supports raw where clauses through the Kysely adapter', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const normalizedLocalPart = 'jane'
+        const query = DbUser.query().whereRaw(
+            'LOWER("email") = ? OR LOWER("email") LIKE ?',
+            [`${normalizedLocalPart}@example.com`, `%${normalizedLocalPart}@%`],
+        )
+
+        const users = await query.get()
+
+        expect(users.all().map(user => user.getAttribute('email'))).toEqual(['jane@example.com'])
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('LOWER("email") = $1 OR LOWER("email") LIKE $2')
+    })
+
     it('supports SQL-backed direct relation filters and aggregates through QueryBuilder', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 

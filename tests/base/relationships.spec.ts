@@ -272,7 +272,7 @@ describe('Model relationships', () => {
         expect(user).not.toBeNull()
 
         const posts = await user?.posts()
-            .where({ title: 'A' })
+            .whereStartsWith('title', 'A')
             .orderBy({ id: 'asc' })
             .getResults()
 
@@ -280,8 +280,20 @@ describe('Model relationships', () => {
             .where({ id: 10 })
             .getResults()
 
+        const postsEndingWithB = await user?.posts()
+            .whereEndsWith('title', 'B')
+            .getResults()
+
+        const postsLike = await user?.posts()
+            .whereLike('title', 'A')
+            .getResults()
+
         expect((posts as ArkormCollection<Post>).all().length).toBe(1)
         expect((posts as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('A')
+        expect((postsEndingWithB as ArkormCollection<Post>).all().length).toBe(1)
+        expect((postsEndingWithB as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('B')
+        expect((postsLike as ArkormCollection<Post>).all().length).toBe(1)
+        expect((postsLike as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('A')
         expect(profile).not.toBeNull()
         expect((profile as Profile).getAttribute('id')).toBe(10)
     })

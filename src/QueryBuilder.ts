@@ -290,6 +290,48 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
+     * Adds a string contains clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.where({ [key]: { contains: value } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a string starts-with clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereStartsWith<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.where({ [key]: { startsWith: value } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a string ends-with clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereEndsWith<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.where({ [key]: { endsWith: value } } as DelegateWhere<TDelegate>)
+    }
+
+    /**
      * Adds a strongly-typed OR NOT IN where clause for a single attribute key.
      *
      * @param key

@@ -100,6 +100,48 @@ export abstract class Relation<TModel> {
     }
 
     /**
+     * Add a string contains clause to the relationship query.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereLike(key, value))
+    }
+
+    /**
+     * Add a string starts-with clause to the relationship query.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereStartsWith<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereStartsWith(key, value))
+    }
+
+    /**
+     * Add a string ends-with clause to the relationship query.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereEndsWith<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereEndsWith(key, value))
+    }
+
+    /**
      * Add an order by clause to the relationship query.
      *
      * @param orderBy
