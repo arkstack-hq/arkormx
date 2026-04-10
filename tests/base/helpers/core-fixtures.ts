@@ -96,6 +96,24 @@ function matchesWhere (row: Row, where: Record<string, unknown> | undefined): bo
                     return false
             }
 
+            if ('contains' in clause) {
+                const candidate = clause.contains
+                if (typeof rowValue !== 'string' || typeof candidate !== 'string' || !rowValue.includes(candidate))
+                    return false
+            }
+
+            if ('startsWith' in clause) {
+                const candidate = clause.startsWith
+                if (typeof rowValue !== 'string' || typeof candidate !== 'string' || !rowValue.startsWith(candidate))
+                    return false
+            }
+
+            if ('endsWith' in clause) {
+                const candidate = clause.endsWith
+                if (typeof rowValue !== 'string' || typeof candidate !== 'string' || !rowValue.endsWith(candidate))
+                    return false
+            }
+
             if ('gt' in clause) {
                 const compareTo = clause.gt
                 const leftValue = toComparable(rowValue, compareTo)
