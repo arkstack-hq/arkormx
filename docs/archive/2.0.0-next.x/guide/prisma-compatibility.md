@@ -63,6 +63,15 @@ still needs access to the Prisma client for:
 3. Move any custom delegate-name mapping into `createPrismaDatabaseAdapter(prisma, mapping)`.
 4. Keep parity tests running against the compatibility adapter while you roll out SQL-backed adapters.
 
+## Current adapter differences
+
+The Prisma compatibility adapter intentionally keeps a narrower query surface
+than the Kysely SQL-backed adapter.
+
+- `whereLike(...)`, `whereStartsWith(...)`, and `whereEndsWith(...)` work on the compatibility adapter.
+- `whereRaw(...)` and `orWhereRaw(...)` do not work on the compatibility adapter.
+- If you need raw SQL predicates such as `LOWER(email)` expressions, use a SQL-backed adapter such as Kysely.
+
 ## Compatibility window
 
 The Prisma compatibility adapter remains part of the supported runtime surface
