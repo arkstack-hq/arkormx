@@ -1,6 +1,7 @@
 import type { DatabaseAdapter, DatabaseRow, EagerLoadConstraint, EagerLoadMap, RelationMetadata } from '../types'
 
 import { ArkormCollection } from '../Collection'
+import { RelationResolutionException } from '../Exceptions/RelationResolutionException'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
 import { RelationTableLoader } from './RelationTableLoader'
@@ -17,6 +18,10 @@ type RawAttributeReadable = {
 }
 
 type RelationResolver = (this: EagerLoadableModel) => Relation<unknown>
+type EagerLoadNode = {
+    constraint?: EagerLoadConstraint
+    children: Map<string, EagerLoadNode>
+}
 
 /**
  * Utility class responsible for performing set-based eager loading of relationships for 
@@ -40,9 +45,24 @@ export class SetBasedEagerLoader {
         if (this.models.length === 0)
             return
 
-        await Promise.all(Object.entries(this.relations).map(async ([name, constraint]) => {
-            await this.loadRelation(name, constraint)
+        const relationTree = this.buildRelationTree(this.relations)
+
+        await Promise.all(Array.from(relationTree.entries()).map(async ([name, node]) => {
+            await this.loadRelationNode(name, node)
         }))
+    }
+
+    private async loadRelationNode (name: string, node: EagerLoadNode): Promise<void> {
+        await this.loadRelation(name, node.constraint)
+
+        if (node.children.size === 0)
+            return
+
+        const relatedModels = this.collectLoadedRelationModels(name)
+        if (relatedModels.length === 0)
+            return
+
+        await new SetBasedEagerLoader(relatedModels, this.relationTreeToMap(node.children)).load()
     }
 
     /**
@@ -100,10 +120,83 @@ export class SetBasedEagerLoader {
     private resolveRelationResolver (name: string): RelationResolver | null {
         const resolver = (this.models[0] as Record<string, unknown>)[name]
 
-        if (typeof resolver !== 'function')
-            return null
+        if (typeof resolver !== 'function') {
+            const modelName = (this.models[0] as { constructor?: { name?: string } }).constructor?.name ?? 'Model'
+
+            throw new RelationResolutionException(`Relation [${name}] is not defined on the model.`, {
+                operation: 'eagerLoad',
+                model: modelName,
+                relation: name,
+            })
+        }
 
         return resolver as RelationResolver
+    }
+
+    private buildRelationTree (relations: EagerLoadMap): Map<string, EagerLoadNode> {
+        const tree = new Map<string, EagerLoadNode>()
+
+        Object.entries(relations).forEach(([path, constraint]) => {
+            const segments = path
+                .split('.')
+                .map(segment => segment.trim())
+                .filter(segment => segment.length > 0)
+
+            if (segments.length === 0)
+                return
+
+            let current = tree
+
+            segments.forEach((segment, index) => {
+                const existing = current.get(segment) ?? { constraint: undefined, children: new Map<string, EagerLoadNode>() }
+
+                if (index === segments.length - 1 && constraint)
+                    existing.constraint = constraint
+
+                current.set(segment, existing)
+                current = existing.children
+            })
+        })
+
+        return tree
+    }
+
+    private relationTreeToMap (tree: Map<string, EagerLoadNode>, prefix = ''): EagerLoadMap {
+        return Array.from(tree.entries()).reduce<EagerLoadMap>((all, [name, node]) => {
+            const path = prefix ? `${prefix}.${name}` : name
+            all[path] = node.constraint
+
+            Object.assign(all, this.relationTreeToMap(node.children, path))
+
+            return all
+        }, {})
+    }
+
+    private collectLoadedRelationModels (name: string): EagerLoadableModel[] {
+        return this.models.reduce<EagerLoadableModel[]>((all, model) => {
+            const loaded = model.getAttribute(name)
+
+            if (loaded instanceof ArkormCollection) {
+                loaded.all().forEach((item: unknown) => {
+                    if (this.isEagerLoadableModel(item))
+                        all.push(item)
+                })
+
+                return all
+            }
+
+            if (this.isEagerLoadableModel(loaded))
+                all.push(loaded)
+
+            return all
+        }, [])
+    }
+
+    private isEagerLoadableModel (value: unknown): value is EagerLoadableModel {
+        return typeof value === 'object'
+            && value !== null
+            && typeof (value as EagerLoadableModel).getAttribute === 'function'
+            && typeof (value as EagerLoadableModel).setLoadedRelation === 'function'
     }
 
     /**
