@@ -706,6 +706,25 @@ describe('QueryBuilder', () => {
         ).rejects.toThrow('Record not found.')
     })
 
+    it('returns null when delete matches no records through a non-unique predicate', async () => {
+        const deleted = await User.query()
+            .where({ id: 1 })
+            .whereNot({ id: 1 })
+            .delete()
+
+        expect(deleted).toBeNull()
+        await expect(User.query().whereKey('id', 1).value('name')).resolves.toBe('John Doe')
+    })
+
+    it('deleteOrFail preserves the throwing delete contract', async () => {
+        await expect(
+            User.query()
+                .where({ id: 1 })
+                .whereNot({ id: 1 })
+                .deleteOrFail()
+        ).rejects.toThrow('Record not found for delete operation.')
+    })
+
     it('throws when update or delete are called without where constraints', async () => {
         await expect(User.query().update({ name: 'Nope' })).rejects.toThrow('Update requires a where clause.')
         await expect(User.query().delete()).rejects.toThrow('Delete requires a where clause.')

@@ -860,7 +860,7 @@ export abstract class Model<
             return this
         }
 
-        const deleted = await constructor.query().where({ [primaryKey]: identifier }).delete()
+        const deleted = await constructor.query().where({ [primaryKey]: identifier }).deleteOrFail()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -897,7 +897,7 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleting', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
 
-        const deleted = await constructor.query().withTrashed().where({ [primaryKey]: identifier }).delete()
+        const deleted = await constructor.query().withTrashed().where({ [primaryKey]: identifier }).deleteOrFail()
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()

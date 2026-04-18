@@ -307,6 +307,25 @@ describe('PostgreSQL QueryBuilder', () => {
         await expect(DbUser.query().whereKey('id', 99999).firstOrFail()).rejects.toThrow('Record not found.')
     })
 
+    it('returns null when delete matches no records through a non-unique predicate', async () => {
+        const deleted = await DbUser.query()
+            .where({ id: 1 })
+            .whereNot({ id: 1 } as Record<string, unknown>)
+            .delete()
+
+        expect(deleted).toBeNull()
+        await expect(DbUser.query().whereKey('id', 1).value('name')).resolves.toBe('John Doe')
+    })
+
+    it('deleteOrFail preserves the throwing delete contract', async () => {
+        await expect(
+            DbUser.query()
+                .where({ id: 1 })
+                .whereNot({ id: 1 } as Record<string, unknown>)
+                .deleteOrFail()
+        ).rejects.toThrow('Record not found for delete operation.')
+    })
+
     it('throws for update/delete without where constraints', async () => {
         await expect(DbUser.query().update({ name: 'Nope' })).rejects.toThrow('Update requires a where clause.')
         await expect(DbUser.query().delete()).rejects.toThrow('Delete requires a where clause.')
