@@ -707,13 +707,16 @@ describe('QueryBuilder', () => {
     })
 
     it('returns null when delete matches no records through a non-unique predicate', async () => {
+        const beforeCount = await User.query().count()
+
         const deleted = await User.query()
             .where({ id: 1 })
             .whereNot({ id: 1 })
             .delete()
 
         expect(deleted).toBeNull()
-        await expect(User.query().whereKey('id', 1).value('name')).resolves.toBe('John Doe')
+        await expect(User.query().count()).resolves.toBe(beforeCount)
+        await expect(User.query().whereKey('id', 1).value('id')).resolves.toBe(1)
     })
 
     it('deleteOrFail preserves the throwing delete contract', async () => {

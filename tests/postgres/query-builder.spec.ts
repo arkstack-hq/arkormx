@@ -308,13 +308,16 @@ describe('PostgreSQL QueryBuilder', () => {
     })
 
     it('returns null when delete matches no records through a non-unique predicate', async () => {
+        const beforeCount = await DbUser.query().count()
+
         const deleted = await DbUser.query()
             .where({ id: 1 })
             .whereNot({ id: 1 } as Record<string, unknown>)
             .delete()
 
         expect(deleted).toBeNull()
-        await expect(DbUser.query().whereKey('id', 1).value('name')).resolves.toBe('John Doe')
+        await expect(DbUser.query().count()).resolves.toBe(beforeCount)
+        await expect(DbUser.query().whereKey('id', 1).value('id')).resolves.toBe(1)
     })
 
     it('deleteOrFail preserves the throwing delete contract', async () => {
