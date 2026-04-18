@@ -1,7 +1,7 @@
 import type {
-    AggregateSpec,
     AdapterQueryInspection,
     AdapterQueryOperation,
+    AggregateSpec,
     DatabaseAdapter,
     DatabaseRow,
     DatabaseValue,
@@ -39,10 +39,10 @@ import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
-import { QueryExecutionException } from './Exceptions/QueryExecutionException'
 import type { ModelStatic } from './types/ModelStatic'
 import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
 import { QueryConstraintException } from './Exceptions/QueryConstraintException'
+import { QueryExecutionException } from './Exceptions/QueryExecutionException'
 import { RelationResolutionException } from './Exceptions/RelationResolutionException'
 import { ScopeNotDefinedException } from './Exceptions/ScopeNotDefinedException'
 import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
@@ -1416,7 +1416,7 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
-        const updated = await this.executeUpdateRow(uniqueWhere, data as DelegateUpdateData<TDelegate>)
+        const updated = await this.executeUpdateRow(uniqueWhere!, data as DelegateUpdateData<TDelegate>)
 
         return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1549,12 +1549,12 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
     }
 
     /**
-     * Deletes records matching the current query constraints and returns 
-     * the deleted record(s) as model instance(s).
+     * Deletes the first record matching the current query constraints and returns
+     * it as a hydrated model instance. Returns null when no record matches.
      * 
      * @returns 
      */
-    public async delete (): Promise<TModel> {
+    public async delete (): Promise<TModel | null> {
         const where = this.buildWhere()
         if (!where)
             throw new QueryConstraintException('Delete requires a where clause.', {
@@ -1567,17 +1567,36 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         if (!this.isUniqueWhere(where as Record<string, unknown>) && directSpec && typeof adapter.deleteFirst === 'function') {
             const deleted = await adapter.deleteFirst(directSpec)
             if (!deleted)
-                throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
-                    operation: 'delete',
-                })
+                return null
 
             return this.model.hydrate(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
         }
 
-        const uniqueWhere = await this.resolveUniqueWhere(where)
-        const deleted = await this.executeDeleteRow(uniqueWhere)
+        const uniqueWhere = await this.resolveUniqueWhere(where, false)
+        if (!uniqueWhere)
+            return null
+
+        const deleted = await this.executeDeleteRow(uniqueWhere, false)
+        if (!deleted)
+            return null
 
         return this.model.hydrate(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+    }
+
+    /**
+     * Deletes the first record matching the current query constraints and throws
+     * when no record matches.
+     *
+     * @returns
+     */
+    public async deleteOrFail (): Promise<TModel> {
+        const deleted = await this.delete()
+        if (!deleted)
+            throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
+                operation: 'delete',
+            })
+
+        return deleted
     }
     private tryBuildInsertSpec (values: DelegateCreateData<TDelegate>): InsertSpec<TModel> {
         return {
@@ -2781,7 +2800,10 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         return updated
     }
 
-    private async executeDeleteRow (where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>): Promise<DatabaseRow> {
+    private async executeDeleteRow (
+        where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
+        failIfMissing = true
+    ): Promise<DatabaseRow | null> {
         const adapter = this.requireAdapter()
         const spec = this.tryBuildDeleteSpec(where)
         if (!spec)
@@ -2792,9 +2814,13 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
 
         const deleted = await adapter.delete(spec)
         if (!deleted)
-            throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
-                operation: 'delete',
-            })
+            return failIfMissing
+                ? (() => {
+                    throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
+                        operation: 'delete',
+                    })
+                })()
+                : null
 
         return deleted
     }
@@ -2838,8 +2864,9 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
      * @returns 
      */
     private async resolveUniqueWhere (
-        where: DelegateWhere<TDelegate>
-    ): Promise<DelegateUniqueWhere<TDelegate>> {
+        where: DelegateWhere<TDelegate>,
+        failIfMissing = true
+    ): Promise<DelegateUniqueWhere<TDelegate> | null> {
         if (this.isUniqueWhere(where as Record<string, unknown>))
             return where as unknown as DelegateUniqueWhere<TDelegate>
 
@@ -2861,12 +2888,16 @@ export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaD
         }) as Record<string, unknown> | null
 
         if (!row)
-            throw new ModelNotFoundException(this.model.name, 'Record not found for update/delete operation.', {
-                operation: 'resolveUniqueWhere',
-                meta: {
-                    where: where as Record<string, unknown>,
-                },
-            })
+            return failIfMissing
+                ? (() => {
+                    throw new ModelNotFoundException(this.model.name, 'Record not found for update/delete operation.', {
+                        operation: 'resolveUniqueWhere',
+                        meta: {
+                            where: where as Record<string, unknown>,
+                        },
+                    })
+                })()
+                : null
 
         const primaryKey = this.model.getPrimaryKey()
 
