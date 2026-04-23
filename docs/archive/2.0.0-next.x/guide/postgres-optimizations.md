@@ -20,7 +20,10 @@ These optimizations currently depend on PostgreSQL syntax and therefore live onl
 - `WITH target_row AS (...) UPDATE ... RETURNING` for single-row non-unique updates
 - `WITH target_row AS (...) DELETE ... RETURNING` for single-row non-unique deletes
 
-The public API does not change when these paths are enabled. Unsupported adapters continue to fall back to the generic behavior.
+The public API does not change when these paths are enabled. Unsupported
+compatibility adapters can still use the generic behavior, but SQL-capable
+adapters now fail fast when a relation filter or aggregate callback cannot be
+compiled into Arkorm relation specs.
 
 ## JSON Aggregation Candidates
 

@@ -9,6 +9,7 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - `Model.setClient(...)` and direct delegate-map bootstrapping are deprecated in the current `next` line.
 - `Model.setAdapter(...)` with `createPrismaDatabaseAdapter(...)` or `createKyselyAdapter(...)` is the primary documented runtime path.
 - Prisma compatibility remains supported and covered by CI through the Arkorm 2.x transition window.
+- SQL-backed relation filters and aggregates now fail fast when a callback shape cannot be compiled into adapter specs instead of silently dropping to the generic in-memory path.
 - Earliest removal target for delegate-first runtime APIs is Arkorm 3.0 after migration docs, parity coverage, and adapter-first examples remain in place.
 
 ### Core ORM
