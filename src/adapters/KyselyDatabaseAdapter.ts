@@ -23,6 +23,7 @@ import type {
     QueryTarget,
     RelationAggregateSpec,
     RelationFilterSpec,
+    RelationLoadPlan,
     RelationLoadSpec,
     SelectSpec,
     UpdateManySpec,
@@ -33,6 +34,7 @@ import type {
     AdapterQueryInspection,
     BelongsToManyRelationMetadata,
     BelongsToRelationMetadata,
+    EagerLoadMap,
     HasManyRelationMetadata,
     HasManyThroughRelationMetadata,
     HasOneRelationMetadata,
@@ -43,6 +45,7 @@ import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaInde
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
+import { SetBasedEagerLoader } from '../relationship/SetBasedEagerLoader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { emitRuntimeDebugEvent } from '../helpers/runtime-config'
 import { sql } from 'kysely'
@@ -52,6 +55,10 @@ type KyselyExecutor = Kysely<any> | Transaction<any>
 type KyselyTableMapping = Record<string, string>
 type ThroughRelationMetadata = HasOneThroughRelationMetadata | HasManyThroughRelationMetadata
 type SqlRelationMetadata = HasManyRelationMetadata | HasOneRelationMetadata | BelongsToRelationMetadata | BelongsToManyRelationMetadata | ThroughRelationMetadata
+type EagerLoadableModel = {
+    getAttribute: (key: string) => unknown
+    setLoadedRelation: (name: string, value: unknown) => void
+}
 
 /**
  * Database adapter implementation for Kysely, allowing Arkorm to execute queries using Kysely 
@@ -72,7 +79,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         updateMany: true,
         deleteMany: true,
         exists: true,
-        relationLoads: false,
+        relationLoads: true,
         relationAggregates: true,
         relationFilters: true,
         rawWhere: true,
@@ -932,22 +939,38 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         )`
     }
 
-    private assertNoRelationLoads (spec: SelectSpec<any> | RelationLoadSpec<any>) {
-        if ('relationLoads' in spec && spec.relationLoads && spec.relationLoads.length > 0) {
-            throw new UnsupportedAdapterFeatureException('Kysely adapter relation-load execution is planned for a later phase.', {
-                operation: 'adapter.relationLoads',
-                meta: {
-                    feature: 'relationLoads',
-                },
-            })
-        }
+    private isEagerLoadableModel (value: unknown): value is EagerLoadableModel {
+        return typeof value === 'object'
+            && value !== null
+            && typeof (value as EagerLoadableModel).getAttribute === 'function'
+            && typeof (value as EagerLoadableModel).setLoadedRelation === 'function'
+    }
+
+    private toEagerLoadMap (relations: RelationLoadPlan[], prefix = ''): EagerLoadMap {
+        return relations.reduce<EagerLoadMap>((all, relation) => {
+            if (relation.constraint || relation.orderBy || relation.limit !== undefined || relation.offset !== undefined || relation.columns) {
+                throw new UnsupportedAdapterFeatureException('Kysely adapter relation-load execution currently supports unconstrained eager load plans only.', {
+                    operation: 'adapter.loadRelations',
+                    meta: {
+                        feature: 'relationLoads',
+                        relation: prefix ? `${prefix}.${relation.relation}` : relation.relation,
+                    },
+                })
+            }
+
+            const path = prefix ? `${prefix}.${relation.relation}` : relation.relation
+            all[path] = undefined
+
+            if (relation.relationLoads)
+                Object.assign(all, this.toEagerLoadMap(relation.relationLoads, path))
+
+            return all
+        }, {})
     }
 
     private buildSelectStatement<TModel = unknown> (
         spec: SelectSpec<TModel>
     ): RawBuilder<Record<string, unknown>> {
-        this.assertNoRelationLoads(spec)
-
         return sql<Record<string, unknown>>`
             select ${this.buildSelectList(spec.target, spec.columns)}
             ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)}
@@ -1412,6 +1435,31 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             where: spec.where,
             relationFilters: spec.relationFilters,
         })
+    }
+
+    /**
+     * Loads relations for the given models based on the specified relation load plans.
+     * 
+     * @param spec  The specification defining the models and their relations to be loaded.
+     * @returns 
+     */
+    public async loadRelations<TModel = unknown> (spec: RelationLoadSpec<TModel>): Promise<void> {
+        if (spec.models.length === 0 || spec.relations.length === 0)
+            return
+
+        if (spec.models.some(model => !this.isEagerLoadableModel(model))) {
+            throw new UnsupportedAdapterFeatureException('Kysely adapter relation-load execution requires Arkorm model instances.', {
+                operation: 'adapter.loadRelations',
+                meta: {
+                    feature: 'relationLoads',
+                },
+            })
+        }
+
+        await new SetBasedEagerLoader(
+            spec.models as unknown as EagerLoadableModel[],
+            this.toEagerLoadMap(spec.relations),
+        ).load()
     }
 
     public async introspectModels (options: AdapterModelIntrospectionOptions = {}): Promise<AdapterModelStructure[]> {

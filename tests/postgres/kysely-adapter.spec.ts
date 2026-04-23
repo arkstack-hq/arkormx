@@ -1,5 +1,6 @@
 import {
     DbArticle,
+    DbPost,
     DbRole,
     DbUser,
     acquirePostgresTestLock,
@@ -9,8 +10,9 @@ import {
     setPostgresModelAdapter,
 } from './helpers/fixtures'
 import { Kysely, PostgresDialect } from 'kysely'
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+    ArkormCollection,
     QueryExecutionException,
     createKyselyAdapter,
     createPrismaDatabaseAdapter,
@@ -257,6 +259,43 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('and "title" = $1')
         expect(normalizedSql).toContain('sum("posts"."id")::double precision')
         expect(normalizedSql).toContain('avg("posts"."id")::double precision')
+    })
+
+    it('executes eager loading through the Kysely adapter relationLoads path', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const loadRelationsSpy = vi.spyOn(kyselyAdapter, 'loadRelations')
+
+        const users = await DbUser.query()
+            .with('posts.comments')
+            .orderBy({ id: 'asc' })
+            .get()
+
+        expect(loadRelationsSpy).toHaveBeenCalledTimes(1)
+        expect(loadRelationsSpy).toHaveBeenCalledWith(expect.objectContaining({
+            relations: [
+                {
+                    relation: 'posts',
+                    relationLoads: [
+                        { relation: 'comments', relationLoads: undefined },
+                    ],
+                },
+            ],
+        }))
+
+        const firstUserPosts = users.all()[0]?.getAttribute('posts') as ArkormCollection<DbPost>
+        expect(firstUserPosts.all().map(post => post.getAttribute('title'))).toEqual(['A', 'B'])
+
+        const firstPostComments = firstUserPosts.all()[0]?.getAttribute('comments') as ArkormCollection<unknown>
+        expect(firstPostComments.all()).toHaveLength(1)
+
+        const secondUserPosts = users.all()[1]?.getAttribute('posts') as ArkormCollection<DbPost>
+        expect(secondUserPosts.all().map(post => post.getAttribute('title'))).toEqual(['C'])
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('select * from "users" order by "id" asc')
+        expect(normalizedSql).toContain('select * from "posts" where "userId" in ($1, $2)')
+        expect(executedQueries.filter((query) => query.includes('from "comments"'))).toHaveLength(3)
     })
 
     it('supports SQL-backed belongsToMany relation filters and aggregates through QueryBuilder', async () => {
