@@ -15,6 +15,19 @@ describe('Misc integrations', () => {
         setupCoreRuntime()
     })
 
+    it('does not use Model.getDelegate during normal runtime queries', async () => {
+        const warningSpy = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined)
+
+        await expect(User.query().whereKey('id', 1).first()).resolves.toBeTruthy()
+
+        expect(warningSpy).not.toHaveBeenCalledWith(
+            expect.stringContaining('Model.getDelegate() is deprecated'),
+            expect.anything(),
+        )
+
+        warningSpy.mockRestore()
+    })
+
     it('integrates collections with ArkormCollection', () => {
         const collection = ArkormCollection.make([{ id: 1 }, { id: 2 }])
         expect(collection.all().length).toBe(2)
