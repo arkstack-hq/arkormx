@@ -28,6 +28,28 @@ describe('Misc integrations', () => {
         warningSpy.mockRestore()
     })
 
+    it('does not use Model.getDelegate during relation fallback and eager loading', async () => {
+        const warningSpy = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined)
+
+        const filtered = await User.query()
+            .has('comments', '>=', 1)
+            .orderBy({ id: 'asc' })
+            .get()
+        expect(filtered.all().map(user => user.getAttribute('id'))).toEqual([1])
+
+        const eagerLoaded = await User.query()
+            .with(['posts.comments'])
+            .find(1)
+
+        expect(eagerLoaded).toBeTruthy()
+        expect(warningSpy).not.toHaveBeenCalledWith(
+            expect.stringContaining('Model.getDelegate() is deprecated'),
+            expect.anything(),
+        )
+
+        warningSpy.mockRestore()
+    })
+
     it('integrates collections with ArkormCollection', () => {
         const collection = ArkormCollection.make([{ id: 1 }, { id: 2 }])
         expect(collection.all().length).toBe(2)

@@ -664,7 +664,7 @@ Implementation checklist:
 - [x] Remove Prisma-shaped generic constraints from core model and query types
 - [x] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
 - [x] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
-- [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
+- [x] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [ ] Complete adapter-level relation load execution for the Kysely path
 - [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
 - [ ] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
@@ -690,10 +690,12 @@ Started in code:
 - deprecated `Model.getDelegate()` resolution now delegates to the compatibility helper layer instead of probing runtime clients directly inside `Model`
 - relation internals that were already table-backed now use `throughTable` terminology instead of `throughDelegate` across `Model` and the through/pivot relation classes
 - SQL-capable adapters no longer silently fall back to generic in-memory relation filter or aggregate execution when the relation query shape cannot be compiled into Arkorm relation specs; those cases now fail fast with an unsupported-adapter error while compatibility adapters retain the generic path
-- `QueryBuilder` now routes unconstrained `with(...)` eager loads through `adapter.loadRelations(...)` when an adapter explicitly advertises `relationLoads`, while constrained eager loads and `Model.load(...)` still use the generic set-based loader path
+- `QueryBuilder` now routes unconstrained `with(...)` eager loads through `adapter.loadRelations(...)` when an adapter explicitly advertises `relationLoads`, while constrained eager loads and `Model.load(...)` continue to use the generic set-based loader path without relying on delegate resolution
 - `Model` now documents adapter binding as its primary runtime API, while `setClient(...)`, `getDelegate(...)`, and `delegate` are explicitly treated as compatibility-only 2.x transition members rather than part of the primary surface
 - `Model.setClient(...)` and direct delegate-map helpers are now explicitly documented as compatibility-only migration paths rather than supported runtime bootstrap APIs
 - adapter-backed runtime queries no longer rely on `Model.getDelegate()`; the method is isolated to explicit compatibility callers and dedicated deprecation/error coverage
+- relation filters, relation aggregates, eager loading, and `Model.load(...)` now execute without routing through `Model.getDelegate()`, which closes the remaining delegate-shaped runtime fallback for relation execution even where Arkorm still uses its generic set-based loader
+- regression coverage now proves both relation fallback and eager loading execute without emitting the `Model.getDelegate()` deprecation path
 - `PrismaDelegateLike` currently remains as a deprecated compatibility alias so Prisma-specific adapter and helper code can keep compiling while the rest of Phase 7 is completed
 
 Success criteria:
