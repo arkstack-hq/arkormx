@@ -38,7 +38,7 @@ export class DbUser extends Model<'user'> {
         return this.morphToMany(DbTag, 'taggables', 'taggable', 'tagId')
     }
 
-    public scopeActive (query: QueryBuilder<DbUser>) {
+    public scopeActive (query: QueryBuilder<DbUser>): QueryBuilder<DbUser> {
         return query.whereKey('isActive', 1)
     }
 }
