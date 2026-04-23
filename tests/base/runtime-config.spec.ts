@@ -204,6 +204,40 @@ describe('runtime config defaults', () => {
         expect(getUserConfig('paths')?.models).toBe(resolve(process.cwd(), 'src', 'domain', 'models'))
     })
 
+    it('accepts the neutral client alias in loaded config files', async () => {
+        const workspace = makeTempDir('arkormx-runtime-config-client-alias-')
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, 'arkormx.config.js'), [
+            'export default {',
+            '  client: () => ({}),',
+            '  adapter: { capabilities: {} },',
+            '}',
+            '',
+        ].join('\n'))
+
+        await loadArkormConfig()
+
+        expect(getUserConfig('client')).toBeTypeOf('function')
+        expect(getUserConfig('prisma')).toBe(getUserConfig('client'))
+        expect(getUserConfig('adapter')).toEqual({ capabilities: {} })
+    })
+
+    it('passes the neutral client through the boot context', () => {
+        let bootClient: unknown
+        let bootPrisma: unknown
+
+        configureArkormRuntime(() => ({}), {
+            boot: ({ client, prisma }) => {
+                bootClient = client
+                bootPrisma = prisma
+            },
+        })
+
+        expect(bootClient).toBeDefined()
+        expect(bootPrisma).toBe(bootClient)
+    })
+
     it('applies the configured global adapter to models loaded from the configured models path', async () => {
         const workspace = makeTempDir('arkormx-runtime-config-discovered-models-')
         const modelsDirectory = join(workspace, 'src', 'models')

@@ -59,7 +59,8 @@ for removal in Arkorm 3.0.
 
 ## When to keep runtime config
 
-Keep `defineConfig({ prisma })` or `configureArkormRuntime(...)` when Arkorm
+Keep `defineConfig({ client })`, `defineConfig({ prisma })`, or
+`configureArkormRuntime(...)` when Arkorm
 still needs access to the Prisma client for:
 
 - CLI workflows
@@ -69,7 +70,7 @@ still needs access to the Prisma client for:
 ## Migration notes for existing Prisma users
 
 1. Replace `Model.setClient(...)` bootstrap code with `defineConfig({ adapter: createPrismaDatabaseAdapter(prisma) })`.
-2. Keep your `defineConfig({ prisma })` or `configureArkormRuntime(...)` call if you use CLI commands or `Model.transaction(...)`.
+2. Keep your `defineConfig({ client: () => prisma })`, `defineConfig({ prisma })`, or `configureArkormRuntime(...)` call if you use CLI commands or `Model.transaction(...)`.
 3. Move any custom delegate-name mapping into `createPrismaDatabaseAdapter(prisma, mapping)`.
 4. Keep parity tests running against the compatibility adapter while you roll out SQL-backed adapters.
 

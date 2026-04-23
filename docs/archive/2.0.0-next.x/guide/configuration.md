@@ -74,14 +74,15 @@ import { PrismaClient } from '@prisma/client';
 const prisma = new PrismaClient();
 
 export default defineConfig({
-  prisma: () => prisma,
+  client: () => prisma,
   adapter: createKyselyAdapter(db),
 });
 ```
 
 ## Config reference
 
-- `prisma` (optional): Prisma client instance or resolver function for compatibility mode, CLI flows, and Prisma-backed `Model.transaction(...)`.
+- `client` (optional): runtime client instance or resolver function for compatibility mode, CLI flows, and transaction fallback when no adapter transaction path is available.
+- `prisma` (optional, deprecated alias): Prisma client instance or resolver function kept for 2.x compatibility with older config.
 - `adapter`: optional global adapter applied automatically to models that do not define their own adapter.
 - `features.persistedColumnMappings`: enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`.
 - `features.persistedEnums`: enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.
@@ -116,14 +117,14 @@ such as transaction-scoped adapter overrides.
 import { createKyselyAdapter, defineConfig } from 'arkormx';
 
 export default defineConfig({
-  prisma: () => prisma,
+  client: () => prisma,
   adapter: createKyselyAdapter(db),
 });
 ```
 
 Runtime configuration also enables transaction scopes through
-`Model.transaction(...)`, because Arkorm can resolve the active Prisma client
+`Model.transaction(...)`, because Arkorm can resolve the active runtime client
 and switch compatibility-adapter queries onto the transaction client automatically.
 
-If you do not use Prisma compatibility features, you can omit `prisma`
+If you do not use compatibility-client features, you can omit `client`
 entirely and configure only `adapter`.

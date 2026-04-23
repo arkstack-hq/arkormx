@@ -663,7 +663,7 @@ Implementation checklist:
 - [x] Replace `Model.getDelegate()` usage in runtime code with adapter-owned execution paths only
 - [x] Remove Prisma-shaped generic constraints from core model and query types
 - [x] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
-- [ ] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
+- [x] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
 - [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [ ] Complete adapter-level relation load execution for the Kysely path
 - [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
@@ -683,6 +683,8 @@ Started in code:
 - `Model` generic defaults and `QueryBuilder` internals now use the neutral `QuerySchema*` helper family end to end rather than relying on delegate-shaped helper names in the primary core typing path
 - shared transaction typing now uses neutral `TransactionContext`, `TransactionOptions`, and `RuntimeClientLike` contracts instead of requiring Prisma-named callback types in `Model` and `runtime-config`
 - `Model.transaction()` now prefers adapter-backed transactions and routes transaction-scoped adapters through runtime storage so `Model.query()` and `DB.table()` stay inside the active transaction
+- `ArkormConfig`, `ArkormBootContext`, and `configureArkormRuntime(...)` now expose a neutral `client` runtime path for transaction fallback, while `prisma` remains only as a deprecated compatibility alias during the 2.x window
+- runtime transaction fallback errors now describe the missing requirement as a runtime client or adapter instead of treating the core API as Prisma-owned
 - `src/helpers/runtime-config.ts` and `src/helpers/prisma.ts` now use neutral query-schema/runtime contracts internally, while keeping Prisma compatibility aliases and helper names available during the remainder of Phase 7
 - Prisma compatibility adapter/query-schema fallback is now centralized in `src/helpers/runtime-compatibility.ts`, so `Model` and `DB` no longer each rebuild that fallback path independently
 - deprecated `Model.getDelegate()` resolution now delegates to the compatibility helper layer instead of probing runtime clients directly inside `Model`

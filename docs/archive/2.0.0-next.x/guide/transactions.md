@@ -114,7 +114,7 @@ transaction-scoped adapter.
 
 ## Using the transaction client directly
 
-The callback also receives the active Prisma transaction client.
+The callback also receives the active runtime transaction client.
 Use it when you need to mix Arkorm queries with direct delegate calls.
 
 ```ts
@@ -136,8 +136,8 @@ already uses the active transaction client automatically.
 
 ## Transaction options
 
-Arkorm forwards the optional second argument to the underlying Prisma
-interactive transaction call.
+Arkorm forwards the optional second argument to the active adapter transaction
+implementation or the compatibility client's interactive transaction call.
 
 ```ts
 await User.transaction(
@@ -156,9 +156,11 @@ Use this when you need to control transaction timeouts or isolation semantics.
 
 ## Requirements
 
-`Model.transaction(...)` depends on Arkorm having access to a runtime Prisma
-client. Use `defineConfig({ prisma })` or `configureArkormRuntime(...)` during
-application boot when you want Prisma-backed transaction scoping.
+`Model.transaction(...)` depends on Arkorm having access to either an adapter
+with transaction support or a runtime compatibility client. Use
+`defineConfig({ client })`, `defineConfig({ prisma })`, or
+`configureArkormRuntime(...)` during application boot when you want
+client-backed transaction scoping.
 
 ```ts
 import { configureArkormRuntime } from 'arkormx';

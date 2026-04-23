@@ -13,17 +13,17 @@ import type {
     TransactionCapableClient,
     TransactionOptions
 } from '../types/core'
-import type { DatabaseAdapter } from '../types/adapter'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { AsyncLocalStorage } from 'async_hooks'
-import { resetPersistedColumnMappingsCache } from './column-mappings'
+import type { DatabaseAdapter } from '../types/adapter'
 import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import { resetPersistedColumnMappingsCache } from './column-mappings'
 
 const resolveDefaultStubsPath = (): string => {
     let current = path.dirname(fileURLToPath(import.meta.url))
@@ -127,7 +127,15 @@ const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfi
     }
 }
 
-const mergeFeatureConfig = (features?: ArkormConfig['features']): NonNullable<ArkormConfig['features']> => {
+/**
+ * Merge the feature configuration from the base defaults, user configuration, and provided options.
+ * 
+ * @param features 
+ * @returns 
+ */
+const mergeFeatureConfig = (
+    features?: ArkormConfig['features']
+): NonNullable<ArkormConfig['features']> => {
     const defaults = baseConfig.features ?? {}
     const current = userConfig.features ?? {}
 
@@ -148,6 +156,13 @@ export const defineConfig = (config: ArkormConfig): ArkormConfig => {
     return config
 }
 
+/**
+ * Bind a database adapter instance to an array of models that support adapter binding.
+ * 
+ * @param adapter 
+ * @param models 
+ * @returns 
+ */
 export const bindAdapterToModels = (
     adapter: DatabaseAdapter,
     models: AdapterBindableModel[]
@@ -162,6 +177,7 @@ export const bindAdapterToModels = (
 /**
  * Get the user-provided ArkORM configuration. 
  * 
+ * @param key Optional specific configuration key to retrieve. If omitted, the entire configuration object is returned.
  * @returns The user-provided ArkORM configuration object.  
  */
 export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?: K) => {
@@ -176,19 +192,22 @@ export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?
  * Configure the ArkORM runtime with the provided runtime client resolver and
  * adapter-first options.
  * 
- * @param prisma 
+ * @param client 
+ * @param options
  */
 export const configureArkormRuntime = (
-    prisma?: ClientResolver,
+    client?: ClientResolver,
     options: Omit<ArkormConfig, 'prisma'> = {}
 ): void => {
+    const resolvedClient = client ?? options.client
     const nextConfig: Partial<ArkormConfig> = {
         ...userConfig,
         features: mergeFeatureConfig(options.features),
         paths: mergePathConfig(options.paths),
     }
 
-    nextConfig.prisma = prisma
+    nextConfig.client = resolvedClient
+    nextConfig.prisma = resolvedClient
 
     if (options.pagination !== undefined)
         nextConfig.pagination = options.pagination
@@ -209,14 +228,17 @@ export const configureArkormRuntime = (
         ...nextConfig,
     })
 
-    runtimeClientResolver = prisma
+    runtimeClientResolver = resolvedClient
     runtimeAdapter = options.adapter
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
     runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
     runtimeDebugHandler = resolveDebugHandler(nextConfig.debug)
 
+    const bootClient = resolveClient(resolvedClient)
+
     options.boot?.({
-        prisma: resolveClient(prisma),
+        client: bootClient,
+        prisma: bootClient,
         bindAdapter: bindAdapterToModels,
     })
 }
@@ -280,7 +302,10 @@ const resolveAndApplyConfig = (imported: unknown): void => {
     if (!config || typeof config !== 'object')
         return
 
-    configureArkormRuntime(config.prisma, {
+    const runtimeClient = config.client ?? config.prisma
+
+    configureArkormRuntime(runtimeClient, {
+        client: runtimeClient,
         adapter: config.adapter,
         boot: config.boot,
         debug: config.debug,
@@ -463,7 +488,7 @@ export const runArkormTransaction = async <TResult> (
 
     const client = getRuntimeClient()
     if (!client)
-        throw new ArkormException('Cannot start a transaction without a configured Prisma client.', {
+        throw new ArkormException('Cannot start a transaction without a configured runtime client or adapter.', {
             code: 'CLIENT_NOT_CONFIGURED',
             operation: 'transaction',
         })
