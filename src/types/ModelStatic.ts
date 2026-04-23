@@ -1,16 +1,16 @@
-import type { DelegateRow, ModelQuerySchemaLike, SoftDeleteConfig } from './core'
+import type { ModelQuerySchemaLike, QuerySchemaRow, SoftDeleteConfig } from './core'
 import type { ModelMetadata, RelationMetadata } from './metadata'
 
 import type { DatabaseAdapter } from './adapter'
 import type { QueryBuilder } from '../QueryBuilder'
 
 export interface ModelStatic<TModel, TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike> {
-    new(attributes?: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>): TModel
+    new(attributes?: QuerySchemaRow<TDelegate> extends Record<string, unknown> ? QuerySchemaRow<TDelegate> : Record<string, unknown>): TModel
     query: () => QueryBuilder<TModel, TDelegate>
-    hydrate: (attributes: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>) => TModel
-    hydrateMany: (attributes: (DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>)[]) => TModel[]
-    hydrateRetrieved: (attributes: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>) => Promise<TModel>
-    hydrateManyRetrieved: (attributes: (DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>)[]) => Promise<TModel[]>
+    hydrate: (attributes: QuerySchemaRow<TDelegate> extends Record<string, unknown> ? QuerySchemaRow<TDelegate> : Record<string, unknown>) => TModel
+    hydrateMany: (attributes: (QuerySchemaRow<TDelegate> extends Record<string, unknown> ? QuerySchemaRow<TDelegate> : Record<string, unknown>)[]) => TModel[]
+    hydrateRetrieved: (attributes: QuerySchemaRow<TDelegate> extends Record<string, unknown> ? QuerySchemaRow<TDelegate> : Record<string, unknown>) => Promise<TModel>
+    hydrateManyRetrieved: (attributes: (QuerySchemaRow<TDelegate> extends Record<string, unknown> ? QuerySchemaRow<TDelegate> : Record<string, unknown>)[]) => Promise<TModel[]>
     getAdapter: () => DatabaseAdapter | undefined
     getColumnMap: () => Record<string, string>
     getColumnName: (attribute: string) => string

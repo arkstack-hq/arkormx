@@ -73,6 +73,24 @@ still needs access to the Prisma client for:
 3. Move any custom delegate-name mapping into `createPrismaDatabaseAdapter(prisma, mapping)`.
 4. Keep parity tests running against the compatibility adapter while you roll out SQL-backed adapters.
 
+## Typing during the transition
+
+If you maintain Arkorm extensions, shared query helpers, or other advanced type
+wrappers, prefer the neutral core query-schema names:
+
+- `ModelQuerySchemaLike`
+- `QuerySchemaWhere`
+- `QuerySchemaRow`
+- `QuerySchemaCreateData`
+- `QuerySchemaUpdateData`
+- `QuerySchemaForModel`
+- `AttributeQuerySchema`
+
+The older `Delegate*` helper names, `DelegateForModelSchema`,
+`AttributeSchemaDelegate`, and `PrismaDelegateLike` still exist during 2.x so
+compatibility code keeps compiling, but they are now deprecated aliases rather
+than the primary type surface.
+
 ## Current adapter differences
 
 The Prisma compatibility adapter intentionally keeps a narrower query surface

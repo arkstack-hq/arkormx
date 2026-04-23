@@ -1,4 +1,4 @@
-import type { DelegateForModelSchema, GlobalScope, ModelAttributeValue, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventName, ModelLifecycleState, ModelUpdateData, RelatedModelClass } from './types/model'
+import type { GlobalScope, ModelAttributeValue, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventName, ModelLifecycleState, ModelUpdateData, QuerySchemaForModel, RelatedModelClass } from './types/model'
 import {
     BelongsToManyRelation,
     BelongsToRelation,
@@ -511,7 +511,7 @@ export abstract class Model<
     public static query<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -561,7 +561,7 @@ export abstract class Model<
     public static withTrashed<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -580,7 +580,7 @@ export abstract class Model<
     public static onlyTrashed<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -603,7 +603,7 @@ export abstract class Model<
     public static scope<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
