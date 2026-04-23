@@ -42,10 +42,20 @@ These APIs still work during the transition window, but they should not be used
 for new code:
 
 - `Model.setClient(...)`
+- `Model.getDelegate(...)`
+- the static `Model.delegate` alias
 - direct delegate maps created only for `Model.setClient(...)`
 
-`Model.setClient(...)` now emits a deprecation warning and is scheduled for
-removal in Arkorm 3.0.
+These APIs are no longer part of the primary `Model` runtime surface. In 2.x,
+the primary path is adapter-first setup via `Model.setAdapter(...)`,
+`defineConfig({ adapter })`, or `configureArkormRuntime(..., { adapter })`.
+
+Direct delegate-map bootstrapping is also no longer part of the supported runtime
+path, it currently only exists for temporary migration compatibility.
+
+`Model.setClient(...)`, `Model.getDelegate(...)`, and `Model.delegate` now emit
+or participate in deprecation-driven compatibility behavior and are scheduled
+for removal in Arkorm 3.0.
 
 ## When to keep runtime config
 

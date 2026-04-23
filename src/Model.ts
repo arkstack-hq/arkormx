@@ -30,7 +30,10 @@ import {
     getUserConfig,
     runArkormTransaction,
 } from './helpers/runtime-config'
-import { getRuntimeCompatibilityAdapter } from './helpers/runtime-compatibility'
+import {
+    getRuntimeCompatibilityAdapter,
+    resolveRuntimeCompatibilityQuerySchemaOrThrow,
+} from './helpers/runtime-compatibility'
 
 import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
@@ -40,7 +43,6 @@ import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
 import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
-import { resolveRuntimeCompatibilityQuerySchemaOrThrow } from './helpers/runtime-compatibility'
 
 /**
  * Base model class that all models should extend. 
@@ -60,11 +62,18 @@ export abstract class Model<
 
     protected static factoryClass?: new () => ModelFactory<any, any>
     protected static adapter?: DatabaseAdapter
+
+    /**
+     * Compatibility-only runtime state retained for 2.x transition window.
+     * New setups should use adapter-first setup via `setAdapter(...)` or runtime config.
+     */
     protected static client: Record<string, unknown>
+
     /**
      * @deprecated Use `table` instead. This remains as a compatibility alias during the transition.
      */
     protected static delegate: string
+
     protected static table?: string
     protected static primaryKey = 'id'
     protected static columns: Record<string, string> = {}
@@ -129,7 +138,8 @@ export abstract class Model<
     }
 
     /**
-     * Set the Prisma client delegates for all models.
+        * Compatibility-only runtime API retained for the 2.x transition window.
+        * This is no longer part of the supported runtime bootstrap path.
      *
      * @deprecated Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another
      * adapter-first bootstrap path instead.
@@ -147,6 +157,9 @@ export abstract class Model<
         this.client = client
     }
 
+    /**
+     * Primary runtime API: bind an adapter directly to the model class.
+     */
     public static setAdapter (adapter?: DatabaseAdapter): void {
         this.adapter = adapter
     }
@@ -445,10 +458,12 @@ export abstract class Model<
     }
 
     /**
-    * Resolve the deprecated compatibility query schema for the model.
-    * If a delegate name is provided, it will attempt to resolve that delegate.
-    * Otherwise, it will attempt to resolve a compatibility schema based on the model's name or
-    * the static `delegate` property.
+     * Compatibility-only runtime API retained for 2.x migration support.
+     * New runtime code should prefer `getAdapter()` and adapter-backed execution.
+     *
+     * If a delegate name is provided, it will attempt to resolve that delegate.
+     * Otherwise, it will attempt to resolve a compatibility schema based on the model's name or
+     * the static `delegate` property.
      * 
      * @param delegate 
      * @returns 

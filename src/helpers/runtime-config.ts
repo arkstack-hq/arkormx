@@ -173,11 +173,10 @@ export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?
 }
 
 /**
- * Configure the ArkORM runtime with the provided Prisma client resolver and 
- * delegate mapping resolver.
+ * Configure the ArkORM runtime with the provided runtime client resolver and
+ * adapter-first options.
  * 
  * @param prisma 
- * @param mapping 
  */
 export const configureArkormRuntime = (
     prisma?: ClientResolver,

@@ -231,7 +231,7 @@ Use this when you want the smallest behavioral jump.
 1. Upgrade to 2.x.
 2. Keep Prisma.
 3. Replace old client bootstrap with `defineConfig({ prisma, adapter: createPrismaDatabaseAdapter(prisma) })`.
-4. Remove deprecated `Model.setClient(...)` usage.
+4. Remove deprecated `Model.setClient(...)` usage and any direct delegate-map bootstrap.
 5. Update typing gradually.
 
 ### Full adapter-first path
@@ -249,6 +249,7 @@ Use this when you are ready to adopt the 2.x architecture directly.
 Audit these areas first during the upgrade:
 
 - App bootstrap that still calls `Model.setClient(...)`
+- App bootstrap that still constructs direct delegate maps instead of an adapter
 - Manual `setAdapter(...)` calls that are no longer needed
 - Custom delegate-name mapping that now belongs in the adapter constructor
 - Model typing that assumes Prisma delegate internals

@@ -9,14 +9,14 @@ export type PrismaDelegateMap<TClient extends RuntimeClientLike> = {
 }
 
 /**
- * Create an adapter to convert a Prisma client instance into a format
- * compatible with ArkORM's expectations.
+ * Compatibility-only helper that exposes Prisma query schemas as a plain object map.
+ * It is retained for migration support and tests, not as a supported runtime bootstrap path.
  *
  * @deprecated Prefer createPrismaDatabaseAdapter(prisma) for runtime usage.
  *
  * @param prisma The Prisma client instance to adapt.
  * @param mapping An optional mapping of Prisma delegate names to ArkORM delegate names.
- * @returns A record of adapted Prisma delegates compatible with ArkORM.
+ * @returns A record of adapted Prisma compatibility query schemas.
  */
 export function createPrismaAdapter (
     prisma: RuntimeClientLike
@@ -34,14 +34,14 @@ export function createPrismaAdapter (
 }
 
 /**
- * Create a delegate mapping record for Model.setClient() from a Prisma client.
+ * Compatibility-only helper for legacy delegate-map bootstrapping during migration.
  *
- * @deprecated Prefer createPrismaDatabaseAdapter(prisma, mapping) and bind the
- * resulting adapter with Model.setAdapter(...).
+ * @deprecated Prefer createPrismaDatabaseAdapter(prisma, mapping). Direct delegate-map
+ * bootstrapping is no longer part of the supported runtime path.
  *
  * @param prisma The Prisma client instance.
  * @param mapping Optional mapping of Arkormˣ delegate names to Prisma delegate names.
- * @returns A delegate map keyed by Arkormˣ delegate names.
+ * @returns A compatibility map keyed by Arkormˣ query-schema names.
  */
 export function createPrismaDelegateMap (
     prisma: RuntimeClientLike,
