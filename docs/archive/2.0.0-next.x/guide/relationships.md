@@ -403,6 +403,11 @@ Arkorm now throws a `RelationResolutionException` when an eager loaded
 relationship path does not exist. That applies to both direct names such as
 `with(['missing'])` and nested paths such as `load(['consents.missing'])`.
 
+For adapter authors, unconstrained `with(...)` graphs can now route through the
+adapter `relationLoads` seam when the adapter explicitly advertises that
+capability. Constrained eager loading callbacks and direct `Model.load(...)`
+still use Arkorm's generic set-based eager loader until later migration steps.
+
 ## Relationship filters and aggregates
 
 ```ts

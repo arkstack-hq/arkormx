@@ -504,6 +504,44 @@ describe('Model relationships', () => {
         }
     })
 
+    it('uses adapter-owned eager loading when the adapter advertises relationLoads support', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+        const loadRelationsSpy = vi.spyOn(adapter, 'loadRelations').mockImplementation(async (spec) => {
+            spec.models.forEach((model) => {
+                ;(model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation('posts', new ArkormCollection([]))
+            })
+        })
+
+        Object.defineProperty(adapter, 'capabilities', {
+            value: {
+                ...(adapter.capabilities ?? {}),
+                relationLoads: true,
+            },
+            configurable: true,
+        })
+
+        User.setAdapter(adapter)
+
+        try {
+            const users = await User.query()
+                .with('posts')
+                .orderBy({ id: 'asc' })
+                .get()
+
+            expect(users.all()).toHaveLength(2)
+            expect(selectSpy).toHaveBeenCalledTimes(1)
+            expect(loadRelationsSpy).toHaveBeenCalledTimes(1)
+            expect(loadRelationsSpy).toHaveBeenCalledWith(expect.objectContaining({
+                relations: [{ relation: 'posts', relationLoads: undefined }],
+            }))
+            expect((users.all()[0]?.getAttribute('posts') as ArkormCollection<Post>).all()).toHaveLength(0)
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
     it('batches belongsTo eager loads across parent models', async () => {
         const prisma = createCoreClient()
         const adapter = createPrismaDatabaseAdapter(prisma)
