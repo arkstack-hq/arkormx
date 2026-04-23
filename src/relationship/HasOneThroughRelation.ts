@@ -14,7 +14,7 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
     public constructor(
         parent: TParent & { getAttribute: (key: string) => unknown },
         related: RelatedModelClass<TRelated>,
-        private readonly throughDelegate: string,
+        private readonly throughTable: string,
         private readonly firstKey: string,
         private readonly secondKey: string,
         private readonly localKey: string,
@@ -32,7 +32,7 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
         const localValue = this.parent.getAttribute(this.localKey)
         const intermediateKey = await this.createRelationTableLoader().selectColumnValue({
             lookup: {
-                table: this.throughDelegate,
+                table: this.throughTable,
                 where: {
                     type: 'comparison',
                     column: this.firstKey,
@@ -53,7 +53,7 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
         return {
             type: 'hasOneThrough',
             relatedModel: this.related,
-            throughTable: this.throughDelegate,
+            throughTable: this.throughTable,
             firstKey: this.firstKey,
             secondKey: this.secondKey,
             localKey: this.localKey,

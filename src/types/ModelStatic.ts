@@ -1,10 +1,10 @@
-import type { DelegateRow, PrismaDelegateLike, SoftDeleteConfig } from './core'
+import type { DelegateRow, ModelQuerySchemaLike, SoftDeleteConfig } from './core'
 import type { ModelMetadata, RelationMetadata } from './metadata'
 
 import type { DatabaseAdapter } from './adapter'
 import type { QueryBuilder } from '../QueryBuilder'
 
-export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> {
+export interface ModelStatic<TModel, TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike> {
     new(attributes?: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>): TModel
     query: () => QueryBuilder<TModel, TDelegate>
     hydrate: (attributes: DelegateRow<TDelegate> extends Record<string, unknown> ? DelegateRow<TDelegate> : Record<string, unknown>) => TModel
@@ -14,7 +14,6 @@ export interface ModelStatic<TModel, TDelegate extends PrismaDelegateLike = Pris
     getAdapter: () => DatabaseAdapter | undefined
     getColumnMap: () => Record<string, string>
     getColumnName: (attribute: string) => string
-    getDelegate: (delegate?: string) => TDelegate
     getModelMetadata: () => ModelMetadata
     getPrimaryKey: () => string
     getRelationMetadata: (name: string) => RelationMetadata | null
@@ -30,7 +29,6 @@ export interface RelationshipModelStatic {
     getAdapter: () => DatabaseAdapter | undefined
     getColumnMap: () => Record<string, string>
     getColumnName: (attribute: string) => string
-    getDelegate: (delegate?: string) => PrismaDelegateLike
     getModelMetadata: () => ModelMetadata
     getPrimaryKey: () => string
     getRelationMetadata: (name: string) => RelationMetadata | null

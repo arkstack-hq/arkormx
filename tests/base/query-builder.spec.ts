@@ -304,7 +304,6 @@ describe('QueryBuilder', () => {
 
     it('applies explicit model metadata with convention fallback', async () => {
         class MetadataUser extends Model {
-            protected static override delegate = 'users'
             protected static override table = 'app_users'
             protected static override primaryKey = 'uuid'
             protected static override columns = {

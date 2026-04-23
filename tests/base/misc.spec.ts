@@ -3,7 +3,7 @@ import { User, createCoreClient, setupCoreRuntime } from './helpers/core-fixture
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 class DeprecatedClientUser extends Model<'users'> {
-    protected static override delegate = 'users'
+    protected static override table = 'users'
 
     public static bindClient (client: Record<string, unknown>) {
         this.setClient(client)

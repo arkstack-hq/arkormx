@@ -11,28 +11,26 @@ import {
     MorphToManyRelation,
     Relation,
 } from './relationship'
-import { PrismaDatabaseAdapter, createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
+import { PrismaDatabaseAdapter } from './adapters/PrismaDatabaseAdapter'
 import type { ModelFactory } from './database/factories'
 import type { DatabaseAdapter } from './types/adapter'
 import type {
     CastMap,
     EagerLoadMap,
+    ModelQuerySchemaLike,
     ModelStatic,
-    PrismaClientLike,
-    PrismaDelegateLike,
-    PrismaTransactionOptions,
     Serializable,
     SoftDeleteConfig,
+    TransactionContext,
+    TransactionOptions,
 } from './types/core'
 import {
     ensureArkormConfigLoading,
-    getActiveTransactionClient,
     getRuntimeAdapter,
-    getRuntimePrismaClient,
     getUserConfig,
-    isDelegateLike,
     runArkormTransaction,
 } from './helpers/runtime-config'
+import { getRuntimeCompatibilityAdapter } from './helpers/runtime-compatibility'
 
 import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
@@ -41,8 +39,8 @@ import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
-import { MissingDelegateException } from './Exceptions/MissingDelegateException'
 import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
+import { resolveRuntimeCompatibilityQuerySchemaOrThrow } from './helpers/runtime-compatibility'
 
 /**
  * Base model class that all models should extend. 
@@ -53,7 +51,7 @@ import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
  * @since 0.1.0
  */
 export abstract class Model<
-    TSchema extends PrismaDelegateLike | Record<string, unknown> | string = Record<string, any>,
+    TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string = Record<string, any>,
     TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
 > {
     private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
@@ -63,6 +61,9 @@ export abstract class Model<
     protected static factoryClass?: new () => ModelFactory<any, any>
     protected static adapter?: DatabaseAdapter
     protected static client: Record<string, unknown>
+    /**
+     * @deprecated Use `table` instead. This remains as a compatibility alias during the transition.
+     */
     protected static delegate: string
     protected static table?: string
     protected static primaryKey = 'id'
@@ -151,7 +152,19 @@ export abstract class Model<
     }
 
     public static getTable (): string {
-        return this.table || this.delegate || `${str(this.name).camel().plural()}`
+        if (this.table)
+            return this.table
+
+        if (this.delegate) {
+            Model.emitDeprecationWarning(
+                'ARKORM_MODEL_DELEGATE_DEPRECATED',
+                'Model.delegate is deprecated and will be removed in Arkorm 3.0. Use Model.table instead.'
+            )
+
+            return this.delegate
+        }
+
+        return `${str(this.name).camel().plural()}`
     }
 
     public static getPrimaryKey (): string {
@@ -421,28 +434,33 @@ export abstract class Model<
      * @returns
      */
     public static async transaction<T> (
-        callback: (client: PrismaClientLike) => T | Promise<T>,
-        options: PrismaTransactionOptions = {}
+        callback: (context: TransactionContext) => T | Promise<T>,
+        options: TransactionOptions = {}
     ): Promise<Awaited<T>> {
         ensureArkormConfigLoading()
 
-        return await runArkormTransaction(async (client) => {
-            return await callback(client)
-        }, options)
+        return await runArkormTransaction(async (context) => {
+            return await callback(context)
+        }, options, this.getAdapter())
     }
 
     /**
-     * Get the Prisma delegate for the model. 
-     * If a delegate name is provided, it will attempt to resolve that delegate. 
-     * Otherwise, it will attempt to resolve a delegate based on the model's name or 
-     * the static `delegate` property.
+    * Resolve the deprecated compatibility query schema for the model.
+    * If a delegate name is provided, it will attempt to resolve that delegate.
+    * Otherwise, it will attempt to resolve a compatibility schema based on the model's name or
+    * the static `delegate` property.
      * 
      * @param delegate 
      * @returns 
      */
-    public static getDelegate<TDelegate extends PrismaDelegateLike = PrismaDelegateLike> (
+    public static getDelegate<TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike> (
         delegate?: string
     ): TDelegate {
+        Model.emitDeprecationWarning(
+            'ARKORM_GET_DELEGATE_DEPRECATED',
+            'Model.getDelegate() is deprecated and will be removed in Arkorm 3.0. Use Model.getAdapter() and adapter-backed execution instead.'
+        )
+
         ensureArkormConfigLoading()
 
         const key = delegate || this.delegate || this.getTable()
@@ -453,43 +471,20 @@ export abstract class Model<
             `${str(key).camel().singular()}`,
         ]
 
-        const activeTransactionClient = getActiveTransactionClient()
-        const runtimeClient = getRuntimePrismaClient()
-        const sources = activeTransactionClient
-            ? [activeTransactionClient, this.client, runtimeClient]
-            : [this.client, runtimeClient]
-        const resolved = candidates
-            .flatMap(name => sources.map(source => source?.[name as never]))
-            .find(candidate => isDelegateLike(candidate))
-
-        if (!resolved)
-            throw new MissingDelegateException(`Database delegate [${key}] is not configured.`, {
-                operation: 'getDelegate',
-                model: this.name,
-                delegate: key,
-                meta: {
-                    candidates,
-                },
-            })
-
-        return resolved as TDelegate
+        return resolveRuntimeCompatibilityQuerySchemaOrThrow<TDelegate>(key, candidates, this.name, this.client)
     }
 
     public static getAdapter (): DatabaseAdapter | undefined {
         ensureArkormConfigLoading()
 
-        if (this.adapter)
-            return this.adapter
-
         const runtimeAdapter = getRuntimeAdapter()
         if (runtimeAdapter)
             return runtimeAdapter
 
-        const client = getActiveTransactionClient() ?? this.client ?? getRuntimePrismaClient()
-        if (!client || typeof client !== 'object')
-            return undefined
+        if (this.adapter)
+            return this.adapter
 
-        return createPrismaCompatibilityAdapter(client)
+        return getRuntimeCompatibilityAdapter(this.client)
     }
 
     /**
@@ -501,7 +496,7 @@ export abstract class Model<
     public static query<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -551,7 +546,7 @@ export abstract class Model<
     public static withTrashed<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -570,7 +565,7 @@ export abstract class Model<
     public static onlyTrashed<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -593,7 +588,7 @@ export abstract class Model<
     public static scope<
         TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
         TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
-        TDelegate extends PrismaDelegateLike = DelegateForModelSchema<
+        TDelegate extends ModelQuerySchemaLike = DelegateForModelSchema<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
         >
@@ -657,7 +652,7 @@ export abstract class Model<
      * @returns
      */
     public static async hydrateRetrieved<TModel> (
-        this: ModelStatic<TModel, PrismaDelegateLike>,
+        this: ModelStatic<TModel, ModelQuerySchemaLike>,
         attributes: Record<string, unknown>
     ): Promise<TModel> {
         Model.ensureModelBooted(this as unknown as typeof Model)
@@ -680,7 +675,7 @@ export abstract class Model<
      * @returns
      */
     public static async hydrateManyRetrieved<TModel> (
-        this: ModelStatic<TModel, PrismaDelegateLike>,
+        this: ModelStatic<TModel, ModelQuerySchemaLike>,
         attributes: Record<string, unknown>[]
     ): Promise<TModel[]> {
         Model.ensureModelBooted(this as unknown as typeof Model)
@@ -793,7 +788,7 @@ export abstract class Model<
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
 
-            const model = await constructor.query().create(payload as ModelCreateData<this, PrismaDelegateLike>)
+            const model = await constructor.query().create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
             this.syncOriginal()
@@ -807,7 +802,7 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
 
-        const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, PrismaDelegateLike>)
+        const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -850,7 +845,7 @@ export abstract class Model<
         if (softDeleteConfig.enabled) {
             const model = await constructor.query()
                 .where({ [primaryKey]: identifier })
-                .update({ [softDeleteConfig.column]: new Date() } as ModelUpdateData<this, PrismaDelegateLike>)
+                .update({ [softDeleteConfig.column]: new Date() } as ModelUpdateData<this, ModelQuerySchemaLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
             this.syncOriginal()
@@ -940,7 +935,7 @@ export abstract class Model<
 
         const model = await constructor.query().withTrashed()
             .where({ [primaryKey]: identifier })
-            .update({ [softDeleteConfig.column]: null } as ModelUpdateData<this, PrismaDelegateLike>)
+            .update({ [softDeleteConfig.column]: null } as ModelUpdateData<this, ModelQuerySchemaLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
@@ -1195,7 +1190,7 @@ export abstract class Model<
      * Define a belongs to many relationship.
      * 
      * @param related 
-     * @param throughDelegate 
+    * @param throughTable
      * @param foreignPivotKey 
      * @param relatedPivotKey 
      * @param parentKey 
@@ -1204,7 +1199,7 @@ export abstract class Model<
      */
     protected belongsToMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
-        throughDelegate: string,
+        throughTable: string,
         foreignPivotKey: string,
         relatedPivotKey: string,
         parentKey?: string,
@@ -1215,7 +1210,7 @@ export abstract class Model<
         return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(
             this,
             related,
-            throughDelegate,
+            throughTable,
             foreignPivotKey,
             relatedPivotKey,
             parentKey ?? constructor.getPrimaryKey(),
@@ -1227,7 +1222,7 @@ export abstract class Model<
      * Define a has one through relationship.
      * 
      * @param related 
-     * @param throughDelegate 
+    * @param throughTable
      * @param firstKey 
      * @param secondKey 
      * @param localKey 
@@ -1236,7 +1231,7 @@ export abstract class Model<
      */
     protected hasOneThrough<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
-        throughDelegate: string,
+        throughTable: string,
         firstKey: string,
         secondKey: string,
         localKey?: string,
@@ -1244,14 +1239,14 @@ export abstract class Model<
     ): HasOneThroughRelation<this, InstanceType<TRelatedClass>> {
         const constructor = this.constructor as unknown as typeof Model
 
-        return new HasOneThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
+        return new HasOneThroughRelation(this, related, throughTable, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
     }
 
     /**
      * Define a has many through relationship.
      * 
      * @param related 
-     * @param throughDelegate 
+    * @param throughTable
      * @param firstKey 
      * @param secondKey 
      * @param localKey 
@@ -1260,7 +1255,7 @@ export abstract class Model<
      */
     protected hasManyThrough<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
-        throughDelegate: string,
+        throughTable: string,
         firstKey: string,
         secondKey: string,
         localKey?: string,
@@ -1268,7 +1263,7 @@ export abstract class Model<
     ): HasManyThroughRelation<this, InstanceType<TRelatedClass>> {
         const constructor = this.constructor as unknown as typeof Model
 
-        return new HasManyThroughRelation(this, related, throughDelegate, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
+        return new HasManyThroughRelation(this, related, throughTable, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
     }
 
     /**
@@ -1311,7 +1306,7 @@ export abstract class Model<
      * Define a polymorphic many to many relationship.
      * 
      * @param related 
-     * @param throughDelegate 
+    * @param throughTable
      * @param morphName 
      * @param relatedPivotKey 
      * @param parentKey 
@@ -1320,7 +1315,7 @@ export abstract class Model<
      */
     protected morphToMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
-        throughDelegate: string,
+        throughTable: string,
         morphName: string,
         relatedPivotKey: string,
         parentKey?: string,
@@ -1331,7 +1326,7 @@ export abstract class Model<
         return new MorphToManyRelation(
             this,
             related,
-            throughDelegate,
+            throughTable,
             morphName,
             relatedPivotKey,
             parentKey ?? constructor.getPrimaryKey(),

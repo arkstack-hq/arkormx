@@ -10,7 +10,9 @@ import {
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { Model } from '../../src'
 import type { DatabaseAdapter } from '../../src'
+import { DB } from '../../src'
 import { RuntimeModuleLoader } from '../../src/helpers/runtime-module-loader'
+import { createCoreClient } from './helpers/core-fixtures'
 
 import { join } from 'node:path'
 import { resolve } from 'node:path'
@@ -43,7 +45,7 @@ afterEach(() => {
 describe('runtime config defaults', () => {
     it('uses a configured global adapter for models without model-specific bindings', () => {
         class RuntimeUser extends Model<'users'> {
-            protected static override delegate = 'users'
+            protected static override table = 'users'
         }
 
         const adapter = { capabilities: {} } as DatabaseAdapter
@@ -55,13 +57,43 @@ describe('runtime config defaults', () => {
         expect(RuntimeUser.getAdapter()).toBe(adapter)
     })
 
+    it('builds a compatibility adapter for models when only a runtime client is configured', async () => {
+        class RuntimeUser extends Model<'users'> {
+            protected static override table = 'users'
+        }
+
+        configureArkormRuntime(createCoreClient())
+
+        const adapter = RuntimeUser.getAdapter()
+
+        expect(adapter).toBeDefined()
+        await expect(adapter?.select({ target: { table: 'users' } }) ?? Promise.resolve([])).resolves.toHaveLength(2)
+    })
+
+    it('builds a compatibility adapter for DB when only a runtime client is configured', async () => {
+        configureArkormRuntime(createCoreClient())
+
+        const adapter = DB.getAdapter()
+
+        expect(adapter).toBeDefined()
+        await expect(adapter?.selectOne({
+            target: { table: 'users' },
+            where: {
+                type: 'comparison',
+                column: 'id',
+                operator: '=',
+                value: 1,
+            },
+        }) ?? Promise.resolve(null)).resolves.toMatchObject({ id: 1 })
+    })
+
     it('binds one adapter to many models centrally', () => {
         class RuntimeUser extends Model<'users'> {
-            protected static override delegate = 'users'
+            protected static override table = 'users'
         }
 
         class RuntimeArticle extends Model<'articles'> {
-            protected static override delegate = 'articles'
+            protected static override table = 'articles'
         }
 
         const adapter = { capabilities: {} } as DatabaseAdapter
@@ -77,7 +109,7 @@ describe('runtime config defaults', () => {
 
     it('runs boot hooks during runtime configuration so adapters can be bound centrally', () => {
         class RuntimeUser extends Model<'users'> {
-            protected static override delegate = 'users'
+            protected static override table = 'users'
         }
 
         const adapter = { capabilities: {} } as DatabaseAdapter

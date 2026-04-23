@@ -5,13 +5,13 @@ import type {
     ArkormDebugHandler,
     ClientResolver,
     GetUserConfig,
+    ModelQuerySchemaLike,
     PaginationCurrentPageResolver,
     PaginationURLDriverFactory,
-    PrismaClientLike,
-    PrismaDelegateLike,
-    PrismaTransactionCallback,
-    PrismaTransactionCapableClient,
-    PrismaTransactionOptions
+    RuntimeClientLike,
+    TransactionCallback,
+    TransactionCapableClient,
+    TransactionOptions
 } from '../types/core'
 import type { DatabaseAdapter } from '../types/adapter'
 
@@ -76,7 +76,8 @@ let runtimeAdapter: DatabaseAdapter | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
 let runtimePaginationCurrentPageResolver: PaginationCurrentPageResolver | undefined
 let runtimeDebugHandler: ArkormDebugHandler | undefined
-const transactionClientStorage = new AsyncLocalStorage<PrismaClientLike>()
+const transactionClientStorage = new AsyncLocalStorage<RuntimeClientLike>()
+const transactionAdapterStorage = new AsyncLocalStorage<DatabaseAdapter>()
 
 const defaultDebugHandler: ArkormDebugHandler = (event) => {
     const prefix = `[arkorm:${event.adapter}] ${event.operation}${event.target ? ` [${event.target}]` : ''}`
@@ -246,13 +247,13 @@ export const resetArkormRuntimeForTests = (): void => {
 }
 
 /**
- * Resolve a Prisma client instance from the provided resolver, which can be either
+ * Resolve a runtime client instance from the provided resolver, which can be either
  * a direct client instance or a function that returns a client instance.
  * 
  * @param resolver 
  * @returns 
  */
-const resolveClient = (resolver: ClientResolver | undefined): PrismaClientLike | undefined => {
+const resolveClient = (resolver: ClientResolver | undefined): RuntimeClientLike | undefined => {
     if (!resolver)
         return undefined
 
@@ -387,13 +388,13 @@ export const getDefaultStubsPath = (): string => {
 }
 
 /**
- * Get the runtime Prisma client. 
+ * Get the runtime compatibility client.
  * This function will trigger the loading of the ArkORM configuration if 
  * it hasn't already been loaded.
  * 
  * @returns 
  */
-export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
+export const getRuntimeClient = (): RuntimeClientLike | undefined => {
     const activeTransactionClient = transactionClientStorage.getStore()
     if (activeTransactionClient)
         return activeTransactionClient
@@ -404,18 +405,31 @@ export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
     return resolveClient(runtimeClientResolver)
 }
 
+/**
+ * @deprecated Use getRuntimeClient instead.
+ */
+export const getRuntimePrismaClient = getRuntimeClient
+
 export const getRuntimeAdapter = (): DatabaseAdapter | undefined => {
+    const activeTransactionAdapter = transactionAdapterStorage.getStore()
+    if (activeTransactionAdapter)
+        return activeTransactionAdapter
+
     if (!runtimeConfigLoaded)
         loadRuntimeConfigSync()
 
     return runtimeAdapter
 }
 
-export const getActiveTransactionClient = (): PrismaClientLike | undefined => {
+export const getActiveTransactionClient = (): RuntimeClientLike | undefined => {
     return transactionClientStorage.getStore()
 }
 
-export const isTransactionCapableClient = (value: unknown): value is PrismaTransactionCapableClient => {
+export const getActiveTransactionAdapter = (): DatabaseAdapter | undefined => {
+    return transactionAdapterStorage.getStore()
+}
+
+export const isTransactionCapableClient = (value: unknown): value is TransactionCapableClient => {
     if (!value || typeof value !== 'object')
         return false
 
@@ -423,14 +437,32 @@ export const isTransactionCapableClient = (value: unknown): value is PrismaTrans
 }
 
 export const runArkormTransaction = async <TResult> (
-    callback: PrismaTransactionCallback<TResult>,
-    options: PrismaTransactionOptions = {},
+    callback: TransactionCallback<TResult>,
+    options: TransactionOptions = {},
+    preferredAdapter?: DatabaseAdapter,
 ): Promise<TResult> => {
+    const activeTransactionAdapter = transactionAdapterStorage.getStore()
     const activeTransactionClient = transactionClientStorage.getStore()
-    if (activeTransactionClient)
-        return await callback(activeTransactionClient)
+    if (activeTransactionAdapter || activeTransactionClient) {
+        return await callback({
+            adapter: activeTransactionAdapter,
+            client: activeTransactionClient,
+        })
+    }
 
-    const client = getRuntimePrismaClient()
+    const adapter = preferredAdapter ?? getRuntimeAdapter()
+    if (adapter) {
+        return await adapter.transaction(async (transactionAdapter) => {
+            return await transactionAdapterStorage.run(transactionAdapter, async () => {
+                return await callback({
+                    adapter: transactionAdapter,
+                    client: transactionClientStorage.getStore(),
+                })
+            })
+        }, options)
+    }
+
+    const client = getRuntimeClient()
     if (!client)
         throw new ArkormException('Cannot start a transaction without a configured Prisma client.', {
             code: 'CLIENT_NOT_CONFIGURED',
@@ -446,7 +478,7 @@ export const runArkormTransaction = async <TResult> (
 
     return await client.$transaction(async (transactionClient) => {
         return await transactionClientStorage.run(transactionClient, async () => {
-            return await callback(transactionClient)
+            return await callback({ client: transactionClient })
         })
     }, options)
 }
@@ -487,13 +519,13 @@ export const emitRuntimeDebugEvent = (event: ArkormDebugEvent): void => {
 }
 
 /**
- * Check if a given value is a Prisma delegate-like object 
+ * Check if a given value matches Arkorm's query-schema contract
  * by verifying the presence of common delegate methods.
  * 
  * @param value The value to check.
- * @returns True if the value is a Prisma delegate-like object, false otherwise.    
+ * @returns True if the value matches the query-schema contract, false otherwise.
  */
-export const isDelegateLike = (value: unknown): value is PrismaDelegateLike => {
+export const isQuerySchemaLike = (value: unknown): value is ModelQuerySchemaLike => {
     if (!value || typeof value !== 'object')
         return false
 
@@ -502,5 +534,10 @@ export const isDelegateLike = (value: unknown): value is PrismaDelegateLike => {
     return ['findMany', 'findFirst', 'create', 'update', 'delete', 'count']
         .every(method => typeof candidate[method] === 'function')
 }
+
+/**
+ * @deprecated Use isQuerySchemaLike instead.
+ */
+export const isDelegateLike = isQuerySchemaLike
 
 void loadArkormConfig()

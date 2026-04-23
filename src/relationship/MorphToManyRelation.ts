@@ -14,7 +14,7 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
     public constructor(
         private readonly parent: TParent & { getAttribute: (key: string) => unknown },
         private readonly related: RelationshipModelStatic,
-        private readonly throughDelegate: string,
+        private readonly throughTable: string,
         private readonly morphName: string,
         private readonly relatedPivotKey: string,
         private readonly parentKey: string,
@@ -33,7 +33,7 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
         const morphType = (this.parent as { constructor: { name: string } }).constructor.name
         const ids = await this.createRelationTableLoader().selectColumnValues({
             lookup: {
-                table: this.throughDelegate,
+                table: this.throughTable,
                 where: {
                     type: 'group',
                     operator: 'and',
@@ -63,7 +63,7 @@ export class MorphToManyRelation<TParent, TRelated> extends Relation<TRelated> {
         return {
             type: 'morphToMany',
             relatedModel: this.related,
-            throughTable: this.throughDelegate,
+            throughTable: this.throughTable,
             morphName: this.morphName,
             morphIdColumn: `${this.morphName}Id`,
             morphTypeColumn: `${this.morphName}Type`,

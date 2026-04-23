@@ -24,7 +24,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
     public constructor(
         private readonly parent: TParent & { getAttribute: (key: string) => unknown },
         private readonly related: RelationshipModelStatic,
-        private readonly throughDelegate: string,
+        private readonly throughTable: string,
         private readonly foreignPivotKey: string,
         private readonly relatedPivotKey: string,
         private readonly parentKey: string,
@@ -260,7 +260,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
 
     private buildPivotTarget (): { table: string, primaryKey: string } {
         return {
-            table: this.throughDelegate,
+            table: this.throughTable,
             primaryKey: this.relatedPivotKey,
         }
     }
@@ -805,7 +805,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
         const parentValue = this.resolveParentPivotValue()
 
         return await this.createRelationTableLoader().selectRows({
-            table: this.throughDelegate,
+            table: this.throughTable,
             where: this.buildPivotWhere(parentValue),
             columns: this.getPivotColumnSelection().map(column => ({ column })),
         })
@@ -832,7 +832,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
         return {
             type: 'belongsToMany',
             relatedModel: this.related,
-            throughTable: this.throughDelegate,
+            throughTable: this.throughTable,
             foreignPivotKey: this.foreignPivotKey,
             relatedPivotKey: this.relatedPivotKey,
             parentKey: this.parentKey,

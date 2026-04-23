@@ -245,7 +245,7 @@ export class User extends Model<'user'> {
     declare isActive: number
     declare createdAt: Date
 
-    protected static override delegate = 'users'
+    protected static override table = 'users'
     protected override casts = {
         isActive: 'boolean',
         meta: 'json',
@@ -300,7 +300,7 @@ export class User extends Model<'user'> {
 }
 
 export class Profile extends Model {
-    protected static override delegate = 'profiles'
+    protected static override table = 'profiles'
 
     public user () {
         return this.belongsTo(User, 'userId')
@@ -312,7 +312,7 @@ export class Profile extends Model {
 }
 
 export class Post extends Model {
-    protected static override delegate = 'posts'
+    protected static override table = 'posts'
 
     public user () {
         return this.belongsTo(User, 'userId')
@@ -324,15 +324,15 @@ export class Post extends Model {
 }
 
 export class Role extends Model {
-    protected static override delegate = 'roles'
+    protected static override table = 'roles'
 }
 
 export class Image extends Model {
-    protected static override delegate = 'images'
+    protected static override table = 'images'
 }
 
 export class Comment extends Model {
-    protected static override delegate = 'comments'
+    protected static override table = 'comments'
 
     public user () {
         return this.belongsTo(User, 'commentableId', 'id')
@@ -340,11 +340,11 @@ export class Comment extends Model {
 }
 
 export class Tag extends Model {
-    protected static override delegate = 'tags'
+    protected static override table = 'tags'
 }
 
 export class Article extends Model<'article'> {
-    protected static override delegate = 'articles'
+    protected static override table = 'articles'
     protected static override softDeletes = true
 }
 
@@ -352,7 +352,7 @@ export class UserWithAttributeObjects extends Model<'user'> {
     declare id: number
     declare isActive: number
 
-    protected static override delegate = 'users'
+    protected static override table = 'users'
     protected override casts = {
         isActive: 'boolean',
     } as const
