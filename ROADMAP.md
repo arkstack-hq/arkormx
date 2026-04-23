@@ -149,7 +149,7 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] Remove Prisma-shaped generic constraints from core model and query types
 - [x] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
 - [x] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
-- [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
+- [x] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [ ] Complete adapter-level relation load execution for the Kysely path
 - [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
 - [ ] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
@@ -161,7 +161,7 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 Success criteria:
 
 - Arkorm no longer depends on Prisma delegate semantics in its core runtime or public typing model
-- adapter-first execution is the only primary runtime path for new code
+- adapter-first execution is the only primary runtime path for new code, including relation execution fallback paths
 - Prisma support remains only as a compatibility adapter, not as a shaping abstraction for core internals
 - `next` can merge into `main` as the fully completed adapter-first architecture
 

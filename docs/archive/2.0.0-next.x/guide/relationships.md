@@ -426,6 +426,12 @@ modifications inside `whereHas(...)` callbacks are not compiled into adapter
 relation specs and now fail fast instead of silently falling back to generic
 in-memory relation execution.
 
+The remaining generic relation execution paths, including constrained eager
+loading and `Model.load(...)`, run through Arkorm's adapter-backed relation
+loaders rather than the deprecated delegate runtime APIs. Adapter feature parity
+is still an active migration task, but relation execution itself no longer
+depends on `Model.getDelegate()`.
+
 ## Direct relation execution
 
 ```ts
