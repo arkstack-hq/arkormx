@@ -1066,6 +1066,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      */
     public async get (): Promise<ArkormCollection<TModel>> {
         const useAdapterRelationFeatures = this.canExecuteRelationFeaturesInAdapter()
+        const useCompatibilityRelationFallback = this.shouldUseCompatibilityRelationFallback(useAdapterRelationFeatures)
         const relationCache: RelationResultCache = new WeakMap()
         const rows = await this.executeReadRows()
         const normalizedRows = this.randomOrderEnabled
@@ -1074,7 +1075,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const models = await this.model.hydrateManyRetrieved(normalizedRows as Parameters<ModelStatic<TModel, TDelegate>['hydrateManyRetrieved']>[0])
 
         let filteredModels = models
-        if (this.hasRelationFilters() && !useAdapterRelationFeatures) {
+        if (this.hasRelationFilters() && useCompatibilityRelationFallback) {
             if (this.hasOrRelationFilters() && this.hasBaseWhereConstraints()) {
                 const baseIds = new Set(models
                     .map(model => this.getModelId(model))
@@ -1090,7 +1091,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             }
         }
 
-        if (this.hasRelationAggregates() && !useAdapterRelationFeatures)
+        if (this.hasRelationAggregates() && useCompatibilityRelationFallback)
             await this.applyRelationAggregates(filteredModels, relationCache)
 
         await this.eagerLoadModels(filteredModels)
@@ -1105,7 +1106,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns 
      */
     public async first (): Promise<TModel | null> {
-        if ((this.hasRelationFilters() || this.hasRelationAggregates()) && !this.canExecuteRelationFeaturesInAdapter()) {
+        if (this.shouldUseCompatibilityRelationFallback()) {
             const models = await this.get()
 
             return models.all()[0] ?? null
@@ -1679,7 +1680,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns 
      */
     public async count (): Promise<number> {
-        if (this.hasRelationFilters() && !this.canExecuteRelationFeaturesInAdapter())
+        if (this.hasRelationFilters() && this.shouldUseCompatibilityRelationFallback())
             return (await this.get()).all().length
 
         return this.executeReadCount()
@@ -1691,7 +1692,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns
      */
     public async exists (): Promise<boolean> {
-        if (this.hasRelationFilters() && !this.canExecuteRelationFeaturesInAdapter())
+        if (this.hasRelationFilters() && this.shouldUseCompatibilityRelationFallback())
             return (await this.count()) > 0
 
         return await this.executeReadExists()
@@ -1996,7 +1997,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     ): Promise<LengthAwarePaginator<TModel>> {
         const currentPage = this.resolvePaginationPage(page, options)
 
-        if ((this.hasRelationFilters() || this.hasRelationAggregates()) && !this.canExecuteRelationFeaturesInAdapter()) {
+        if (this.shouldUseCompatibilityRelationFallback()) {
             const pageSize = Math.max(1, perPage)
             const all = await this.get()
             const rows = all.all()
@@ -2030,7 +2031,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     ): Promise<Paginator<TModel>> {
         const currentPage = this.resolvePaginationPage(page, options)
 
-        if ((this.hasRelationFilters() || this.hasRelationAggregates()) && !this.canExecuteRelationFeaturesInAdapter()) {
+        if (this.shouldUseCompatibilityRelationFallback()) {
             const pageSize = Math.max(1, perPage)
             const all = await this.get()
             const rows = all.all()
@@ -2974,6 +2975,54 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const aggregatesSupported = !this.hasRelationAggregates() || this.canExecuteRelationAggregatesInAdapter()
 
         return filtersSupported && aggregatesSupported
+    }
+
+    private shouldUseCompatibilityRelationFallback (useAdapterRelationFeatures = this.canExecuteRelationFeaturesInAdapter()): boolean {
+        if ((!this.hasRelationFilters() && !this.hasRelationAggregates()) || useAdapterRelationFeatures)
+            return false
+
+        const adapter = this.adapter
+        const sqlRelationFiltersRejected = this.hasUncompilableSqlRelationFilters(adapter)
+        const sqlRelationAggregatesRejected = this.hasUncompilableSqlRelationAggregates(adapter)
+
+        if (sqlRelationFiltersRejected || sqlRelationAggregatesRejected) {
+            throw new UnsupportedAdapterFeatureException('Relation filters or aggregates could not be compiled into Arkorm adapter specifications for the current query shape.', {
+                operation: 'query.relations',
+                model: this.model.name,
+                meta: {
+                    relationFilters: this.hasRelationFilters(),
+                    relationAggregates: this.hasRelationAggregates(),
+                },
+            })
+        }
+
+        return true
+    }
+
+    private hasUncompilableSqlRelationFilters (adapter?: DatabaseAdapter): boolean {
+        if (!this.hasRelationFilters() || adapter?.capabilities?.relationFilters !== true)
+            return false
+
+        return this.relationFilters.some((filter) => {
+            const metadata = this.model.getRelationMetadata(filter.relation)
+            if (!this.isSqlRelationFeatureMetadata(metadata))
+                return false
+
+            return this.tryBuildRelationConstraintWhere(filter.relation, filter.callback) === null
+        })
+    }
+
+    private hasUncompilableSqlRelationAggregates (adapter?: DatabaseAdapter): boolean {
+        if (!this.hasRelationAggregates() || adapter?.capabilities?.relationAggregates !== true)
+            return false
+
+        return this.relationAggregates.some((aggregate) => {
+            const metadata = this.model.getRelationMetadata(aggregate.relation)
+            if (!this.isSqlRelationFeatureMetadata(metadata))
+                return false
+
+            return this.tryBuildRelationConstraintWhere(aggregate.relation) === null
+        })
     }
 
     private tryBuildRelationFilterSpecs (): RelationFilterSpec[] | null {

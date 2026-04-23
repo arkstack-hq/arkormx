@@ -689,6 +689,7 @@ Started in code:
 - Prisma compatibility adapter/query-schema fallback is now centralized in `src/helpers/runtime-compatibility.ts`, so `Model` and `DB` no longer each rebuild that fallback path independently
 - deprecated `Model.getDelegate()` resolution now delegates to the compatibility helper layer instead of probing runtime clients directly inside `Model`
 - relation internals that were already table-backed now use `throughTable` terminology instead of `throughDelegate` across `Model` and the through/pivot relation classes
+- SQL-capable adapters no longer silently fall back to generic in-memory relation filter or aggregate execution when the relation query shape cannot be compiled into Arkorm relation specs; those cases now fail fast with an unsupported-adapter error while compatibility adapters retain the generic path
 - `Model` now documents adapter binding as its primary runtime API, while `setClient(...)`, `getDelegate(...)`, and `delegate` are explicitly treated as compatibility-only 2.x transition members rather than part of the primary surface
 - `Model.setClient(...)` and direct delegate-map helpers are now explicitly documented as compatibility-only migration paths rather than supported runtime bootstrap APIs
 - adapter-backed runtime queries no longer rely on `Model.getDelegate()`; the method is isolated to explicit compatibility callers and dedicated deprecation/error coverage

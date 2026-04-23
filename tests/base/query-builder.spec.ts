@@ -595,6 +595,28 @@ describe('QueryBuilder', () => {
         expect(withAggregates.getAttribute('postsMaxId')).toBe(101)
     })
 
+    it('does not silently fall back for un-compilable relation filters on SQL-capable adapters', async () => {
+        const adapter = createPrismaDatabaseAdapter(createCoreClient())
+
+        Object.defineProperty(adapter, 'capabilities', {
+            value: {
+                ...(adapter.capabilities ?? {}),
+                relationFilters: true,
+            },
+            configurable: true,
+        })
+
+        User.setAdapter(adapter)
+
+        try {
+            await expect(
+                User.query().whereHas('posts', query => query.limit(1)).get()
+            ).rejects.toBeInstanceOf(UnsupportedAdapterFeatureException)
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
     it('supports key-based find and local scopes', async () => {
         const byEmail = await User.query().find('jane@example.com', 'email')
         expect(byEmail?.getAttribute('id')).toBe(1)

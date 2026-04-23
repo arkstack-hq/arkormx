@@ -415,6 +415,12 @@ await User.query().withExists('posts').get();
 await User.query().withSum('posts', 'views').get();
 ```
 
+On SQL-backed adapters, keep relation filter callbacks predicate-focused. Query
+shapes such as nested eager loading, pagination, or other non-filter
+modifications inside `whereHas(...)` callbacks are not compiled into adapter
+relation specs and now fail fast instead of silently falling back to generic
+in-memory relation execution.
+
 ## Direct relation execution
 
 ```ts
