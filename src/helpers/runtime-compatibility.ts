@@ -1,5 +1,5 @@
 import type { DatabaseAdapter } from '../types/adapter'
-import type { ModelQuerySchemaLike } from '../types/core'
+import type { ModelQuerySchemaLike, RuntimeClientLike } from '../types/core'
 
 import { createPrismaCompatibilityAdapter } from '../adapters/PrismaDatabaseAdapter'
 import { MissingDelegateException } from '../Exceptions/MissingDelegateException'
@@ -9,7 +9,11 @@ const isObjectLike = (value: unknown): value is Record<string, unknown> => {
     return Boolean(value) && typeof value === 'object'
 }
 
-const getCompatibilitySources = (preferredClient?: Record<string, unknown>): Array<Record<string, unknown> | undefined> => {
+const isCompatibilityClient = (value: unknown): value is RuntimeClientLike => {
+    return Boolean(value) && typeof value === 'object'
+}
+
+const getCompatibilitySources = (preferredClient?: RuntimeClientLike): Array<RuntimeClientLike | undefined> => {
     const activeTransactionClient = getActiveTransactionClient()
     const runtimeClient = getRuntimeClient()
 
@@ -18,9 +22,9 @@ const getCompatibilitySources = (preferredClient?: Record<string, unknown>): Arr
         : [preferredClient, runtimeClient]
 }
 
-export const getRuntimeCompatibilityAdapter = (preferredClient?: Record<string, unknown>): DatabaseAdapter | undefined => {
+export const getRuntimeCompatibilityAdapter = (preferredClient?: RuntimeClientLike): DatabaseAdapter | undefined => {
     const client = getCompatibilitySources(preferredClient)
-        .find(source => isObjectLike(source))
+        .find(source => isCompatibilityClient(source))
 
     if (!client)
         return undefined
@@ -30,10 +34,15 @@ export const getRuntimeCompatibilityAdapter = (preferredClient?: Record<string, 
 
 export const resolveRuntimeCompatibilityQuerySchema = (
     candidates: string[],
-    preferredClient?: Record<string, unknown>,
+    preferredClient?: RuntimeClientLike,
 ): ModelQuerySchemaLike | undefined => {
     return getCompatibilitySources(preferredClient)
-        .flatMap(source => candidates.map(candidate => source?.[candidate]))
+        .flatMap((source) => {
+            if (!isObjectLike(source))
+                return []
+
+            return candidates.map(candidate => source[candidate])
+        })
         .find(candidate => isQuerySchemaLike(candidate)) as ModelQuerySchemaLike | undefined
 }
 
@@ -41,7 +50,7 @@ export const resolveRuntimeCompatibilityQuerySchemaOrThrow = <TSchema extends Mo
     key: string,
     candidates: string[],
     modelName: string,
-    preferredClient?: Record<string, unknown>,
+    preferredClient?: RuntimeClientLike,
 ): TSchema => {
     const resolved = resolveRuntimeCompatibilityQuerySchema(candidates, preferredClient)
 
