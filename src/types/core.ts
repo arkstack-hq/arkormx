@@ -69,6 +69,10 @@ export interface AdapterBindableModel {
 }
 
 export interface ArkormBootContext {
+    client?: RuntimeClientLike
+    /**
+     * @deprecated Use client instead.
+     */
     prisma?: RuntimeClientLike
     bindAdapter: (adapter: DatabaseAdapter, models: AdapterBindableModel[]) => DatabaseAdapter
 }
@@ -98,7 +102,12 @@ export type ArkormDebugHandler = (event: ArkormDebugEvent) => void
 
 export interface ArkormConfig {
     /**
-     * @property prisma Optional Prisma client instance or resolver used for compatibility, CLI flows, and Prisma-backed transactions.
+    * @property client Optional runtime client instance or resolver used for compatibility mode, CLI flows, and client-backed transactions.
+    */
+    client?: ClientResolver
+    /**
+    * @deprecated Use client instead.
+    * @property prisma Optional Prisma client instance or resolver used for compatibility mode, CLI flows, and Prisma-backed transactions.
      */
     prisma?: ClientResolver
     /**

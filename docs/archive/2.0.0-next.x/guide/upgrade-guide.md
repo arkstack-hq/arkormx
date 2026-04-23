@@ -52,7 +52,7 @@ import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
 const prisma = new PrismaClient();
 
 export default defineConfig({
-  prisma: () => prisma,
+  client: () => prisma,
   adapter: createPrismaDatabaseAdapter(prisma),
 });
 ```
@@ -96,7 +96,7 @@ If your 1.x app already uses Prisma heavily, the lowest-risk migration is:
 
 1. Keep Prisma.
 2. Wrap it with `createPrismaDatabaseAdapter(...)`.
-3. Move the app onto `defineConfig({ adapter, prisma })`.
+3. Move the app onto `defineConfig({ adapter, client })` or keep `prisma` only as a temporary compatibility alias.
 4. Keep parity tests passing.
 5. Introduce SQL-backed adapters later.
 
@@ -206,7 +206,7 @@ import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
 const prisma = new PrismaClient();
 
 export default defineConfig({
-  prisma: () => prisma,
+  client: () => prisma,
   adapter: createPrismaDatabaseAdapter(prisma),
 });
 ```
@@ -239,7 +239,7 @@ Use this when you want the smallest behavioral jump.
 
 1. Upgrade to 2.x.
 2. Keep Prisma.
-3. Replace old client bootstrap with `defineConfig({ prisma, adapter: createPrismaDatabaseAdapter(prisma) })`.
+3. Replace old client bootstrap with `defineConfig({ client: () => prisma, adapter: createPrismaDatabaseAdapter(prisma) })`.
 4. Remove deprecated `Model.setClient(...)` usage and any direct delegate-map bootstrap.
 5. Update typing gradually.
 
