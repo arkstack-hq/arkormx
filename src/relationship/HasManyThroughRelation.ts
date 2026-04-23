@@ -15,7 +15,7 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
     public constructor(
         private readonly parent: TParent & { getAttribute: (key: string) => unknown },
         private readonly related: RelationshipModelStatic,
-        private readonly throughDelegate: string,
+        private readonly throughTable: string,
         private readonly firstKey: string,
         private readonly secondKey: string,
         private readonly localKey: string,
@@ -33,7 +33,7 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
         const localValue = this.parent.getAttribute(this.localKey)
         const keys = await this.createRelationTableLoader().selectColumnValues({
             lookup: {
-                table: this.throughDelegate,
+                table: this.throughTable,
                 where: {
                     type: 'comparison',
                     column: this.firstKey,
@@ -51,7 +51,7 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
         return {
             type: 'hasManyThrough',
             relatedModel: this.related,
-            throughTable: this.throughDelegate,
+            throughTable: this.throughTable,
             firstKey: this.firstKey,
             secondKey: this.secondKey,
             localKey: this.localKey,

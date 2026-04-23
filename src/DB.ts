@@ -1,23 +1,15 @@
 import type { AdapterTransactionContext, DatabaseAdapter } from './types/adapter'
-import { PrismaDatabaseAdapter, createPrismaCompatibilityAdapter } from './adapters/PrismaDatabaseAdapter'
-import type { PrismaDelegateLike, SoftDeleteConfig } from './types/core'
-import { getActiveTransactionClient, getRuntimeAdapter, getRuntimePrismaClient, getUserConfig } from './helpers/runtime-config'
+import { PrismaDatabaseAdapter } from './adapters/PrismaDatabaseAdapter'
+import type { ModelQuerySchemaLike, SoftDeleteConfig } from './types/core'
+import { getRuntimeAdapter, getUserConfig } from './helpers/runtime-config'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
+import { getRuntimeCompatibilityAdapter } from './helpers/runtime-compatibility'
 
 import { ArkormException } from './Exceptions/ArkormException'
 import type { DatabaseTableOptions } from './types/db'
 import type { ModelMetadata } from './types/metadata'
 import type { ModelStatic } from './types/ModelStatic'
 import { QueryBuilder } from './QueryBuilder'
-
-const noopDelegate: PrismaDelegateLike = {
-    findMany: async () => [],
-    findFirst: async () => null,
-    create: async () => ({}),
-    update: async () => ({}),
-    delete: async () => ({}),
-    count: async () => 0,
-}
 
 const defaultSoftDeleteConfig: SoftDeleteConfig = {
     enabled: false,
@@ -37,18 +29,14 @@ export class DB {
     }
 
     public static getAdapter (): DatabaseAdapter | undefined {
-        if (this.adapter)
-            return this.adapter
-
         const runtimeAdapter = getRuntimeAdapter()
         if (runtimeAdapter)
             return runtimeAdapter
 
-        const client = getActiveTransactionClient() ?? getRuntimePrismaClient()
-        if (!client || typeof client !== 'object')
-            return undefined
+        if (this.adapter)
+            return this.adapter
 
-        return createPrismaCompatibilityAdapter(client)
+        return getRuntimeCompatibilityAdapter()
     }
 
     public getAdapter (): DatabaseAdapter | undefined {
@@ -58,14 +46,14 @@ export class DB {
     public static table<TRow extends Record<string, unknown> = Record<string, unknown>> (
         table: string,
         options: DatabaseTableOptions = {},
-    ): QueryBuilder<TRow, PrismaDelegateLike> {
+    ): QueryBuilder<TRow, ModelQuerySchemaLike> {
         return new DB().table<TRow>(table, options)
     }
 
     public table<TRow extends Record<string, unknown> = Record<string, unknown>> (
         table: string,
         options: DatabaseTableOptions = {},
-    ): QueryBuilder<TRow, PrismaDelegateLike> {
+    ): QueryBuilder<TRow, ModelQuerySchemaLike> {
         return DB.createTableModel<TRow>(table, options, this.getAdapter()).query()
     }
 
@@ -96,7 +84,7 @@ export class DB {
         table: string,
         options: DatabaseTableOptions,
         adapter?: DatabaseAdapter,
-    ): ModelStatic<TRow, PrismaDelegateLike> {
+    ): ModelStatic<TRow, ModelQuerySchemaLike> {
         const primaryKey = options.primaryKey ?? 'id'
         const resolvedAdapter = options.adapter ?? adapter ?? DB.getAdapter()
         const persistedMetadata = DB.resolvePersistedTableMetadata(table, options, resolvedAdapter)
@@ -130,8 +118,8 @@ export class DB {
         }
 
         const modelStatic = {
-            query: (): QueryBuilder<TRow, PrismaDelegateLike> => new QueryBuilder<TRow, PrismaDelegateLike>(
-                modelStatic as unknown as ModelStatic<TRow, PrismaDelegateLike>,
+            query: (): QueryBuilder<TRow, ModelQuerySchemaLike> => new QueryBuilder<TRow, ModelQuerySchemaLike>(
+                modelStatic as unknown as ModelStatic<TRow, ModelQuerySchemaLike>,
                 modelStatic.getAdapter(),
             ),
             hydrate: (attributes: Record<string, unknown>): TRow => ({ ...attributes }) as TRow,
@@ -141,7 +129,6 @@ export class DB {
             getAdapter: (): DatabaseAdapter | undefined => resolvedAdapter,
             getColumnMap: (): Record<string, string> => ({ ...columns }),
             getColumnName: (attribute: string): string => columns[attribute] ?? attribute,
-            getDelegate: (): PrismaDelegateLike => noopDelegate,
             getModelMetadata: (): ModelMetadata => buildMetadata(),
             getPrimaryKey: (): string => primaryKey,
             getRelationMetadata: (): null => null,
@@ -150,7 +137,7 @@ export class DB {
             getTable: (): string => table,
         }
 
-        return modelStatic as unknown as ModelStatic<TRow, PrismaDelegateLike>
+        return modelStatic as unknown as ModelStatic<TRow, ModelQuerySchemaLike>
     }
 
     private static resolvePersistedTableMetadata (

@@ -47,7 +47,7 @@ describe('Exceptions', () => {
 
     it('throws MissingDelegateException with delegate resolution context', async () => {
         class Ghost extends Model<'ghost'> {
-            protected static override delegate = 'ghosts'
+            protected static override table = 'ghosts'
         }
 
         const thrown = await Ghost.query().get().catch(error => error)

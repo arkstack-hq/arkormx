@@ -139,6 +139,30 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] Seeder classes and execution helpers
 - [x] Migration file generation and schema builder
 
+### Phase 7 — Final Transition
+
+- [ ] Remove delegate-first runtime APIs from the primary `Model` surface
+- [ ] Remove `Model.setClient(...)` and direct delegate-map bootstrapping from the supported runtime path
+- [ ] Replace `Model.getDelegate()` usage in runtime code with adapter-owned execution paths only
+- [ ] Remove Prisma-shaped generic constraints from core model and query types
+- [ ] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
+- [ ] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
+- [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
+- [ ] Complete adapter-level relation load execution for the Kysely path
+- [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
+- [ ] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
+- [ ] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
+- [ ] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
+- [ ] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
+- [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
+
+Success criteria:
+
+- Arkorm no longer depends on Prisma delegate semantics in its core runtime or public typing model
+- adapter-first execution is the only primary runtime path for new code
+- Prisma support remains only as a compatibility adapter, not as a shaping abstraction for core internals
+- `next` can merge into `main` as the fully completed adapter-first architecture
+
 ### Out of scope
 
 Lower priority until global scopes, events, and transactions are stable:

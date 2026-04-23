@@ -17,8 +17,8 @@ import type {
     EagerLoadMap,
     InsertManySpec,
     InsertSpec,
+    ModelQuerySchemaLike,
     PaginationOptions,
-    PrismaDelegateLike,
     QueryComparisonCondition,
     QueryCondition,
     QueryOrderBy,
@@ -61,7 +61,7 @@ type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<Rela
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export class QueryBuilder<TModel, TDelegate extends PrismaDelegateLike = PrismaDelegateLike> {
+export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike> {
     private queryWhere?: QueryCondition
     private legacyWhere?: DelegateWhere<TDelegate>
     private queryRelationLoads?: RelationLoadPlan[]

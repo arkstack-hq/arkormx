@@ -1,11 +1,11 @@
-import { configureArkormRuntime, defineConfig, isDelegateLike } from './runtime-config'
+import { configureArkormRuntime, defineConfig, isQuerySchemaLike } from './runtime-config'
 import { createPrismaCompatibilityAdapter, createPrismaDatabaseAdapter, type PrismaDelegateNameMapping } from '../adapters/PrismaDatabaseAdapter'
 
-import type { PrismaClientLike, PrismaDelegateLike } from '../types/core'
+import type { ModelQuerySchemaLike, RuntimeClientLike } from '../types/core'
 
-export type PrismaDelegateMap<TClient extends PrismaClientLike> = {
-    [K in keyof TClient as TClient[K] extends PrismaDelegateLike ? K : never]:
-    TClient[K] extends PrismaDelegateLike ? TClient[K] : never
+export type PrismaDelegateMap<TClient extends RuntimeClientLike> = {
+    [K in keyof TClient as TClient[K] extends ModelQuerySchemaLike ? K : never]:
+    TClient[K] extends ModelQuerySchemaLike ? TClient[K] : never
 }
 
 /**
@@ -19,12 +19,12 @@ export type PrismaDelegateMap<TClient extends PrismaClientLike> = {
  * @returns A record of adapted Prisma delegates compatible with ArkORM.
  */
 export function createPrismaAdapter (
-    prisma: PrismaClientLike
-): Record<string, PrismaDelegateLike> {
+    prisma: RuntimeClientLike
+): Record<string, ModelQuerySchemaLike> {
     return Object
         .entries(prisma)
-        .reduce<Record<string, PrismaDelegateLike>>((accumulator, [key, value]) => {
-            if (!isDelegateLike(value))
+        .reduce<Record<string, ModelQuerySchemaLike>>((accumulator, [key, value]) => {
+            if (!isQuerySchemaLike(value))
                 return accumulator
 
             accumulator[key] = value
@@ -44,15 +44,15 @@ export function createPrismaAdapter (
  * @returns A delegate map keyed by Arkormˣ delegate names.
  */
 export function createPrismaDelegateMap (
-    prisma: PrismaClientLike,
+    prisma: RuntimeClientLike,
     mapping: PrismaDelegateNameMapping = {}
-): Record<string, PrismaDelegateLike> {
+): Record<string, ModelQuerySchemaLike> {
     const delegates = createPrismaAdapter(prisma)
 
     if (Object.keys(mapping).length === 0)
         return delegates
 
-    return Object.entries(mapping).reduce<Record<string, PrismaDelegateLike>>((accumulator, [arkormDelegate, prismaDelegate]) => {
+    return Object.entries(mapping).reduce<Record<string, ModelQuerySchemaLike>>((accumulator, [arkormDelegate, prismaDelegate]) => {
         const resolved = delegates[prismaDelegate]
         if (!resolved)
             return accumulator

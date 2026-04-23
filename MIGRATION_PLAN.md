@@ -654,6 +654,44 @@ Success criteria:
 
 - adapter-first setup is the primary documented and tested runtime path
 
+### Phase 7 — Final Transition
+
+Implementation checklist:
+
+- [ ] Remove delegate-first runtime APIs from the primary `Model` surface
+- [ ] Remove `Model.setClient(...)` and direct delegate-map bootstrapping from the supported runtime path
+- [ ] Replace `Model.getDelegate()` usage in runtime code with adapter-owned execution paths only
+- [ ] Remove Prisma-shaped generic constraints from core model and query types
+- [ ] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
+- [ ] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
+- [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
+- [ ] Complete adapter-level relation load execution for the Kysely path
+- [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
+- [ ] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
+- [ ] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
+- [ ] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
+- [ ] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
+- [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
+
+Started in code:
+
+- core query-shape generics now use an adapter-native `ModelQuerySchemaLike` contract in `src/types/core.ts`
+- `Model`, `QueryBuilder`, `ModelStatic`, `DB`, and `src/types/model.ts` now compile against adapter-native core schema types instead of using `PrismaDelegateLike` as their primary generic constraint
+- shared transaction typing now uses neutral `TransactionContext`, `TransactionOptions`, and `RuntimeClientLike` contracts instead of requiring Prisma-named callback types in `Model` and `runtime-config`
+- `Model.transaction()` now prefers adapter-backed transactions and routes transaction-scoped adapters through runtime storage so `Model.query()` and `DB.table()` stay inside the active transaction
+- `src/helpers/runtime-config.ts` and `src/helpers/prisma.ts` now use neutral query-schema/runtime contracts internally, while keeping Prisma compatibility aliases and helper names available during the remainder of Phase 7
+- Prisma compatibility adapter/query-schema fallback is now centralized in `src/helpers/runtime-compatibility.ts`, so `Model` and `DB` no longer each rebuild that fallback path independently
+- deprecated `Model.getDelegate()` resolution now delegates to the compatibility helper layer instead of probing runtime clients directly inside `Model`
+- relation internals that were already table-backed now use `throughTable` terminology instead of `throughDelegate` across `Model` and the through/pivot relation classes
+- `PrismaDelegateLike` currently remains as a deprecated compatibility alias so Prisma-specific adapter and helper code can keep compiling while the rest of Phase 7 is completed
+
+Success criteria:
+
+- Arkorm no longer depends on Prisma delegate semantics in its core runtime or public typing model
+- adapter-first execution is the only primary runtime path for new code
+- Prisma support remains only as a compatibility adapter, not as a shaping abstraction for core internals
+- `next` can merge into `main` as the fully completed adapter-first architecture
+
 ## Compatibility Strategy
 
 During the migration, keep both backends temporarily:

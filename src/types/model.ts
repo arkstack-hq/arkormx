@@ -1,4 +1,4 @@
-import { DelegateCreateData, DelegateRow, DelegateUpdateData, PrismaDelegateLike, PrismaLikeInclude, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, RelationshipModelStatic } from './core'
+import { DelegateCreateData, DelegateRow, DelegateUpdateData, ModelQuerySchemaLike, PrismaDelegateLike, PrismaLikeInclude, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, RelationshipModelStatic } from './core'
 
 import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
@@ -16,7 +16,7 @@ type SingularKey<T extends string> =
 type PluralKey<T extends string> = `${SingularKey<T>}s`
 
 type PrismaClientDelegates = {
-    [TKey in keyof PrismaClient as PrismaClient[TKey] extends PrismaDelegateLike ? TKey : never]: PrismaClient[TKey]
+    [TKey in keyof PrismaClient as PrismaClient[TKey] extends ModelQuerySchemaLike ? TKey : never]: PrismaClient[TKey]
 }
 
 type DelegateFromPrismaClient<TKey extends string> =
@@ -77,7 +77,7 @@ export type AttributeCreateInput<TAttributes extends Record<string, unknown>> = 
 
 export type AttributeUpdateInput<TAttributes extends Record<string, unknown>> = AtLeastOne<Partial<TAttributes>>
 
-export interface AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> extends PrismaDelegateLike {
+export interface AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> extends ModelQuerySchemaLike {
     findMany: (args?: {
         where?: AttributeWhereInput<TAttributes>
         include?: PrismaLikeInclude
@@ -113,24 +113,24 @@ export interface AttributeSchemaDelegate<TAttributes extends Record<string, unkn
 }
 
 export type DelegateForModelSchema<
-    TSchema extends PrismaDelegateLike | Record<string, unknown> | string,
+    TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string,
     TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
 > =
-    TSchema extends PrismaDelegateLike
+    TSchema extends ModelQuerySchemaLike
     ? TSchema
     : TSchema extends string
-    ? DelegateFromPrismaClient<TSchema> extends PrismaDelegateLike
+    ? DelegateFromPrismaClient<TSchema> extends ModelQuerySchemaLike
     ? DelegateFromPrismaClient<TSchema>
-    : PrismaDelegateLike
+    : ModelQuerySchemaLike
     : AttributeSchemaDelegate<TAttributes>
 
-export type ModelAttributesOf<TSchema extends PrismaDelegateLike | Record<string, unknown> | string> =
-    TSchema extends PrismaDelegateLike
+export type ModelAttributesOf<TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string> =
+    TSchema extends ModelQuerySchemaLike
     ? DelegateRow<TSchema> extends Record<string, unknown>
     ? DelegateRow<TSchema>
     : Record<string, any>
     : TSchema extends string
-    ? DelegateFromPrismaClient<TSchema> extends PrismaDelegateLike
+    ? DelegateFromPrismaClient<TSchema> extends ModelQuerySchemaLike
     ? DelegateRow<DelegateFromPrismaClient<TSchema>> extends Record<string, unknown>
     ? DelegateRow<DelegateFromPrismaClient<TSchema>>
     : Record<string, any>
@@ -190,14 +190,14 @@ export type ModelAttributeValue<
             ? TAttributes[TKey]
             : unknown
 
-export type ModelCreateData<TModel, TDelegate extends PrismaDelegateLike> =
+export type ModelCreateData<TModel, TDelegate extends ModelQuerySchemaLike> =
     TModel extends Model<any, infer TAttributes>
     ? TDelegate extends AttributeSchemaDelegate<TAttributes>
     ? AttributeCreateInput<TAttributes>
     : DelegateCreateData<TDelegate>
     : DelegateCreateData<TDelegate>
 
-export type ModelUpdateData<TModel, TDelegate extends PrismaDelegateLike> =
+export type ModelUpdateData<TModel, TDelegate extends ModelQuerySchemaLike> =
     TModel extends Model<any, infer TAttributes>
     ? TDelegate extends AttributeSchemaDelegate<TAttributes>
     ? AttributeUpdateInput<TAttributes>
