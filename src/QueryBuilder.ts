@@ -2187,9 +2187,72 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         })
     }
 
+    /**
+     * Attempts to build relation load plans for the adapter based on the eager loads specified in the query builder.
+     * 
+     * @returns an array of RelationLoadPlan if successful, or null if the eager loads contain constraints that cannot be represented in a way compatible with adapter-based loading.
+     */
+    private tryBuildAdapterRelationLoadPlans (): RelationLoadPlan[] | null {
+        const entries = Object.entries(this.eagerLoads)
+        if (entries.length === 0)
+            return []
+
+        type RelationLoadTreeNode = {
+            constraint?: EagerLoadConstraint
+            children: Map<string, RelationLoadTreeNode>
+        }
+
+        const tree = new Map<string, RelationLoadTreeNode>()
+
+        for (const [path, constraint] of entries) {
+            if (constraint)
+                return null
+
+            const segments = path
+                .split('.')
+                .map(segment => segment.trim())
+                .filter(segment => segment.length > 0)
+
+            if (segments.length === 0)
+                continue
+
+            let current = tree
+            for (const segment of segments) {
+                const existing = current.get(segment) ?? { constraint: undefined, children: new Map<string, RelationLoadTreeNode>() }
+                current.set(segment, existing)
+                current = existing.children
+            }
+        }
+
+        const toPlans = (nodes: Map<string, RelationLoadTreeNode>): RelationLoadPlan[] => {
+            return Array.from(nodes.entries()).map(([relation, node]) => {
+                return {
+                    relation,
+                    relationLoads: node.children.size > 0
+                        ? toPlans(node.children)
+                        : undefined,
+                }
+            })
+        }
+
+        return toPlans(tree)
+    }
+
     private async eagerLoadModels (models: TModel[]): Promise<void> {
         if (models.length === 0 || Object.keys(this.eagerLoads).length === 0)
             return
+
+        const adapter = this.adapter
+        const relationLoads = this.tryBuildAdapterRelationLoadPlans()
+        if (adapter?.capabilities?.relationLoads === true && typeof adapter.loadRelations === 'function' && relationLoads !== null) {
+            await adapter.loadRelations({
+                target: this.buildQueryTarget(),
+                models,
+                relations: relationLoads,
+            })
+
+            return
+        }
 
         await new SetBasedEagerLoader(
             models as unknown as Array<{
