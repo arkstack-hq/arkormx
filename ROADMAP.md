@@ -144,8 +144,8 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] Remove delegate-first runtime APIs from the primary `Model` surface
 - [x] Remove `Model.setClient(...)` and direct delegate-map bootstrapping from the supported runtime path
 - [x] Replace `Model.getDelegate()` usage in runtime code with adapter-owned execution paths only
-- [ ] Remove Prisma-shaped generic constraints from core model and query types
-- [ ] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
+- [x] Remove Prisma-shaped generic constraints from core model and query types
+- [x] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
 - [ ] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
 - [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [ ] Complete adapter-level relation load execution for the Kysely path

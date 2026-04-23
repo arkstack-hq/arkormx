@@ -303,49 +303,104 @@ type FallbackIfUnknownOrNever<TValue, TFallback> =
     ? TFallback
     : TValue
 
-export type DelegateFindManyArgs<TSchema extends ModelQuerySchemaLike> =
+export type QuerySchemaFindManyArgs<TSchema extends ModelQuerySchemaLike> =
     FallbackIfUnknownOrNever<NonNullable<Parameters<TSchema['findMany']>[0]>, PrismaFindManyArgsLike>
 
-export type DelegateWhere<TSchema extends ModelQuerySchemaLike> =
-    DelegateFindManyArgs<TSchema> extends { where?: infer TWhere }
+export type QuerySchemaWhere<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { where?: infer TWhere }
     ? FallbackIfUnknownOrNever<TWhere, PrismaLikeWhereInput>
     : PrismaLikeWhereInput
 
-export type DelegateInclude<TSchema extends ModelQuerySchemaLike> =
-    DelegateFindManyArgs<TSchema> extends { include?: infer TInclude }
+export type QuerySchemaInclude<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { include?: infer TInclude }
     ? FallbackIfUnknownOrNever<TInclude, PrismaLikeInclude>
     : PrismaLikeInclude
 
-export type DelegateOrderBy<TSchema extends ModelQuerySchemaLike> =
-    DelegateFindManyArgs<TSchema> extends { orderBy?: infer TOrderBy }
+export type QuerySchemaOrderBy<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { orderBy?: infer TOrderBy }
     ? FallbackIfUnknownOrNever<TOrderBy, PrismaLikeOrderBy>
     : PrismaLikeOrderBy
 
-export type DelegateSelect<TSchema extends ModelQuerySchemaLike> =
-    DelegateFindManyArgs<TSchema> extends { select?: infer TSelect }
+export type QuerySchemaSelect<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { select?: infer TSelect }
     ? FallbackIfUnknownOrNever<TSelect, PrismaLikeSelect>
     : PrismaLikeSelect
 
-export type DelegateCreateData<TSchema extends ModelQuerySchemaLike> =
+export type QuerySchemaCreateData<TSchema extends ModelQuerySchemaLike> =
     Parameters<TSchema['create']>[0] extends { data: infer TData }
     ? TData
     : Record<string, unknown>
 
-export type DelegateUpdateArgs<TSchema extends ModelQuerySchemaLike> = Parameters<TSchema['update']>[0]
+export type QuerySchemaUpdateArgs<TSchema extends ModelQuerySchemaLike> = Parameters<TSchema['update']>[0]
 
-export type DelegateUpdateData<TSchema extends ModelQuerySchemaLike> =
-    DelegateUpdateArgs<TSchema> extends { data: infer TData }
+export type QuerySchemaUpdateData<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaUpdateArgs<TSchema> extends { data: infer TData }
     ? FallbackIfUnknownOrNever<TData, Record<string, unknown>>
     : Record<string, unknown>
 
-export type DelegateUniqueWhere<TSchema extends ModelQuerySchemaLike> =
-    DelegateUpdateArgs<TSchema> extends { where: infer TWhere }
+export type QuerySchemaUniqueWhere<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaUpdateArgs<TSchema> extends { where: infer TWhere }
     ? FallbackIfUnknownOrNever<TWhere, Record<string, unknown>>
     : Record<string, unknown>
 
-export type DelegateRow<TSchema extends ModelQuerySchemaLike> = Exclude<Awaited<ReturnType<TSchema['findFirst']>>, null>
+export type QuerySchemaRow<TSchema extends ModelQuerySchemaLike> = Exclude<Awaited<ReturnType<TSchema['findFirst']>>, null>
 
-export type DelegateRows<TSchema extends ModelQuerySchemaLike> = Awaited<ReturnType<TSchema['findMany']>>
+export type QuerySchemaRows<TSchema extends ModelQuerySchemaLike> = Awaited<ReturnType<TSchema['findMany']>>
+
+/**
+ * @deprecated Use QuerySchemaFindManyArgs instead.
+ */
+export type DelegateFindManyArgs<TSchema extends ModelQuerySchemaLike> = QuerySchemaFindManyArgs<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaWhere instead.
+ */
+export type DelegateWhere<TSchema extends ModelQuerySchemaLike> = QuerySchemaWhere<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaInclude instead.
+ */
+export type DelegateInclude<TSchema extends ModelQuerySchemaLike> = QuerySchemaInclude<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaOrderBy instead.
+ */
+export type DelegateOrderBy<TSchema extends ModelQuerySchemaLike> = QuerySchemaOrderBy<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaSelect instead.
+ */
+export type DelegateSelect<TSchema extends ModelQuerySchemaLike> = QuerySchemaSelect<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaCreateData instead.
+ */
+export type DelegateCreateData<TSchema extends ModelQuerySchemaLike> = QuerySchemaCreateData<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaUpdateArgs instead.
+ */
+export type DelegateUpdateArgs<TSchema extends ModelQuerySchemaLike> = QuerySchemaUpdateArgs<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaUpdateData instead.
+ */
+export type DelegateUpdateData<TSchema extends ModelQuerySchemaLike> = QuerySchemaUpdateData<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaUniqueWhere instead.
+ */
+export type DelegateUniqueWhere<TSchema extends ModelQuerySchemaLike> = QuerySchemaUniqueWhere<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaRow instead.
+ */
+export type DelegateRow<TSchema extends ModelQuerySchemaLike> = QuerySchemaRow<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaRows instead.
+ */
+export type DelegateRows<TSchema extends ModelQuerySchemaLike> = QuerySchemaRows<TSchema>
 
 export type Serializable = Record<string, unknown>
 export * from './ModelStatic'

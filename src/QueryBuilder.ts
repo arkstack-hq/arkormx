@@ -5,13 +5,6 @@ import type {
     DatabaseAdapter,
     DatabaseRow,
     DatabaseValue,
-    DelegateCreateData,
-    DelegateInclude,
-    DelegateOrderBy,
-    DelegateSelect,
-    DelegateUniqueWhere,
-    DelegateUpdateData,
-    DelegateWhere,
     DeleteSpec,
     EagerLoadConstraint,
     EagerLoadMap,
@@ -23,6 +16,13 @@ import type {
     QueryCondition,
     QueryOrderBy,
     QueryRawCondition,
+    QuerySchemaCreateData,
+    QuerySchemaInclude,
+    QuerySchemaOrderBy,
+    QuerySchemaSelect,
+    QuerySchemaUniqueWhere,
+    QuerySchemaUpdateData,
+    QuerySchemaWhere,
     QuerySelectColumn,
     QueryTarget,
     RelationAggregateSpec,
@@ -63,7 +63,7 @@ type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<Rela
  */
 export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike> {
     private queryWhere?: QueryCondition
-    private legacyWhere?: DelegateWhere<TDelegate>
+    private legacyWhere?: QuerySchemaWhere<TDelegate>
     private queryRelationLoads?: RelationLoadPlan[]
     private queryOrderBy?: QueryOrderBy[]
     private querySelect?: QuerySelectColumn[]
@@ -122,7 +122,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param where 
      * @returns 
      */
-    public where (where: DelegateWhere<TDelegate>): this {
+    public where (where: QuerySchemaWhere<TDelegate>): this {
         return this.addLogicalWhere('AND', where)
     }
 
@@ -132,7 +132,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param where
      * @returns
      */
-    public orWhere (where: DelegateWhere<TDelegate>): this {
+    public orWhere (where: QuerySchemaWhere<TDelegate>): this {
         return this.addLogicalWhere('OR', where)
     }
 
@@ -142,8 +142,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param where
      * @returns
      */
-    public whereNot (where: DelegateWhere<TDelegate>): this {
-        return this.where({ NOT: where } as unknown as DelegateWhere<TDelegate>)
+    public whereNot (where: QuerySchemaWhere<TDelegate>): this {
+        return this.where({ NOT: where } as unknown as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -152,8 +152,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param where
      * @returns
      */
-    public orWhereNot (where: DelegateWhere<TDelegate>): this {
-        return this.orWhere({ NOT: where } as unknown as DelegateWhere<TDelegate>)
+    public orWhereNot (where: QuerySchemaWhere<TDelegate>): this {
+        return this.orWhere({ NOT: where } as unknown as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -163,7 +163,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns
      */
     public whereNull<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
-        return this.where({ [key]: null } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: null } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -173,7 +173,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns
      */
     public whereNotNull<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
-        return this.where({ [key]: { not: null } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { not: null } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -189,7 +189,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     ): this {
         const [min, max] = range
 
-        return this.where({ [key]: { gte: min, lte: max } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { gte: min, lte: max } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -208,7 +208,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const end = new Date(start)
         end.setUTCDate(end.getUTCDate() + 1)
 
-        return this.where({ [key]: { gte: start, lt: end } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { gte: start, lt: end } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -228,7 +228,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const start = new Date(Date.UTC(year, normalizedMonth - 1, 1))
         const end = new Date(Date.UTC(year, normalizedMonth, 1))
 
-        return this.where({ [key]: { gte: start, lt: end } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { gte: start, lt: end } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -245,7 +245,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const start = new Date(Date.UTC(year, 0, 1))
         const end = new Date(Date.UTC(year + 1, 0, 1))
 
-        return this.where({ [key]: { gte: start, lt: end } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { gte: start, lt: end } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -259,7 +259,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         value: ModelAttributes<TModel>[TKey]
     ): this {
-        return this.where({ [key]: { not: value } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { not: value } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -273,7 +273,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         values: ModelAttributes<TModel>[TKey][]
     ): this {
-        return this.orWhere({ [key]: { in: values } } as DelegateWhere<TDelegate>)
+        return this.orWhere({ [key]: { in: values } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -287,7 +287,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         values: ModelAttributes<TModel>[TKey][]
     ): this {
-        return this.where({ [key]: { notIn: values } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { notIn: values } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -301,7 +301,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         value: Extract<ModelAttributes<TModel>[TKey], string>
     ): this {
-        return this.where({ [key]: { contains: value } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { contains: value } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -315,7 +315,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         value: Extract<ModelAttributes<TModel>[TKey], string>
     ): this {
-        return this.where({ [key]: { startsWith: value } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { startsWith: value } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -329,7 +329,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         value: Extract<ModelAttributes<TModel>[TKey], string>
     ): this {
-        return this.where({ [key]: { endsWith: value } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { endsWith: value } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -343,7 +343,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         values: ModelAttributes<TModel>[TKey][]
     ): this {
-        return this.orWhere({ [key]: { notIn: values } } as DelegateWhere<TDelegate>)
+        return this.orWhere({ [key]: { notIn: values } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -383,7 +383,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         return this.clone().where(this.buildComparisonWhere(key, operator, value)).first()
     }
 
-    private addLogicalWhere (operator: 'AND' | 'OR', where: DelegateWhere<TDelegate>): this {
+    private addLogicalWhere (operator: 'AND' | 'OR', where: QuerySchemaWhere<TDelegate>): this {
         const condition = this.tryBuildQueryCondition(where)
         if (!this.legacyWhere && condition) {
             if (!this.queryWhere) {
@@ -401,7 +401,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             return this
         }
 
-        const existingWhere = this.legacyWhere ?? this.toDelegateWhere(this.queryWhere)
+        const existingWhere = this.legacyWhere ?? this.toQuerySchemaWhere(this.queryWhere)
         this.queryWhere = undefined
 
         if (!existingWhere) {
@@ -412,7 +412,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
         this.legacyWhere = {
             [operator]: [existingWhere as Record<string, unknown>, where as Record<string, unknown>],
-        } as DelegateWhere<TDelegate>
+        } as QuerySchemaWhere<TDelegate>
 
         return this
     }
@@ -421,23 +421,23 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: string,
         operator: '=' | '!=' | '>' | '>=' | '<' | '<=',
         value: unknown
-    ): DelegateWhere<TDelegate> {
+    ): QuerySchemaWhere<TDelegate> {
         if (operator === '=')
-            return { [key]: value } as DelegateWhere<TDelegate>
+            return { [key]: value } as QuerySchemaWhere<TDelegate>
 
         if (operator === '!=')
-            return { [key]: { not: value } } as DelegateWhere<TDelegate>
+            return { [key]: { not: value } } as QuerySchemaWhere<TDelegate>
 
         if (operator === '>')
-            return { [key]: { gt: value } } as DelegateWhere<TDelegate>
+            return { [key]: { gt: value } } as QuerySchemaWhere<TDelegate>
 
         if (operator === '>=')
-            return { [key]: { gte: value } } as DelegateWhere<TDelegate>
+            return { [key]: { gte: value } } as QuerySchemaWhere<TDelegate>
 
         if (operator === '<')
-            return { [key]: { lt: value } } as DelegateWhere<TDelegate>
+            return { [key]: { lt: value } } as QuerySchemaWhere<TDelegate>
 
-        return { [key]: { lte: value } } as DelegateWhere<TDelegate>
+        return { [key]: { lte: value } } as QuerySchemaWhere<TDelegate>
     }
 
     private coerceDate (value: Date | string): Date {
@@ -459,7 +459,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         value: ModelAttributes<TModel>[TKey]
     ): this {
-        return this.where({ [key]: value } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: value } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -473,7 +473,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         key: TKey,
         values: ModelAttributes<TModel>[TKey][]
     ): this {
-        return this.where({ [key]: { in: values } } as DelegateWhere<TDelegate>)
+        return this.where({ [key]: { in: values } } as QuerySchemaWhere<TDelegate>)
     }
 
     /**
@@ -482,7 +482,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param orderBy 
      * @returns 
      */
-    public orderBy (orderBy: DelegateOrderBy<TDelegate>): this {
+    public orderBy (orderBy: QuerySchemaOrderBy<TDelegate>): this {
         this.randomOrderEnabled = false
         const normalized = this.normalizeQueryOrderBy(orderBy)
         if (!normalized)
@@ -521,7 +521,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         if (!column)
             return this
 
-        return this.orderBy({ [column]: direction } as DelegateOrderBy<TDelegate>)
+        return this.orderBy({ [column]: direction } as QuerySchemaOrderBy<TDelegate>)
     }
 
     /**
@@ -531,7 +531,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns
      */
     public latest (column = 'createdAt'): this {
-        return this.orderBy({ [column]: 'desc' } as DelegateOrderBy<TDelegate>)
+        return this.orderBy({ [column]: 'desc' } as QuerySchemaOrderBy<TDelegate>)
     }
 
     /**
@@ -541,7 +541,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns
      */
     public oldest (column = 'createdAt'): this {
-        return this.orderBy({ [column]: 'asc' } as DelegateOrderBy<TDelegate>)
+        return this.orderBy({ [column]: 'asc' } as QuerySchemaOrderBy<TDelegate>)
     }
 
     /**
@@ -550,7 +550,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param include 
      * @returns 
      */
-    public include (include: DelegateInclude<TDelegate>): this {
+    public include (include: QuerySchemaInclude<TDelegate>): this {
         const normalized = this.normalizeRelationLoads(include)
         if (normalized === null)
             throw new UnsupportedAdapterFeatureException('Include clauses could not be normalized into Arkorm relation load plans.', {
@@ -942,7 +942,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param select 
      * @returns 
      */
-    public select (select: DelegateSelect<TDelegate>): this {
+    public select (select: QuerySchemaSelect<TDelegate>): this {
         const normalized = this.normalizeQuerySelect(select)
         if (normalized === null)
             throw new UnsupportedAdapterFeatureException('Select clauses must use Arkorm-normalizable column projections.', {
@@ -1167,7 +1167,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     public async find (value: unknown, key?: string): Promise<TModel | null> {
         const resolvedKey = key ?? this.model.getPrimaryKey()
 
-        return this.where({ [resolvedKey]: value } as DelegateWhere<TDelegate>).first()
+        return this.where({ [resolvedKey]: value } as QuerySchemaWhere<TDelegate>).first()
     }
 
     /**
@@ -1265,7 +1265,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns 
      */
     public async create (data: ModelCreateData<TModel, TDelegate>): Promise<TModel> {
-        const created = await this.executeInsertRow(data as DelegateCreateData<TDelegate>)
+        const created = await this.executeInsertRow(data as QuerySchemaCreateData<TDelegate>)
 
         return this.model.hydrate(created as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1299,7 +1299,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             return true
 
         if (payloads.length === 1) {
-            await this.executeInsertRow(payloads[0] as DelegateCreateData<TDelegate>)
+            await this.executeInsertRow(payloads[0] as QuerySchemaCreateData<TDelegate>)
 
             return true
         }
@@ -1336,7 +1336,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         values: ModelCreateData<TModel, TDelegate>,
         sequence?: string | null
     ): Promise<unknown> {
-        const created = await this.executeInsertRow(values as DelegateCreateData<TDelegate>) as Record<string, unknown>
+        const created = await this.executeInsertRow(values as QuerySchemaCreateData<TDelegate>) as Record<string, unknown>
         const key = sequence ?? this.model.getPrimaryKey()
         if (!(key in created))
             throw new UniqueConstraintResolutionException(`Inserted record does not contain key [${key}].`, {
@@ -1403,7 +1403,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 model: this.model.name,
             })
 
-        const directSpec = this.tryBuildUpdateSpec(where, data as DelegateUpdateData<TDelegate>)
+        const directSpec = this.tryBuildUpdateSpec(where, data as QuerySchemaUpdateData<TDelegate>)
         const adapter = this.requireAdapter()
         if (!this.isUniqueWhere(where as Record<string, unknown>) && directSpec && typeof adapter.updateFirst === 'function') {
             const updated = await adapter.updateFirst(directSpec)
@@ -1416,7 +1416,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         }
 
         const uniqueWhere = await this.resolveUniqueWhere(where)
-        const updated = await this.executeUpdateRow(uniqueWhere!, data as DelegateUpdateData<TDelegate>)
+        const updated = await this.executeUpdateRow(uniqueWhere!, data as QuerySchemaUpdateData<TDelegate>)
 
         return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
@@ -1435,7 +1435,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 model: this.model.name,
             })
 
-        return await this.executeUpdateManyRows(where, data as DelegateUpdateData<TDelegate>)
+        return await this.executeUpdateManyRows(where, data as QuerySchemaUpdateData<TDelegate>)
     }
 
     /**
@@ -1466,7 +1466,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         }
 
         const existing = await this.clone()
-            .where(attributes as DelegateWhere<TDelegate>)
+            .where(attributes as QuerySchemaWhere<TDelegate>)
             .first()
 
         const exists = existing != null
@@ -1478,13 +1478,13 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             await this.executeInsertRow({
                 ...attributes,
                 ...resolvedValues,
-            } as DelegateCreateData<TDelegate>)
+            } as QuerySchemaCreateData<TDelegate>)
 
             return true
         }
 
         const updated = await this.clone()
-            .where(attributes as DelegateWhere<TDelegate>)
+            .where(attributes as QuerySchemaWhere<TDelegate>)
             .update(resolvedValues as ModelUpdateData<TModel, TDelegate>)
 
         return updated != null
@@ -1598,14 +1598,14 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
         return deleted
     }
-    private tryBuildInsertSpec (values: DelegateCreateData<TDelegate>): InsertSpec<TModel> {
+    private tryBuildInsertSpec (values: QuerySchemaCreateData<TDelegate>): InsertSpec<TModel> {
         return {
             target: this.buildQueryTarget(),
             values: values as DatabaseRow,
         }
     }
 
-    private tryBuildInsertManySpec (values: DelegateCreateData<TDelegate>[]): InsertManySpec<TModel> {
+    private tryBuildInsertManySpec (values: QuerySchemaCreateData<TDelegate>[]): InsertManySpec<TModel> {
         return {
             target: this.buildQueryTarget(),
             values: values as DatabaseRow[],
@@ -1625,7 +1625,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         }
     }
 
-    private tryBuildInsertOrIgnoreManySpec (values: DelegateCreateData<TDelegate>[]): InsertManySpec<TModel> {
+    private tryBuildInsertOrIgnoreManySpec (values: QuerySchemaCreateData<TDelegate>[]): InsertManySpec<TModel> {
         return {
             ...this.tryBuildInsertManySpec(values),
             ignoreDuplicates: true,
@@ -1633,8 +1633,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private tryBuildUpdateSpec (
-        where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
-        values: DelegateUpdateData<TDelegate>
+        where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>,
+        values: QuerySchemaUpdateData<TDelegate>
     ): UpdateSpec<TModel> | null {
         const condition = this.tryBuildQueryCondition(where)
         if (!condition)
@@ -1648,8 +1648,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private tryBuildUpdateManySpec (
-        where: DelegateWhere<TDelegate> | undefined,
-        values: DelegateUpdateData<TDelegate>
+        where: QuerySchemaWhere<TDelegate> | undefined,
+        values: QuerySchemaUpdateData<TDelegate>
     ): UpdateManySpec<TModel> | null {
         const condition = this.tryBuildQueryCondition(where)
         if (condition === null)
@@ -1662,7 +1662,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         }
     }
 
-    private tryBuildDeleteSpec (where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>): DeleteSpec<TModel> | null {
+    private tryBuildDeleteSpec (where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>): DeleteSpec<TModel> | null {
         const condition = this.tryBuildQueryCondition(where)
         if (!condition)
             return null
@@ -1710,12 +1710,12 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         values:
             | ModelCreateData<TModel, TDelegate>
             | ModelCreateData<TModel, TDelegate>[]
-            | DelegateCreateData<TDelegate>
-            | DelegateCreateData<TDelegate>[]
-    ): DelegateCreateData<TDelegate>[] {
+            | QuerySchemaCreateData<TDelegate>
+            | QuerySchemaCreateData<TDelegate>[]
+    ): QuerySchemaCreateData<TDelegate>[] {
         const payloads = Array.isArray(values)
-            ? values as DelegateCreateData<TDelegate>[]
-            : [values as DelegateCreateData<TDelegate>]
+            ? values as QuerySchemaCreateData<TDelegate>[]
+            : [values as QuerySchemaCreateData<TDelegate>]
         const metadata = this.model.getModelMetadata()
 
         return payloads.map((payload) => {
@@ -1736,11 +1736,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                     nextPayload[column.column] = now
             }
 
-            return nextPayload as DelegateCreateData<TDelegate>
+            return nextPayload as QuerySchemaCreateData<TDelegate>
         })
     }
 
-    private normalizeUpdatePayload (values: DelegateUpdateData<TDelegate>): DelegateUpdateData<TDelegate> {
+    private normalizeUpdatePayload (values: QuerySchemaUpdateData<TDelegate>): QuerySchemaUpdateData<TDelegate> {
         const metadata = this.model.getModelMetadata()
         const nextPayload = { ...(values as Record<string, unknown>) }
         const now = new Date()
@@ -1750,7 +1750,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 nextPayload[column.column] = now
         }
 
-        return nextPayload as DelegateUpdateData<TDelegate>
+        return nextPayload as QuerySchemaUpdateData<TDelegate>
     }
 
     private resolveAffectedCount (result: unknown, fallback: number): number {
@@ -2129,7 +2129,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         return this.queryWhere != null || this.legacyWhere != null
     }
 
-    private normalizeQuerySelect (select: DelegateSelect<TDelegate>): QuerySelectColumn[] | null {
+    private normalizeQuerySelect (select: QuerySchemaSelect<TDelegate>): QuerySelectColumn[] | null {
         if (Array.isArray(select) || typeof select !== 'object' || !select)
             return null
 
@@ -2144,7 +2144,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         return columns.length > 0 ? columns : []
     }
 
-    private normalizeQueryOrderBy (orderBy: DelegateOrderBy<TDelegate>): QueryOrderBy[] | null {
+    private normalizeQueryOrderBy (orderBy: QuerySchemaOrderBy<TDelegate>): QueryOrderBy[] | null {
         const clauses = (Array.isArray(orderBy)
             ? orderBy
             : [orderBy]) as Record<string, unknown>[]
@@ -2300,69 +2300,69 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         }
     }
 
-    private toDelegateWhere (condition?: QueryCondition): DelegateWhere<TDelegate> | undefined {
+    private toQuerySchemaWhere (condition?: QueryCondition): QuerySchemaWhere<TDelegate> | undefined {
         if (!condition)
             return undefined
 
         if (condition.type === 'comparison') {
             if (condition.operator === 'is-null')
-                return { [condition.column]: null } as DelegateWhere<TDelegate>
+                return { [condition.column]: null } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === 'is-not-null')
-                return { [condition.column]: { not: null } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { not: null } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === '=')
-                return { [condition.column]: condition.value } as DelegateWhere<TDelegate>
+                return { [condition.column]: condition.value } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === '!=')
-                return { [condition.column]: { not: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { not: condition.value } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === '>')
-                return { [condition.column]: { gt: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { gt: condition.value } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === '>=')
-                return { [condition.column]: { gte: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { gte: condition.value } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === '<')
-                return { [condition.column]: { lt: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { lt: condition.value } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === '<=')
-                return { [condition.column]: { lte: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { lte: condition.value } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === 'in')
-                return { [condition.column]: { in: Array.isArray(condition.value) ? condition.value : [condition.value] } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { in: Array.isArray(condition.value) ? condition.value : [condition.value] } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === 'not-in')
-                return { [condition.column]: { notIn: Array.isArray(condition.value) ? condition.value : [condition.value] } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { notIn: Array.isArray(condition.value) ? condition.value : [condition.value] } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === 'contains')
-                return { [condition.column]: { contains: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { contains: condition.value } } as QuerySchemaWhere<TDelegate>
 
             if (condition.operator === 'starts-with')
-                return { [condition.column]: { startsWith: condition.value } } as DelegateWhere<TDelegate>
+                return { [condition.column]: { startsWith: condition.value } } as QuerySchemaWhere<TDelegate>
 
-            return { [condition.column]: { endsWith: condition.value } } as DelegateWhere<TDelegate>
+            return { [condition.column]: { endsWith: condition.value } } as QuerySchemaWhere<TDelegate>
         }
 
         if (condition.type === 'group') {
             const conditions = condition.conditions
-                .map(entry => this.toDelegateWhere(entry))
-                .filter((entry): entry is DelegateWhere<TDelegate> => Boolean(entry))
+                .map(entry => this.toQuerySchemaWhere(entry))
+                .filter((entry): entry is QuerySchemaWhere<TDelegate> => Boolean(entry))
 
             if (conditions.length === 0)
                 return undefined
 
             return {
                 [condition.operator === 'and' ? 'AND' : 'OR']: conditions as Record<string, unknown>[],
-            } as DelegateWhere<TDelegate>
+            } as QuerySchemaWhere<TDelegate>
         }
 
         if (condition.type === 'not') {
-            const nested = this.toDelegateWhere(condition.condition)
+            const nested = this.toQuerySchemaWhere(condition.condition)
             if (!nested)
                 return undefined
 
-            return { NOT: nested } as unknown as DelegateWhere<TDelegate>
+            return { NOT: nested } as unknown as QuerySchemaWhere<TDelegate>
         }
 
         return undefined
@@ -2567,7 +2567,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private tryBuildSelectSpec (
-        where: DelegateWhere<TDelegate> | undefined,
+        where: QuerySchemaWhere<TDelegate> | undefined,
         softDeleteOnly = false,
     ): SelectSpec<TModel> | null {
         const columns = this.tryBuildQuerySelectColumns()
@@ -2629,7 +2629,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private async executeReadRows (
-        whereOverride?: DelegateWhere<TDelegate>,
+        whereOverride?: QuerySchemaWhere<TDelegate>,
         useWhereOverride = false,
     ): Promise<DatabaseRow[]> {
         const adapter = this.requireAdapter()
@@ -2681,14 +2681,14 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
         return (await adapter.selectOne({ ...spec, limit: 1 })) != null
     }
-    private async executeInsertRow (values: DelegateCreateData<TDelegate>): Promise<DatabaseRow> {
+    private async executeInsertRow (values: QuerySchemaCreateData<TDelegate>): Promise<DatabaseRow> {
         const [payload] = this.normalizeInsertPayloads(values)
 
         return await this.requireAdapter().insert(this.tryBuildInsertSpec(payload))
     }
 
     private async executeInsertManyRows (
-        values: DelegateCreateData<TDelegate>[],
+        values: QuerySchemaCreateData<TDelegate>[],
         ignoreDuplicates = false,
     ): Promise<number> {
         const adapter = this.requireAdapter()
@@ -2722,7 +2722,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         updateColumns?: string[],
     ): Promise<number> {
         const adapter = this.requireAdapter()
-        const payloads = this.normalizeInsertPayloads(values as DelegateCreateData<TDelegate>[]) as Array<Record<string, unknown>>
+        const payloads = this.normalizeInsertPayloads(values as QuerySchemaCreateData<TDelegate>[]) as Array<Record<string, unknown>>
         const timestampUpdateColumns = (this.model.getModelMetadata().timestampColumns ?? [])
             .filter(column => column.updatedAt)
             .map(column => column.column)
@@ -2741,8 +2741,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private async executeUpdateRow (
-        where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
-        values: DelegateUpdateData<TDelegate>
+        where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>,
+        values: QuerySchemaUpdateData<TDelegate>
     ): Promise<DatabaseRow> {
         const adapter = this.requireAdapter()
         const spec = this.tryBuildUpdateSpec(where, this.normalizeUpdatePayload(values))
@@ -2762,8 +2762,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private async executeUpdateManyRows (
-        where: DelegateWhere<TDelegate> | undefined,
-        values: DelegateUpdateData<TDelegate>
+        where: QuerySchemaWhere<TDelegate> | undefined,
+        values: QuerySchemaUpdateData<TDelegate>
     ): Promise<number> {
         const adapter = this.requireAdapter()
         const normalizedValues = this.normalizeUpdatePayload(values)
@@ -2801,7 +2801,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private async executeDeleteRow (
-        where: DelegateWhere<TDelegate> | DelegateUniqueWhere<TDelegate>,
+        where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>,
         failIfMissing = true
     ): Promise<DatabaseRow | null> {
         const adapter = this.requireAdapter()
@@ -2831,8 +2831,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * 
      * @returns 
      */
-    private buildWhere (): DelegateWhere<TDelegate> | undefined {
-        const baseWhere = this.legacyWhere ?? this.toDelegateWhere(this.queryWhere)
+    private buildWhere (): QuerySchemaWhere<TDelegate> | undefined {
+        const baseWhere = this.legacyWhere ?? this.toQuerySchemaWhere(this.queryWhere)
         const softDeleteConfig = this.model.getSoftDeleteConfig()
         if (!softDeleteConfig.enabled)
             return baseWhere
@@ -2845,11 +2845,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             : { [softDeleteConfig.column]: null }
 
         if (!baseWhere)
-            return softDeleteClause as DelegateWhere<TDelegate>
+            return softDeleteClause as QuerySchemaWhere<TDelegate>
 
         return {
             AND: [baseWhere as Record<string, unknown>, softDeleteClause],
-        } as unknown as DelegateWhere<TDelegate>
+        } as unknown as QuerySchemaWhere<TDelegate>
     }
 
     /**
@@ -2864,11 +2864,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns 
      */
     private async resolveUniqueWhere (
-        where: DelegateWhere<TDelegate>,
+        where: QuerySchemaWhere<TDelegate>,
         failIfMissing = true
-    ): Promise<DelegateUniqueWhere<TDelegate> | null> {
+    ): Promise<QuerySchemaUniqueWhere<TDelegate> | null> {
         if (this.isUniqueWhere(where as Record<string, unknown>))
-            return where as unknown as DelegateUniqueWhere<TDelegate>
+            return where as unknown as QuerySchemaUniqueWhere<TDelegate>
 
         const condition = this.tryBuildQueryCondition(where)
         if (!condition)
@@ -2910,7 +2910,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 },
             })
 
-        return { [primaryKey]: row[primaryKey] } as unknown as DelegateUniqueWhere<TDelegate>
+        return { [primaryKey]: row[primaryKey] } as unknown as QuerySchemaUniqueWhere<TDelegate>
     }
 
     /**
@@ -3116,7 +3116,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         return null
     }
 
-    private buildSoftDeleteOnlyWhere (): DelegateWhere<TDelegate> | undefined {
+    private buildSoftDeleteOnlyWhere (): QuerySchemaWhere<TDelegate> | undefined {
         const softDeleteConfig = this.model.getSoftDeleteConfig()
         if (!softDeleteConfig.enabled)
             return undefined
@@ -3128,7 +3128,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             ? { [softDeleteConfig.column]: { not: null } }
             : { [softDeleteConfig.column]: null }
 
-        return softDeleteClause as DelegateWhere<TDelegate>
+        return softDeleteClause as QuerySchemaWhere<TDelegate>
     }
 
     private async applyRelationAggregates (

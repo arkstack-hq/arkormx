@@ -661,8 +661,8 @@ Implementation checklist:
 - [x] Remove delegate-first runtime APIs from the primary `Model` surface
 - [x] Remove `Model.setClient(...)` and direct delegate-map bootstrapping from the supported runtime path
 - [x] Replace `Model.getDelegate()` usage in runtime code with adapter-owned execution paths only
-- [ ] Remove Prisma-shaped generic constraints from core model and query types
-- [ ] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
+- [x] Remove Prisma-shaped generic constraints from core model and query types
+- [x] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
 - [ ] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
 - [ ] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [ ] Complete adapter-level relation load execution for the Kysely path
@@ -677,6 +677,10 @@ Started in code:
 
 - core query-shape generics now use an adapter-native `ModelQuerySchemaLike` contract in `src/types/core.ts`
 - `Model`, `QueryBuilder`, `ModelStatic`, `DB`, and `src/types/model.ts` now compile against adapter-native core schema types instead of using `PrismaDelegateLike` as their primary generic constraint
+- core query helper types now expose neutral `QuerySchema*` names in `src/types/core.ts`, while the older `Delegate*` exports remain as deprecated compatibility aliases during the rest of Phase 7
+- `src/types/model.ts` now exposes neutral `AttributeQuerySchema` and `QuerySchemaForModel` helpers, while `AttributeSchemaDelegate` and `DelegateForModelSchema` remain as deprecated aliases for transition compatibility
+- `src/types/model.ts` and `src/types/ModelStatic.ts` now use `QuerySchemaRow`, `QuerySchemaCreateData`, and `QuerySchemaUpdateData` as their primary type surface instead of the older delegate-shaped helper names
+- `Model` generic defaults and `QueryBuilder` internals now use the neutral `QuerySchema*` helper family end to end rather than relying on delegate-shaped helper names in the primary core typing path
 - shared transaction typing now uses neutral `TransactionContext`, `TransactionOptions`, and `RuntimeClientLike` contracts instead of requiring Prisma-named callback types in `Model` and `runtime-config`
 - `Model.transaction()` now prefers adapter-backed transactions and routes transaction-scoped adapters through runtime storage so `Model.query()` and `DB.table()` stay inside the active transaction
 - `src/helpers/runtime-config.ts` and `src/helpers/prisma.ts` now use neutral query-schema/runtime contracts internally, while keeping Prisma compatibility aliases and helper names available during the remainder of Phase 7

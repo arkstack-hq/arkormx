@@ -156,6 +156,15 @@ export class User extends Model<UserAttributes> {}
 This keeps your type surface aligned with your model data instead of coupling
 it to one specific delegate implementation.
 
+If you built custom helpers around Arkorm's older delegate-shaped utility
+types, move them toward the neutral query-schema names during the 2.x window.
+In practice that means preferring `ModelQuerySchemaLike`, `QuerySchemaWhere`,
+`QuerySchemaRow`, `QuerySchemaCreateData`, `QuerySchemaUpdateData`, and
+`QuerySchemaForModel` over the older `Delegate*` names. When you build
+attribute-backed helper schemas directly, prefer `AttributeQuerySchema` over
+`AttributeSchemaDelegate`. The old names still exist as deprecated aliases for
+incremental migration, but they are no longer the primary type surface.
+
 See the full [Typing](./typing.md) guide for the 2.x conventions.
 
 ### 6. Review CLI and migration behavior

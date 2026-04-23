@@ -24,6 +24,15 @@ export class User extends Model<UserAttributes> {}
 projects. If your project already uses delegate-name generics, that still
 works, but it is no longer the recommended default.
 
+For advanced Arkorm helper typing, prefer the neutral query-schema helper names
+over the older delegate-shaped ones. `ModelQuerySchemaLike`,
+`QuerySchemaWhere`, `QuerySchemaRow`, `QuerySchemaCreateData`,
+`QuerySchemaUpdateData`, and `QuerySchemaForModel` are now the primary type
+surface. For attribute-backed helper schemas, prefer `AttributeQuerySchema`.
+The older `Delegate*` names, `DelegateForModelSchema`, and
+`AttributeSchemaDelegate` still exist as deprecated aliases during the 2.x
+transition window.
+
 ## Typed accessors
 
 ```ts
