@@ -1,5 +1,6 @@
 import { existsSync, rmSync } from 'node:fs'
-import { readAppliedMigrationsState, resolveMigrationStateFilePath, writeAppliedMigrationsState } from '../../helpers/migration-history'
+import { deletePersistedColumnMappingsState, resolveColumnMappingsFilePath } from '../../helpers/column-mappings'
+import { createEmptyAppliedMigrationsState, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, supportsDatabaseMigrationState, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
@@ -27,8 +28,18 @@ export class MigrationHistoryCommand extends Command<CliApp> {
             process.cwd(),
             this.option('state-file') ? String(this.option('state-file')) : undefined
         )
+        const adapter = this.app.getConfig('adapter')
+        const usesDatabaseState = supportsDatabaseMigrationState(adapter)
 
         if (this.option('delete')) {
+            if (usesDatabaseState) {
+                await adapter.writeAppliedMigrationsState(createEmptyAppliedMigrationsState())
+                deletePersistedColumnMappingsState(resolveColumnMappingsFilePath(process.cwd()))
+                this.success('Deleted tracked migration state from database.')
+
+                return
+            }
+
             if (!existsSync(stateFilePath)) {
                 this.success(`No migration state file found at ${this.app.formatPathForLog(stateFilePath)}`)
 
@@ -36,32 +47,33 @@ export class MigrationHistoryCommand extends Command<CliApp> {
             }
 
             rmSync(stateFilePath)
+            deletePersistedColumnMappingsState(resolveColumnMappingsFilePath(process.cwd()))
             this.success(`Deleted migration state file: ${this.app.formatPathForLog(stateFilePath)}`)
 
             return
         }
 
         if (this.option('reset')) {
-            writeAppliedMigrationsState(stateFilePath, {
-                version: 1,
-                migrations: [],
-            })
-            this.success(`Reset migration state: ${this.app.formatPathForLog(stateFilePath)}`)
+            await writeAppliedMigrationsStateToStore(adapter, stateFilePath, createEmptyAppliedMigrationsState())
+            deletePersistedColumnMappingsState(resolveColumnMappingsFilePath(process.cwd()))
+            this.success(usesDatabaseState
+                ? 'Reset migration state in database.'
+                : `Reset migration state: ${this.app.formatPathForLog(stateFilePath)}`)
 
             return
         }
 
-        const state = readAppliedMigrationsState(stateFilePath)
+        const state = await readAppliedMigrationsStateFromStore(adapter, stateFilePath)
         if (this.option('json')) {
             this.success(JSON.stringify({
-                path: stateFilePath,
+                path: usesDatabaseState ? 'database' : stateFilePath,
                 ...state,
             }, null, 2))
 
             return
         }
 
-        this.success(this.app.splitLogger('State', stateFilePath))
+        this.success(this.app.splitLogger('State', usesDatabaseState ? 'database' : stateFilePath))
         this.success(this.app.splitLogger('Tracked', String(state.migrations.length)))
 
         if (state.migrations.length === 0) {

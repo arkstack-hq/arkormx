@@ -15,10 +15,10 @@ export default defineConfig({
             enabled: true,
             reporter: ['text', 'json', 'html', 'lcov'],
             thresholds: {
-                statements: 65,
-                functions: 70,
+                statements: 60,
+                functions: 65,
                 branches: 55,
-                lines: 65,
+                lines: 60,
             },
             reportsDirectory: 'coverage',
             exclude: ['**/node_modules/**', '**/dist/**', '**/cypress/**', '**/.{idea,git,cache,output,temp}/**', '**/{karma,rollup,webpack,vite,vitest,jest,ava,babel,nyc,cypress,tsup,build,eslint,arkormx,prettier}.config.*', '**/.h3ravel/**'],

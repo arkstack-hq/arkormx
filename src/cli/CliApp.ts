@@ -1,8 +1,10 @@
-import { ArkormConfig, GetUserConfig } from 'src/types'
+import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
+import { PrismaDatabaseAdapter } from '../adapters/PrismaDatabaseAdapter'
 import { PRISMA_ENUM_REGEX, applyCreateTableOperation, findModelBlock, generateMigrationFile } from '../helpers/migrations'
 import { dirname, extname, join, relative } from 'path'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'fs'
 import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
+import { getPersistedEnumTsType, getPersistedTableMetadata, resolvePersistedMetadataFeatures } from '../helpers/column-mappings'
 
 import { Command } from '@h3ravel/musket'
 import { Logger } from '@h3ravel/shared'
@@ -19,6 +21,20 @@ type SyncedPrismaModel = {
     name: string
     table: string
     fields: SyncedPrismaModelField[]
+}
+
+type SyncedModelSource = {
+    className: string
+    table: string
+}
+
+type SyncedModelsResult = {
+    source: 'adapter' | 'prisma'
+    schemaPath?: string
+    modelsDir: string
+    total: number
+    updated: string[]
+    skipped: string[]
 }
 
 type ParsedDeclarationNode =
@@ -55,6 +71,12 @@ export class CliApp {
      * @returns The entire configuration object or the value of the specified key
      */
     getConfig: GetUserConfig = getUserConfig
+
+    private isUsingPrismaAdapter (): boolean {
+        const adapter = this.getConfig('adapter')
+
+        return adapter instanceof PrismaDatabaseAdapter
+    }
 
     /**
      * Utility to ensure directory exists
@@ -345,18 +367,19 @@ export class CliApp {
             factory?: boolean
             seeder?: boolean
             migration?: boolean
+            pivot?: boolean
             all?: boolean
         } = {}
     ): {
         model: { name: string, path: string }
-        prisma: { path: string, updated: boolean }
+        prisma?: { path: string, updated: boolean }
         factory?: { name: string, path: string }
         seeder?: { name: string, path: string }
         migration?: { name: string, path: string }
     } {
         const baseName = str(name.replace(/Model$/, '')).pascal().toString()
         const modelName = `${baseName}`
-        const delegateName = str(baseName).camel().plural().toString()
+        const tableName = str(baseName).camel().plural().toString()
         const outputExt = this.resolveOutputExt()
         const modelsDir = this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
 
@@ -371,11 +394,17 @@ export class CliApp {
             .replace(/\\/g, '/')
             .replace(/\.(ts|tsx|mts|cts|js|mjs|cjs)$/i, '')}${outputExt === 'js' ? '.js' : ''}`
 
-        const stubPath = this.resolveStubPath(outputExt === 'js' ? 'model.js.stub' : 'model.stub')
+        let stubPath: string
+
+        if (options.pivot) {
+            stubPath = this.resolveStubPath('pivot-model.stub')
+        } else {
+            stubPath = this.resolveStubPath(outputExt === 'js' ? 'model.js.stub' : 'model.stub')
+        }
 
         const modelPath = this.generateFile(stubPath, outputPath, {
             ModelName: modelName,
-            DelegateName: delegateName,
+            TableName: tableName,
             FactoryImport: shouldBuildFactory
                 ? `import { ${factoryName} } from '${factoryImportPath}'\n`
                 : '',
@@ -386,7 +415,9 @@ export class CliApp {
                 : '',
         }, options)
 
-        const prisma = this.ensurePrismaModelEntry(modelName, delegateName)
+        const prisma = this.isUsingPrismaAdapter()
+            ? this.ensurePrismaModelEntry(modelName, tableName)
+            : undefined
 
         const created = {
             model: { name: modelName, path: modelPath },
@@ -410,36 +441,36 @@ export class CliApp {
             created.seeder = this.makeSeeder(baseName, { force: options.force })
 
         if (shouldBuildMigration)
-            created.migration = this.makeMigration(`create ${delegateName} table`)
+            created.migration = this.makeMigration(`create ${tableName} table`)
 
         return created
     }
 
     /**
      * Ensure that the Prisma schema has a model entry for the given model 
-     * and delegate names.
+     * and table names.
      * If the entry does not exist, it will be created with a default `id` field.
      * 
      * @param modelName The name of the model to ensure in the Prisma schema.
-     * @param delegateName The name of the delegate (table) to ensure in the Prisma schema.
+     * @param tableName The table name to ensure in the Prisma schema.
      */
     private ensurePrismaModelEntry (
         modelName: string,
-        delegateName: string
-    ): { path: string, updated: boolean } {
+        tableName: string
+    ): { path: string, updated: boolean } | undefined {
         const schemaPath = join(process.cwd(), 'prisma', 'schema.prisma')
         if (!existsSync(schemaPath))
-            return { path: schemaPath, updated: false }
+            return undefined
 
         const source = readFileSync(schemaPath, 'utf-8')
-        const existingByTable = findModelBlock(source, delegateName)
+        const existingByTable = findModelBlock(source, tableName)
         const existingByName = new RegExp(`model\\s+${modelName}\\s*\\{`, 'm').test(source)
         if (existingByTable || existingByName)
             return { path: schemaPath, updated: false }
 
         const updated = applyCreateTableOperation(source, {
             type: 'createTable',
-            table: delegateName,
+            table: tableName,
             columns: [
                 {
                     name: 'id',
@@ -782,12 +813,99 @@ export class CliApp {
         return lines.join('\n')
     }
 
+    private parseModelSyncSource (modelSource: string): SyncedModelSource | null {
+        const classMatch = modelSource.match(/export\s+class\s+(\w+)\s+extends\s+Model(?:<[^\n]+>)?\s*\{/)
+        if (!classMatch)
+            return null
+
+        const className = classMatch[1]
+        const tableMatch = modelSource.match(/protected\s+static\s+override\s+table\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+table\s*=\s*['"]([^'"]+)['"]/)
+        const compatibilityDelegateMatch = modelSource.match(/protected\s+static\s+override\s+delegate\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+delegate\s*=\s*['"]([^'"]+)['"]/)
+
+        return {
+            className,
+            table: tableMatch?.[1] ?? compatibilityDelegateMatch?.[1] ?? str(className).camel().plural().toString(),
+        }
+    }
+
+    private syncModelFiles (
+        modelFiles: string[],
+        resolveStructure: (filePath: string, source: string) => AdapterModelStructure | undefined,
+        enums: Map<string, string[]>,
+    ): { updated: string[], skipped: string[] } {
+        const updated: string[] = []
+        const skipped: string[] = []
+
+        modelFiles.forEach((filePath) => {
+            const source = readFileSync(filePath, 'utf-8')
+            const structure = resolveStructure(filePath, source)
+
+            if (!structure || structure.fields.length === 0) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            const synced = this.syncModelDeclarations(source, structure.fields, enums)
+            if (!synced.updated) {
+                skipped.push(filePath)
+
+                return
+            }
+
+            writeFileSync(filePath, synced.content)
+            updated.push(filePath)
+        })
+
+        return { updated, skipped }
+    }
+
+    private applyPersistedFieldMetadata (structure: AdapterModelStructure): AdapterModelStructure {
+        const persistedMetadata = getPersistedTableMetadata(structure.table, {
+            features: resolvePersistedMetadataFeatures(this.getConfig('features')),
+            strict: true,
+        })
+
+        if (Object.keys(persistedMetadata.columns).length === 0 && Object.keys(persistedMetadata.enums).length === 0)
+            return structure
+
+        const attributesByColumn = Object.entries(persistedMetadata.columns).reduce<Record<string, string>>((all, [attribute, column]) => {
+            all[column] = attribute
+
+            return all
+        }, {})
+
+        return {
+            ...structure,
+            fields: structure.fields.map((field) => {
+                const logicalName = attributesByColumn[field.name] ?? field.name
+                const enumValues = persistedMetadata.enums[logicalName] ?? persistedMetadata.enums[field.name]
+
+                if (!enumValues || enumValues.length === 0) {
+                    return {
+                        ...field,
+                        name: logicalName,
+                    }
+                }
+
+                const enumType = getPersistedEnumTsType(enumValues)
+                const isArray = /^Array<.+>$/.test(field.type)
+
+                return {
+                    ...field,
+                    name: logicalName,
+                    type: isArray ? `Array<${enumType}>` : enumType,
+                }
+            }),
+        }
+    }
+
     /**
      * Parse Prisma enum definitions from a schema and return their member names.
      *
      * @param schema The Prisma schema source.
      * @returns      A map of enum names to their declared member names.
-     */
+        */
     private parsePrismaEnums (schema: string): Map<string, string[]> {
         const enums = new Map<string, string[]>()
 
@@ -910,7 +1028,7 @@ export class CliApp {
         enums: Map<string, string[]>
     ): { content: string, updated: boolean } {
         const lines = modelSource.split('\n')
-        const classIndex = lines.findIndex(line => /export\s+class\s+\w+\s+extends\s+Model<.+>\s*\{/.test(line))
+        const classIndex = lines.findIndex(line => /export\s+class\s+\w+\s+extends\s+Model(?:<[^\n]+>)?\s*\{/.test(line))
         if (classIndex < 0)
             return { content: modelSource, updated: false }
 
@@ -982,6 +1100,62 @@ export class CliApp {
         }
     }
 
+    public async syncModels (options: {
+        schemaPath?: string
+        modelsDir?: string
+    } = {}): Promise<SyncedModelsResult> {
+        const modelsDir = options.modelsDir ?? this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
+        if (!existsSync(modelsDir))
+            throw new Error(`Models directory not found: ${modelsDir}`)
+
+        const modelFiles = readdirSync(modelsDir)
+            .filter((file: string) => file.endsWith('.ts'))
+            .map(file => join(modelsDir, file))
+
+        const adapter = this.getConfig('adapter')
+        if (adapter && typeof adapter.introspectModels === 'function') {
+            const sources = modelFiles.reduce<Map<string, SyncedModelSource>>((all, filePath) => {
+                const parsed = this.parseModelSyncSource(readFileSync(filePath, 'utf-8'))
+                if (parsed)
+                    all.set(filePath, parsed)
+
+                return all
+            }, new Map())
+            const discovered = await adapter.introspectModels({
+                tables: [...new Set([...sources.values()].map(source => source.table))],
+            })
+            const structuresByTable = new Map(discovered.map(model => {
+                const enriched = this.applyPersistedFieldMetadata(model)
+
+                return [enriched.table, enriched]
+            }))
+            const result = this.syncModelFiles(
+                modelFiles,
+                (filePath) => {
+                    const parsed = sources.get(filePath)
+
+                    return parsed ? structuresByTable.get(parsed.table) : undefined
+                },
+                new Map(),
+            )
+
+            return {
+                source: 'adapter',
+                modelsDir,
+                total: modelFiles.length,
+                updated: result.updated,
+                skipped: result.skipped,
+            }
+        }
+
+        const prismaResult = this.syncModelsFromPrisma(options)
+
+        return {
+            source: 'prisma',
+            ...prismaResult,
+        }
+    }
+
     /**
      * Sync model attribute declarations in model files based on the Prisma schema.
      * This method reads the Prisma schema to extract model definitions and their 
@@ -1017,46 +1191,26 @@ export class CliApp {
 
         const modelFiles = readdirSync(modelsDir)
             .filter((file: string) => file.endsWith('.ts'))
+            .map(file => join(modelsDir, file))
 
-        const updated: string[] = []
-        const skipped: string[] = []
+        const result = this.syncModelFiles(
+            modelFiles,
+            (filePath, source) => {
+                const parsed = this.parseModelSyncSource(source)
+                if (!parsed)
+                    return undefined
 
-        modelFiles.forEach((file: string) => {
-            const filePath = join(modelsDir, file)
-            const source = readFileSync(filePath, 'utf-8')
-            const classMatch = source.match(/export\s+class\s+(\w+)\s+extends\s+Model<'([^']+)'>/)
-            if (!classMatch) {
-                skipped.push(filePath)
-
-                return
-            }
-
-            const className = classMatch[1]
-            const delegate = classMatch[2]
-            const prismaModel = prismaModels.find(model => model.table === delegate) ?? prismaModels.find(model => model.name === className)
-            if (!prismaModel || prismaModel.fields.length === 0) {
-                skipped.push(filePath)
-
-                return
-            }
-
-            const synced = this.syncModelDeclarations(source, prismaModel.fields, prismaEnums)
-            if (!synced.updated) {
-                skipped.push(filePath)
-
-                return
-            }
-
-            writeFileSync(filePath, synced.content)
-            updated.push(filePath)
-        })
+                return prismaModels.find(model => model.table === parsed.table) ?? prismaModels.find(model => model.name === parsed.className)
+            },
+            prismaEnums,
+        )
 
         return {
             schemaPath,
             modelsDir,
             total: modelFiles.length,
-            updated,
-            skipped,
+            updated: result.updated,
+            skipped: result.skipped,
         }
     }
 }

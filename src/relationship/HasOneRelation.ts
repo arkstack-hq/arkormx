@@ -1,4 +1,5 @@
-import type { RelatedModelClass } from 'src/types'
+import type { HasOneRelationMetadata, RelatedModelClass } from 'src/types'
+
 import type { QueryBuilder } from '../QueryBuilder'
 import { SingleResultRelation } from './SingleResultRelation'
 
@@ -27,6 +28,15 @@ export class HasOneRelation<TParent, TRelated> extends SingleResultRelation<TPar
         const localValue = this.parent.getAttribute(this.localKey)
 
         return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+    }
+
+    public getMetadata (): HasOneRelationMetadata {
+        return {
+            type: 'hasOne',
+            relatedModel: this.related,
+            foreignKey: this.foreignKey,
+            localKey: this.localKey,
+        }
     }
 
     /**

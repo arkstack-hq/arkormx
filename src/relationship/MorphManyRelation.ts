@@ -1,7 +1,8 @@
+import type { MorphManyRelationMetadata, RelationshipModelStatic } from 'src/types'
+
 import type { ArkormCollection } from 'src/Collection'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
 
 /**
  * Defines a polymorphic one-to-many relationship. 
@@ -29,6 +30,17 @@ export class MorphManyRelation<TParent, TRelated> extends Relation<TRelated> {
         const type = (this.parent as { constructor: { name: string } }).constructor.name
 
         return this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
+    }
+
+    public getMetadata (): MorphManyRelationMetadata {
+        return {
+            type: 'morphMany',
+            relatedModel: this.related,
+            morphName: this.morphName,
+            morphIdColumn: `${this.morphName}Id`,
+            morphTypeColumn: `${this.morphName}Type`,
+            localKey: this.localKey,
+        }
     }
 
     /**

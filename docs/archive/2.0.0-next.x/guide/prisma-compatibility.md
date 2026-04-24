@@ -1,0 +1,118 @@
+# Prisma Compatibility
+
+Arkorm now treats adapter binding as the primary runtime path.
+
+Prisma is still supported through the compatibility adapter across the Arkorm
+2.x line.
+
+If you are coming from Arkorm 1.x, read
+[Upgrade Guide](./upgrade-guide.md) first, then use this page
+for the Prisma-specific part of that upgrade.
+
+## Recommended bootstrap
+
+This guide assumes that you intentionally want Prisma compatibility. The normal
+2.x setup path is still `defineConfig({ adapter })` with your chosen runtime
+adapter.
+
+```ts
+import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
+import { PrismaClient } from '@prisma/client';
+
+const prisma = new PrismaClient();
+
+export default defineConfig({
+  prisma: () => prisma,
+  adapter: createPrismaDatabaseAdapter(prisma),
+});
+```
+
+If your Arkorm delegate names differ from Prisma delegate names, pass a mapping:
+
+```ts
+const adapter = createPrismaDatabaseAdapter(prisma, {
+  users: 'user',
+  articles: 'article',
+});
+```
+
+## Deprecated runtime APIs
+
+These APIs still work on the 2.x compatibility path, but they should not be
+used for new code:
+
+- `Model.setClient(...)`
+- `Model.getDelegate(...)`
+- the static `Model.delegate` alias
+- direct delegate maps created only for `Model.setClient(...)`
+
+These APIs are no longer part of the primary `Model` runtime surface. In 2.x,
+the primary path is adapter-first setup via `Model.setAdapter(...)`,
+`defineConfig({ adapter })`, or `configureArkormRuntime(..., { adapter })`.
+
+Direct delegate-map bootstrapping is also no longer part of the supported runtime
+path, it currently only exists as a backward-compatibility bridge for older
+bootstrap code.
+
+`Model.setClient(...)`, `Model.getDelegate(...)`, and `Model.delegate` now emit
+or participate in deprecation-driven compatibility behavior and are scheduled
+for removal in Arkorm 3.0.
+
+## When to keep runtime config
+
+Keep `defineConfig({ client })`, `defineConfig({ prisma })`, or
+`configureArkormRuntime(...)` when Arkorm
+still needs access to the Prisma client for:
+
+- CLI workflows
+- `Model.transaction(...)` on the compatibility path
+- incremental migration where only part of the model set is adapter-bound
+
+## Migration notes for existing Prisma users
+
+1. Replace `Model.setClient(...)` bootstrap code with `defineConfig({ adapter: createPrismaDatabaseAdapter(prisma) })`.
+2. Keep your `defineConfig({ client: () => prisma })`, `defineConfig({ prisma })`, or `configureArkormRuntime(...)` call if you use CLI commands or `Model.transaction(...)`.
+3. Move any custom delegate-name mapping into `createPrismaDatabaseAdapter(prisma, mapping)`.
+4. Keep parity tests running against the compatibility adapter while you roll out SQL-backed adapters.
+
+## Typing on the compatibility path
+
+If you maintain Arkorm extensions, shared query helpers, or other advanced type
+wrappers, prefer the neutral core query-schema names:
+
+- `ModelQuerySchemaLike`
+- `QuerySchemaWhere`
+- `QuerySchemaRow`
+- `QuerySchemaCreateData`
+- `QuerySchemaUpdateData`
+- `QuerySchemaForModel`
+- `AttributeQuerySchema`
+
+The older `Delegate*` helper names, `DelegateForModelSchema`,
+`AttributeSchemaDelegate`, and `PrismaDelegateLike` still exist during 2.x so
+compatibility code keeps compiling, but they are now deprecated aliases rather
+than the primary type surface.
+
+## Current adapter differences
+
+The Prisma compatibility adapter intentionally keeps a narrower query surface
+than the Kysely SQL-backed adapter.
+
+- `whereLike(...)`, `whereStartsWith(...)`, and `whereEndsWith(...)` work on the compatibility adapter.
+- `whereRaw(...)` and `orWhereRaw(...)` do not work on the compatibility adapter.
+- direct `include(...)` / relation-load plans on adapter selects still translate into Prisma `include` arguments.
+- adapter-owned relation batch loading (`adapter.loadRelations(...)`) is intentionally unavailable on the Prisma compatibility path, so `with(...)` and `Model.load(...)` stay on Arkorm's generic eager loader there.
+- If you need raw SQL predicates such as `LOWER(email)` expressions, use a SQL-backed adapter such as Kysely.
+- If you need adapter-owned eager-load execution instead of Arkorm's generic loader, use a SQL-backed adapter such as Kysely.
+
+## Compatibility window
+
+The Prisma compatibility adapter remains part of the supported runtime surface
+through the Arkorm 2.x line and stays covered by CI.
+
+Removal will not happen before Arkorm 3.0 and requires all of the following:
+
+- adapter-first setup is the default in docs and examples
+- compatibility coverage still passes in CI through the announced window
+- migration notes exist for Prisma users
+- the remaining transition blockers in the migration plan are closed

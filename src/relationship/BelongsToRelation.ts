@@ -1,4 +1,5 @@
-import type { RelatedModelClass } from 'src/types'
+import type { BelongsToRelationMetadata, RelatedModelClass } from 'src/types'
+
 import type { QueryBuilder } from '../QueryBuilder'
 import { SingleResultRelation } from './SingleResultRelation'
 
@@ -27,6 +28,15 @@ export class BelongsToRelation<TParent, TRelated> extends SingleResultRelation<T
         const foreignValue = this.parent.getAttribute(this.foreignKey)
 
         return this.applyConstraint(this.related.query().where({ [this.ownerKey]: foreignValue }))
+    }
+
+    public getMetadata (): BelongsToRelationMetadata {
+        return {
+            type: 'belongsTo',
+            relatedModel: this.related,
+            foreignKey: this.foreignKey,
+            ownerKey: this.ownerKey,
+        }
     }
 
     /**

@@ -1,7 +1,10 @@
+import type { DatabaseAdapter, ModelAttributes, RelationMetadata } from '../types'
+
 import { ArkormCollection } from '../Collection'
-import type { ModelAttributes } from '../types'
 import { QueryBuilder } from '../QueryBuilder'
 import type { RelationConstraint } from '../types/relationship'
+import { RelationTableLoader } from './RelationTableLoader'
+import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 
 /**
  * Base class for all relationship types. Not meant to be used directly.
@@ -11,6 +14,29 @@ import type { RelationConstraint } from '../types/relationship'
  */
 export abstract class Relation<TModel> {
     protected constraint: RelationConstraint<TModel> | null = null
+
+    protected getRelationAdapter (): DatabaseAdapter {
+        const model = this.getRelatedModel()
+        const adapter = model.getAdapter()
+
+        if (!adapter) {
+            throw new UnsupportedAdapterFeatureException('Relationship resolution requires a configured adapter.', {
+                operation: 'relation.adapter',
+            })
+        }
+
+        return adapter
+    }
+
+    protected getRelatedModel (): { getAdapter: () => DatabaseAdapter | undefined, query: () => QueryBuilder<TModel> } {
+        return (this as unknown as {
+            related: { getAdapter: () => DatabaseAdapter | undefined, query: () => QueryBuilder<TModel> }
+        }).related
+    }
+
+    protected createRelationTableLoader (): RelationTableLoader {
+        return new RelationTableLoader(this.getRelationAdapter())
+    }
 
     /**
      * Apply a constraint to the relationship query.
@@ -71,6 +97,48 @@ export abstract class Relation<TModel> {
         values: ModelAttributes<TModel>[TKey][]
     ): this {
         return this.constrain(query => query.whereIn(key, values))
+    }
+
+    /**
+     * Add a string contains clause to the relationship query.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereLike(key, value))
+    }
+
+    /**
+     * Add a string starts-with clause to the relationship query.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereStartsWith<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereStartsWith(key, value))
+    }
+
+    /**
+     * Add a string ends-with clause to the relationship query.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereEndsWith<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereEndsWith(key, value))
     }
 
     /**
@@ -186,6 +254,8 @@ export abstract class Relation<TModel> {
 
         return constrained ?? query
     }
+
+    public abstract getMetadata (): RelationMetadata
 
     /**
      * Build the underlying query for the relationship.

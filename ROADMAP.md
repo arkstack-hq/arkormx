@@ -4,6 +4,16 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 
 ## Implemented Features
 
+## Adapter-First Baseline
+
+- `Model.setClient(...)` and direct delegate-map bootstrapping are deprecated in the current `next` line.
+- `Model.setAdapter(...)` with `createPrismaDatabaseAdapter(...)` or `createKyselyAdapter(...)` is the primary documented runtime path.
+- Prisma compatibility remains supported and covered by CI through the Arkorm 2.x compatibility window.
+- Prisma compatibility boundaries are now explicit: raw SQL predicates and adapter-owned relation batch loading stay compatibility-only gaps, while direct select/include translation remains supported.
+- SQL-backed relation filters and aggregates now fail fast when a callback shape cannot be compiled into adapter specs instead of silently dropping to the generic in-memory path.
+- Eager loading, relation filters, and relation aggregates now compile through Arkorm-owned relation specs end to end on the adapter-first path; the Kysely adapter consumes those specs for both unconstrained and constrained eager loading while Prisma compatibility keeps the generic eager-loader path.
+- Earliest removal target for delegate-first runtime APIs is Arkorm 3.0 after migration docs, parity coverage, and adapter-first examples remain in place.
+
 ### Core ORM
 
 - [x] Model base class with attribute casting, mutators, and serialization
@@ -131,6 +141,39 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] Factory definitions and helpers
 - [x] Seeder classes and execution helpers
 - [x] Migration file generation and schema builder
+
+### Phase 7 — Final Transition
+
+- [x] Remove delegate-first runtime APIs from the primary `Model` surface
+- [x] Remove `Model.setClient(...)` and direct delegate-map bootstrapping from the supported runtime path
+- [x] Replace `Model.getDelegate()` usage in runtime code with adapter-owned execution paths only
+- [x] Remove Prisma-shaped generic constraints from core model and query types
+- [x] Replace `PrismaDelegateLike`-anchored `ModelStatic`, `QueryBuilder`, and helper typing with adapter-native types
+- [x] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
+- [x] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
+- [x] Complete adapter-level relation load execution for the Kysely path
+- [x] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
+- [x] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
+- [x] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
+- [x] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
+- [x] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
+- [x] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
+
+Success criteria:
+
+- Arkorm no longer depends on Prisma delegate semantics in its core runtime or public typing model
+- adapter-first execution is the only primary runtime path for new code, including relation execution fallback paths
+- Prisma support remains only as a compatibility adapter, not as a shaping abstraction for core internals
+- `next` can merge into `main` as the fully completed adapter-first architecture
+
+Final merge checklist status:
+
+- [x] docs and examples teach adapter-first as the default 2.x runtime path
+- [x] delegate-first runtime APIs are isolated to compatibility-only surfaces with explicit deprecation/removal guidance
+- [x] neutral query-schema typing is the primary core type surface
+- [x] relation execution and eager loading no longer depend on delegate-only runtime APIs
+- [x] parity/regression coverage exists for both Prisma compatibility and Kysely adapter-backed execution
+- [x] repo state is currently clean and the latest `pnpm test:all` run passed
 
 ### Out of scope
 

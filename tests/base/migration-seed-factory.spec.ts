@@ -522,6 +522,64 @@ describe('Database migration, seeding and factory helpers', () => {
         rmSync(prismaDirectory, { recursive: true, force: true })
     })
 
+    it('adds generated UUID defaults for string primary keys in migration metadata and Prisma schema', async () => {
+        class CreateApiTokensMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('api_tokens', table => {
+                    table.id('id', 'string').primary()
+                    table.string('name')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('api_tokens')
+            }
+        }
+
+        const upPlan = await getMigrationPlan(CreateApiTokensMigration, 'up')
+        expect(upPlan[0]).toMatchObject({
+            type: 'createTable',
+            table: 'api_tokens',
+            columns: expect.arrayContaining([
+                expect.objectContaining({
+                    name: 'id',
+                    type: 'string',
+                    primary: true,
+                    primaryKeyGeneration: expect.objectContaining({
+                        strategy: 'uuid',
+                        prismaDefault: '@default(uuid())',
+                        databaseDefault: 'gen_random_uuid()::text',
+                        runtimeFactory: 'uuid',
+                    }),
+                }),
+            ]),
+        })
+
+        const prismaDirectory = mkdtempSync(join(tmpdir(), 'arkormx-prisma-schema-'))
+        const schemaPath = join(prismaDirectory, 'schema.prisma')
+        const schemaSource = [
+            'generator client {',
+            '  provider = "prisma-client-js"',
+            '}',
+            '',
+            'datasource db {',
+            '  provider = "postgresql"',
+            '}',
+            '',
+        ].join('\n')
+
+        writeFileSync(schemaPath, schemaSource)
+
+        const applied = await applyMigrationToPrismaSchema(CreateApiTokensMigration, {
+            schemaPath,
+        })
+
+        expect(applied.schema).toContain('id String @id @default(uuid())')
+        expect(applied.schema).toContain('name String')
+
+        rmSync(prismaDirectory, { recursive: true, force: true })
+    })
+
     it('derives inverse relation naming conventions', () => {
         expect(deriveCollectionFieldName('PersonalAccessToken')).toBe('personalAccessTokens')
         expect(deriveCollectionFieldName('Token')).toBe('tokens')

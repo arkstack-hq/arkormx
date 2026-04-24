@@ -1,4 +1,5 @@
 import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex } from 'src/types'
+import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 
@@ -162,6 +163,8 @@ export class TableBuilder {
 
         if (Object.prototype.hasOwnProperty.call(config, 'default'))
             column.default = config.default
+
+        column.primaryKeyGeneration = PrimaryKeyGenerationPlanner.plan(column)
 
         return this
     }
@@ -597,7 +600,10 @@ export class TableBuilder {
             after: options.after,
             default: options.default,
             updatedAt: options.updatedAt,
+            primaryKeyGeneration: options.primaryKeyGeneration,
         })
+        const column = this.columns[this.columns.length - 1]
+        column.primaryKeyGeneration = PrimaryKeyGenerationPlanner.plan(column)
         this.latestColumnName = name
 
         return this

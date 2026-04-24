@@ -1,7 +1,8 @@
+import type { HasManyRelationMetadata, RelationshipModelStatic } from 'src/types'
+
 import type { ArkormCollection } from 'src/Collection'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
 
 /**
  * Defines a one-to-many relationship.
@@ -28,6 +29,15 @@ export class HasManyRelation<TParent, TRelated> extends Relation<TRelated> {
         const localValue = this.parent.getAttribute(this.localKey)
 
         return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+    }
+
+    public getMetadata (): HasManyRelationMetadata {
+        return {
+            type: 'hasMany',
+            relatedModel: this.related,
+            foreignKey: this.foreignKey,
+            localKey: this.localKey,
+        }
     }
 
     /**

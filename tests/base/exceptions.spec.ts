@@ -45,17 +45,12 @@ describe('Exceptions', () => {
         })
     })
 
-    it('throws MissingDelegateException with delegate resolution context', () => {
+    it('throws MissingDelegateException with delegate resolution context', async () => {
         class Ghost extends Model<'ghost'> {
-            protected static override delegate = 'ghosts'
+            protected static override table = 'ghosts'
         }
 
-        let thrown: unknown
-        try {
-            Ghost.query()
-        } catch (error) {
-            thrown = error
-        }
+        const thrown = await Ghost.query().get().catch(error => error)
 
         expect(thrown).toBeInstanceOf(MissingDelegateException)
         expect((thrown as MissingDelegateException).getContext()).toMatchObject({

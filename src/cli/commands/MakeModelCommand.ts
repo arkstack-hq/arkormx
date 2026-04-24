@@ -15,6 +15,7 @@ export class MakeModelCommand extends Command<CliApp> {
         {--factory : Create and link a factory}
         {--seeder : Create a seeder}
         {--migration : Create a migration}
+        {--p|pivot : Indicate the required model is an intermediate pivot model}
         {--all : Create and link factory, seeder, and migration}
     `
 
@@ -31,14 +32,27 @@ export class MakeModelCommand extends Command<CliApp> {
         if (!name) return void this.error('Error: Name argument is required.')
 
         const created = this.app.makeModel(name, this.options())
+        const createdFiles: Array<[string, string]> = [
+            ['Model', created.model.path],
+        ]
+
+        if (created.prisma) {
+            createdFiles.push([
+                `Prisma schema ${created.prisma.updated ? '(updated)' : '(already up to date)'}`,
+                created.prisma.path,
+            ])
+        }
+
+        if (created.factory)
+            createdFiles.push(['Factory', created.factory.path])
+
+        if (created.seeder)
+            createdFiles.push(['Seeder', created.seeder.path])
+
+        if (created.migration)
+            createdFiles.push(['Migration', created.migration.path])
 
         this.success('Created files:')
-            ;[
-                ['Model', created.model.path],
-                [`Prisma schema ${created.prisma.updated ? '(updated)' : '(already up to date)'}`, created.prisma.path],
-                created.factory ? ['Factory', created.factory.path] : '',
-                created.seeder ? ['Seeder', created.seeder.path] : '',
-                created.migration ? ['Migration', created.migration.path] : '',
-            ].filter(Boolean).map(([name, path]) => this.success(this.app.splitLogger(name, path)))
+        createdFiles.map(([fileType, path]) => this.success(this.app.splitLogger(fileType, path)))
     }
 }

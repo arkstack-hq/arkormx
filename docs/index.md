@@ -20,12 +20,12 @@ features:
       src: /prisma-icon.svg
       alt: Prisma Icon
       width: 20
-    title: Prisma's Power
-    details: Arkormˣ is built on top of Prisma, providing a familiar and powerful API for database interactions.
+    title: Adapter First
+    details: Arkormˣ ships as an adapter-first ORM, with Prisma compatibility retained as an optional 2.x compatibility path.
   - icon:
       src: /flashlight-fill.svg
     title: Performance
-    details: Delegate-backed query execution with practical ORM ergonomics.
+    details: Adapter-backed query execution with practical ORM ergonomics.
   - icon:
       src: /markdown-fill.svg
     title: Documentation

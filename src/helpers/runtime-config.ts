@@ -1,24 +1,29 @@
 import type {
+    AdapterBindableModel,
     ArkormConfig,
+    ArkormDebugEvent,
+    ArkormDebugHandler,
     ClientResolver,
     GetUserConfig,
+    ModelQuerySchemaLike,
     PaginationCurrentPageResolver,
     PaginationURLDriverFactory,
-    PrismaClientLike,
-    PrismaDelegateLike,
-    PrismaTransactionCallback,
-    PrismaTransactionCapableClient,
-    PrismaTransactionOptions
+    RuntimeClientLike,
+    TransactionCallback,
+    TransactionCapableClient,
+    TransactionOptions
 } from '../types/core'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { AsyncLocalStorage } from 'async_hooks'
+import type { DatabaseAdapter } from '../types/adapter'
 import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { createRequire } from 'module'
 import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
+import { resetPersistedColumnMappingsCache } from './column-mappings'
 
 const resolveDefaultStubsPath = (): string => {
     let current = path.dirname(fileURLToPath(import.meta.url))
@@ -41,6 +46,10 @@ const resolveDefaultStubsPath = (): string => {
 }
 
 const baseConfig: Partial<ArkormConfig> = {
+    features: {
+        persistedColumnMappings: true,
+        persistedEnums: true,
+    },
     paths: {
         stubs: resolveDefaultStubsPath(),
         seeders: path.join(process.cwd(), 'database', 'seeders'),
@@ -53,6 +62,9 @@ const baseConfig: Partial<ArkormConfig> = {
 }
 const userConfig: Partial<ArkormConfig> = {
     ...baseConfig,
+    features: {
+        ...(baseConfig.features ?? {}),
+    },
     paths: {
         ...(baseConfig.paths ?? {}),
     },
@@ -60,9 +72,38 @@ const userConfig: Partial<ArkormConfig> = {
 let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
 let runtimeClientResolver: ClientResolver | undefined
+let runtimeAdapter: DatabaseAdapter | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
 let runtimePaginationCurrentPageResolver: PaginationCurrentPageResolver | undefined
-const transactionClientStorage = new AsyncLocalStorage<PrismaClientLike>()
+let runtimeDebugHandler: ArkormDebugHandler | undefined
+const transactionClientStorage = new AsyncLocalStorage<RuntimeClientLike>()
+const transactionAdapterStorage = new AsyncLocalStorage<DatabaseAdapter>()
+
+const defaultDebugHandler: ArkormDebugHandler = (event) => {
+    const prefix = `[arkorm:${event.adapter}] ${event.operation}${event.target ? ` [${event.target}]` : ''}`
+    const payload = {
+        phase: event.phase,
+        durationMs: event.durationMs,
+        inspection: event.inspection ?? undefined,
+        meta: event.meta,
+        error: event.error,
+    }
+
+    if (event.phase === 'error') {
+        console.error(prefix, payload)
+
+        return
+    }
+
+    console.debug(prefix, payload)
+}
+
+const resolveDebugHandler = (debug: ArkormConfig['debug']): ArkormDebugHandler | undefined => {
+    if (debug === true)
+        return defaultDebugHandler
+
+    return typeof debug === 'function' ? debug : undefined
+}
 
 const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfig['paths']> => {
     const defaults = baseConfig.paths ?? {}
@@ -87,6 +128,25 @@ const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfi
 }
 
 /**
+ * Merge the feature configuration from the base defaults, user configuration, and provided options.
+ * 
+ * @param features 
+ * @returns 
+ */
+const mergeFeatureConfig = (
+    features?: ArkormConfig['features']
+): NonNullable<ArkormConfig['features']> => {
+    const defaults = baseConfig.features ?? {}
+    const current = userConfig.features ?? {}
+
+    return {
+        ...defaults,
+        ...current,
+        ...(features ?? {}),
+    }
+}
+
+/**
  * Define the ArkORM runtime configuration. This function can be used to provide.
  * 
  * @param config The ArkORM configuration object.
@@ -97,8 +157,27 @@ export const defineConfig = (config: ArkormConfig): ArkormConfig => {
 }
 
 /**
+ * Bind a database adapter instance to an array of models that support adapter binding.
+ * 
+ * @param adapter 
+ * @param models 
+ * @returns 
+ */
+export const bindAdapterToModels = (
+    adapter: DatabaseAdapter,
+    models: AdapterBindableModel[]
+): DatabaseAdapter => {
+    models.forEach((model) => {
+        model.setAdapter(adapter)
+    })
+
+    return adapter
+}
+
+/**
  * Get the user-provided ArkORM configuration. 
  * 
+ * @param key Optional specific configuration key to retrieve. If omitted, the entire configuration object is returned.
  * @returns The user-provided ArkORM configuration object.  
  */
 export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?: K) => {
@@ -110,24 +189,37 @@ export const getUserConfig: GetUserConfig = <K extends keyof ArkormConfig> (key?
 }
 
 /**
- * Configure the ArkORM runtime with the provided Prisma client resolver and 
- * delegate mapping resolver.
+ * Configure the ArkORM runtime with the provided runtime client resolver and
+ * adapter-first options.
  * 
- * @param prisma 
- * @param mapping 
+ * @param client 
+ * @param options
  */
 export const configureArkormRuntime = (
-    prisma: ClientResolver,
+    client?: ClientResolver,
     options: Omit<ArkormConfig, 'prisma'> = {}
 ): void => {
+    const resolvedClient = client ?? options.client
     const nextConfig: Partial<ArkormConfig> = {
         ...userConfig,
-        prisma,
+        features: mergeFeatureConfig(options.features),
         paths: mergePathConfig(options.paths),
     }
 
+    nextConfig.client = resolvedClient
+    nextConfig.prisma = resolvedClient
+
     if (options.pagination !== undefined)
         nextConfig.pagination = options.pagination
+
+    if (options.adapter !== undefined)
+        nextConfig.adapter = options.adapter
+
+    if (options.boot !== undefined)
+        nextConfig.boot = options.boot
+
+    if (options.debug !== undefined)
+        nextConfig.debug = options.debug
 
     if (options.outputExt !== undefined)
         nextConfig.outputExt = options.outputExt
@@ -136,9 +228,19 @@ export const configureArkormRuntime = (
         ...nextConfig,
     })
 
-    runtimeClientResolver = prisma
+    runtimeClientResolver = resolvedClient
+    runtimeAdapter = options.adapter
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
     runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
+    runtimeDebugHandler = resolveDebugHandler(nextConfig.debug)
+
+    const bootClient = resolveClient(resolvedClient)
+
+    options.boot?.({
+        client: bootClient,
+        prisma: bootClient,
+        bindAdapter: bindAdapterToModels,
+    })
 }
 
 /**
@@ -148,6 +250,9 @@ export const configureArkormRuntime = (
 export const resetArkormRuntimeForTests = (): void => {
     Object.assign(userConfig, {
         ...baseConfig,
+        features: {
+            ...(baseConfig.features ?? {}),
+        },
         paths: {
             ...(baseConfig.paths ?? {}),
         },
@@ -155,18 +260,21 @@ export const resetArkormRuntimeForTests = (): void => {
     runtimeConfigLoaded = false
     runtimeConfigLoadingPromise = undefined
     runtimeClientResolver = undefined
+    runtimeAdapter = undefined
     runtimePaginationURLDriverFactory = undefined
     runtimePaginationCurrentPageResolver = undefined
+    runtimeDebugHandler = undefined
+    resetPersistedColumnMappingsCache()
 }
 
 /**
- * Resolve a Prisma client instance from the provided resolver, which can be either
+ * Resolve a runtime client instance from the provided resolver, which can be either
  * a direct client instance or a function that returns a client instance.
  * 
  * @param resolver 
  * @returns 
  */
-const resolveClient = (resolver: ClientResolver | undefined): PrismaClientLike | undefined => {
+const resolveClient = (resolver: ClientResolver | undefined): RuntimeClientLike | undefined => {
     if (!resolver)
         return undefined
 
@@ -191,10 +299,17 @@ const resolveClient = (resolver: ClientResolver | undefined): PrismaClientLike |
 const resolveAndApplyConfig = (imported: unknown): void => {
     const candidate = imported as { default?: unknown }
     const config = (candidate?.default ?? imported) as Partial<ArkormConfig>
-    if (!config || typeof config !== 'object' || !config.prisma)
+    if (!config || typeof config !== 'object')
         return
 
-    configureArkormRuntime(config.prisma, {
+    const runtimeClient = config.client ?? config.prisma
+
+    configureArkormRuntime(runtimeClient, {
+        client: runtimeClient,
+        adapter: config.adapter,
+        boot: config.boot,
+        debug: config.debug,
+        features: config.features,
         pagination: config.pagination,
         paths: config.paths,
         outputExt: config.outputExt,
@@ -297,13 +412,13 @@ export const getDefaultStubsPath = (): string => {
 }
 
 /**
- * Get the runtime Prisma client. 
+ * Get the runtime compatibility client.
  * This function will trigger the loading of the ArkORM configuration if 
  * it hasn't already been loaded.
  * 
  * @returns 
  */
-export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
+export const getRuntimeClient = (): RuntimeClientLike | undefined => {
     const activeTransactionClient = transactionClientStorage.getStore()
     if (activeTransactionClient)
         return activeTransactionClient
@@ -314,11 +429,31 @@ export const getRuntimePrismaClient = (): PrismaClientLike | undefined => {
     return resolveClient(runtimeClientResolver)
 }
 
-export const getActiveTransactionClient = (): PrismaClientLike | undefined => {
+/**
+ * @deprecated Use getRuntimeClient instead.
+ */
+export const getRuntimePrismaClient = getRuntimeClient
+
+export const getRuntimeAdapter = (): DatabaseAdapter | undefined => {
+    const activeTransactionAdapter = transactionAdapterStorage.getStore()
+    if (activeTransactionAdapter)
+        return activeTransactionAdapter
+
+    if (!runtimeConfigLoaded)
+        loadRuntimeConfigSync()
+
+    return runtimeAdapter
+}
+
+export const getActiveTransactionClient = (): RuntimeClientLike | undefined => {
     return transactionClientStorage.getStore()
 }
 
-export const isTransactionCapableClient = (value: unknown): value is PrismaTransactionCapableClient => {
+export const getActiveTransactionAdapter = (): DatabaseAdapter | undefined => {
+    return transactionAdapterStorage.getStore()
+}
+
+export const isTransactionCapableClient = (value: unknown): value is TransactionCapableClient => {
     if (!value || typeof value !== 'object')
         return false
 
@@ -326,16 +461,34 @@ export const isTransactionCapableClient = (value: unknown): value is PrismaTrans
 }
 
 export const runArkormTransaction = async <TResult> (
-    callback: PrismaTransactionCallback<TResult>,
-    options: PrismaTransactionOptions = {},
+    callback: TransactionCallback<TResult>,
+    options: TransactionOptions = {},
+    preferredAdapter?: DatabaseAdapter,
 ): Promise<TResult> => {
+    const activeTransactionAdapter = transactionAdapterStorage.getStore()
     const activeTransactionClient = transactionClientStorage.getStore()
-    if (activeTransactionClient)
-        return await callback(activeTransactionClient)
+    if (activeTransactionAdapter || activeTransactionClient) {
+        return await callback({
+            adapter: activeTransactionAdapter,
+            client: activeTransactionClient,
+        })
+    }
 
-    const client = getRuntimePrismaClient()
+    const adapter = preferredAdapter ?? getRuntimeAdapter()
+    if (adapter) {
+        return await adapter.transaction(async (transactionAdapter) => {
+            return await transactionAdapterStorage.run(transactionAdapter, async () => {
+                return await callback({
+                    adapter: transactionAdapter,
+                    client: transactionClientStorage.getStore(),
+                })
+            })
+        }, options)
+    }
+
+    const client = getRuntimeClient()
     if (!client)
-        throw new ArkormException('Cannot start a transaction without a configured Prisma client.', {
+        throw new ArkormException('Cannot start a transaction without a configured runtime client or adapter.', {
             code: 'CLIENT_NOT_CONFIGURED',
             operation: 'transaction',
         })
@@ -349,7 +502,7 @@ export const runArkormTransaction = async <TResult> (
 
     return await client.$transaction(async (transactionClient) => {
         return await transactionClientStorage.run(transactionClient, async () => {
-            return await callback(transactionClient)
+            return await callback({ client: transactionClient })
         })
     }, options)
 }
@@ -378,14 +531,25 @@ export const getRuntimePaginationCurrentPageResolver = (): PaginationCurrentPage
     return runtimePaginationCurrentPageResolver
 }
 
+export const getRuntimeDebugHandler = (): ArkormDebugHandler | undefined => {
+    if (!runtimeConfigLoaded)
+        loadRuntimeConfigSync()
+
+    return runtimeDebugHandler
+}
+
+export const emitRuntimeDebugEvent = (event: ArkormDebugEvent): void => {
+    getRuntimeDebugHandler()?.(event)
+}
+
 /**
- * Check if a given value is a Prisma delegate-like object 
+ * Check if a given value matches Arkorm's query-schema contract
  * by verifying the presence of common delegate methods.
  * 
  * @param value The value to check.
- * @returns True if the value is a Prisma delegate-like object, false otherwise.    
+ * @returns True if the value matches the query-schema contract, false otherwise.
  */
-export const isDelegateLike = (value: unknown): value is PrismaDelegateLike => {
+export const isQuerySchemaLike = (value: unknown): value is ModelQuerySchemaLike => {
     if (!value || typeof value !== 'object')
         return false
 
@@ -394,5 +558,10 @@ export const isDelegateLike = (value: unknown): value is PrismaDelegateLike => {
     return ['findMany', 'findFirst', 'create', 'update', 'delete', 'count']
         .every(method => typeof candidate[method] === 'function')
 }
+
+/**
+ * @deprecated Use isQuerySchemaLike instead.
+ */
+export const isDelegateLike = isQuerySchemaLike
 
 void loadArkormConfig()

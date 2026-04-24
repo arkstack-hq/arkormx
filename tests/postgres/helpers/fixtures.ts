@@ -1,9 +1,10 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
+import type { DatabaseAdapter } from '../../../src'
 import { configureArkormRuntime, Model, QueryBuilder } from '../../../src'
 
 export class DbUser extends Model<'user'> {
-    protected static override delegate = 'users'
+    protected static override table = 'users'
 
     public profile () {
         return this.hasOne(DbProfile, 'userId')
@@ -37,13 +38,13 @@ export class DbUser extends Model<'user'> {
         return this.morphToMany(DbTag, 'taggables', 'taggable', 'tagId')
     }
 
-    public scopeActive (query: QueryBuilder<DbUser>) {
+    public scopeActive (query: QueryBuilder<DbUser>): QueryBuilder<DbUser> {
         return query.whereKey('isActive', 1)
     }
 }
 
 export class DbProfile extends Model {
-    protected static override delegate = 'userProfile'
+    protected static override table = 'userProfile'
 
     public user () {
         return this.belongsTo(DbUser, 'userId')
@@ -55,7 +56,7 @@ export class DbProfile extends Model {
 }
 
 export class DbPost extends Model {
-    protected static override delegate = 'posts'
+    protected static override table = 'posts'
 
     public user () {
         return this.belongsTo(DbUser, 'userId')
@@ -67,23 +68,23 @@ export class DbPost extends Model {
 }
 
 export class DbRole extends Model {
-    protected static override delegate = 'roles'
+    protected static override table = 'roles'
 }
 
 export class DbImage extends Model {
-    protected static override delegate = 'images'
+    protected static override table = 'images'
 }
 
 export class DbComment extends Model {
-    protected static override delegate = 'comments'
+    protected static override table = 'comments'
 }
 
 export class DbTag extends Model {
-    protected static override delegate = 'tags'
+    protected static override table = 'tags'
 }
 
 export class DbArticle extends Model<'article'> {
-    protected static override delegate = 'articles'
+    protected static override table = 'articles'
     protected static override softDeletes = true
 }
 
@@ -187,4 +188,15 @@ export async function acquirePostgresTestLock () {
 
 export async function releasePostgresTestLock () {
     await prisma.$executeRawUnsafe(`SELECT pg_advisory_unlock(${TEST_LOCK_ID})`)
+}
+
+export function setPostgresModelAdapter (adapter?: DatabaseAdapter) {
+    DbUser.setAdapter(adapter)
+    DbProfile.setAdapter(adapter)
+    DbPost.setAdapter(adapter)
+    DbRole.setAdapter(adapter)
+    DbImage.setAdapter(adapter)
+    DbComment.setAdapter(adapter)
+    DbTag.setAdapter(adapter)
+    DbArticle.setAdapter(adapter)
 }
