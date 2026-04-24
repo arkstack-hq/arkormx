@@ -248,7 +248,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             return { NOT: nested }
         }
 
-        throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the Prisma compatibility adapter.', {
+        throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the Prisma compatibility adapter; use a SQL-backed adapter for raw SQL predicates.', {
             operation: 'adapter.where',
             meta: {
                 feature: 'rawWhere',
@@ -445,9 +445,10 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     }
 
     /**
-     * @todo Implement relationLoads by performing separate queries and merging results 
-     * in-memory, since Prisma does not support nested reads with constraints, ordering, or
-     * pagination on related models as of now.
+     * Prisma can translate relation load plans on direct select/selectOne calls into
+     * Prisma include/select arguments, but the adapter does not advertise the
+     * adapter-owned batch relation load seam. QueryBuilder eager loads therefore stay
+     * on Arkorm's generic relation loader on the Prisma compatibility path.
      * 
      * @param spec 
      * @returns 
@@ -653,7 +654,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
      * @param _spec 
      */
     public async loadRelations<TModel = unknown> (_spec: RelationLoadSpec<TModel>): Promise<void> {
-        throw new UnsupportedAdapterFeatureException('Relation batch loading is not supported by the Prisma compatibility adapter yet.', {
+        throw new UnsupportedAdapterFeatureException('Adapter-owned relation batch loading is intentionally unavailable on the Prisma compatibility adapter; eager loading stays on Arkorm\'s generic loader for this path.', {
             operation: 'adapter.loadRelations',
             meta: {
                 feature: 'relationLoads',

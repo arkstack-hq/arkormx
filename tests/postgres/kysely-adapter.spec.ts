@@ -14,6 +14,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import {
     ArkormCollection,
     QueryExecutionException,
+    QueryBuilder,
     createKyselyAdapter,
     createPrismaDatabaseAdapter,
 } from '../../src'
@@ -197,6 +198,8 @@ describe('PostgreSQL Kysely adapter', () => {
         await expect(DbUser.query().whereKey('email', 'mia-kysely@example.com').exists()).resolves.toBe(true)
 
         const deleted = await DbUser.query().whereKey('email', 'noah-kysely@example.com').delete()
+        if (!deleted)
+            throw new Error('Expected deleted user to exist.')
         expect(deleted.getAttribute('email')).toBe('noah-kysely@example.com')
 
         const liveArticles = await DbArticle.query().get()
@@ -271,8 +274,8 @@ describe('PostgreSQL Kysely adapter', () => {
             .orderBy({ id: 'asc' })
             .get()
 
-        expect(loadRelationsSpy).toHaveBeenCalledTimes(1)
-        expect(loadRelationsSpy).toHaveBeenCalledWith(expect.objectContaining({
+        expect(loadRelationsSpy).toHaveBeenCalledTimes(2)
+        expect(loadRelationsSpy).toHaveBeenNthCalledWith(1, expect.objectContaining({
             relations: [
                 {
                     relation: 'posts',
@@ -280,6 +283,11 @@ describe('PostgreSQL Kysely adapter', () => {
                         { relation: 'comments', relationLoads: undefined },
                     ],
                 },
+            ],
+        }))
+        expect(loadRelationsSpy).toHaveBeenNthCalledWith(2, expect.objectContaining({
+            relations: [
+                { relation: 'comments', relationLoads: undefined },
             ],
         }))
 
@@ -296,6 +304,93 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('select * from "users" order by "id" asc')
         expect(normalizedSql).toContain('select * from "posts" where "userId" in ($1, $2)')
         expect(executedQueries.filter((query) => query.includes('from "comments"'))).toHaveLength(3)
+    })
+
+    it('supports constrained eager loading and model.load() through Arkorm relation load specs on the Kysely path', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const loadRelationsSpy = vi.spyOn(kyselyAdapter, 'loadRelations')
+        loadRelationsSpy.mockClear()
+
+        const relationPlanQuery = DbUser.query().with({
+            posts: (query) => (query as QueryBuilder<DbPost>)
+                .where({ title: 'A' })
+                .orderBy({ id: 'desc' })
+                .take(1)
+                .with('comments'),
+        }) as unknown as {
+            tryBuildAdapterRelationLoadPlans: () => unknown
+        }
+
+        expect(relationPlanQuery.tryBuildAdapterRelationLoadPlans()).toEqual([
+            {
+                relation: 'posts',
+                constraint: {
+                    type: 'comparison',
+                    column: 'title',
+                    operator: '=',
+                    value: 'A',
+                },
+                softDeleteMode: undefined,
+                orderBy: [{ column: 'id', direction: 'desc' }],
+                limit: 1,
+                offset: undefined,
+                columns: undefined,
+                relationLoads: [
+                    {
+                        relation: 'comments',
+                        constraint: undefined,
+                        softDeleteMode: undefined,
+                        orderBy: undefined,
+                        limit: undefined,
+                        offset: undefined,
+                        columns: undefined,
+                        relationLoads: undefined,
+                    },
+                ],
+            },
+        ])
+
+        const user = await DbUser.query().with({
+            posts: (query) => (query as QueryBuilder<DbPost>)
+                .where({ title: 'A' })
+                .orderBy({ id: 'desc' })
+                .take(1)
+                .with('comments'),
+        }).find(1)
+
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        const posts = user.getAttribute('posts') as ArkormCollection<DbPost>
+        expect(posts.all().map(post => post.getAttribute('title'))).toEqual(['A'])
+        expect(((posts.all()[0]?.getAttribute('comments')) as ArkormCollection<unknown>).all()).toHaveLength(1)
+
+        executedQueries.length = 0
+
+        const reloaded = await DbUser.query().find(1)
+        expect(reloaded).not.toBeNull()
+        if (!reloaded)
+            throw new Error('Expected reloaded user to exist.')
+
+        await reloaded.load({
+            posts: (query) => (query as QueryBuilder<DbPost>)
+                .where({ title: 'A' })
+                .orderBy({ id: 'desc' })
+                .take(1)
+                .with('comments'),
+        })
+
+        const reloadedPosts = reloaded.getAttribute('posts') as ArkormCollection<DbPost>
+        expect(reloadedPosts.all().map(post => post.getAttribute('title'))).toEqual(['A'])
+        expect(((reloadedPosts.all()[0]?.getAttribute('comments')) as ArkormCollection<unknown>).all()).toHaveLength(1)
+
+        expect(loadRelationsSpy).toHaveBeenCalled()
+
+        const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('select * from "posts" where ("userId" in ($1) and "title" = $2) order by "id" desc limit $3')
+        expect(normalizedSql).toContain('select * from "comments" where ("commentableId" = $1 and "commentableType" = $2)')
     })
 
     it('supports SQL-backed belongsToMany relation filters and aggregates through QueryBuilder', async () => {
@@ -596,6 +691,8 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(activeUsers.all().map(user => user.getAttribute('name'))).toContain('First Active Updated')
 
         const deleted = await DbUser.query().where({ isActive: 1 }).delete()
+        if (!deleted)
+            throw new Error('Expected deleted user to exist.')
         expect(deleted.getAttribute('name')).toBeDefined()
 
         const remaining = await DbUser.query().where({ isActive: 1 }).get()

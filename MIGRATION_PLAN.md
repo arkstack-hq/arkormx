@@ -666,9 +666,9 @@ Implementation checklist:
 - [x] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
 - [x] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [x] Complete adapter-level relation load execution for the Kysely path
-- [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
-- [ ] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
-- [ ] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
+- [x] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
+- [x] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
+- [x] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
 - [ ] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
 - [ ] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
 - [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
@@ -692,12 +692,18 @@ Started in code:
 - SQL-capable adapters no longer silently fall back to generic in-memory relation filter or aggregate execution when the relation query shape cannot be compiled into Arkorm relation specs; those cases now fail fast with an unsupported-adapter error while compatibility adapters retain the generic path
 - `QueryBuilder` now routes unconstrained `with(...)` eager loads through `adapter.loadRelations(...)` when an adapter explicitly advertises `relationLoads`, while constrained eager loads and `Model.load(...)` continue to use the generic set-based loader path without relying on delegate resolution
 - the Kysely adapter now implements `loadRelations(...)` for unconstrained eager-load graphs by delegating through Arkorm's set-based eager loader, which closes the adapter-level relation load seam for the supported Kysely path without reintroducing delegate resolution
+- Prisma compatibility gaps are now isolated explicitly: direct select/include relation plans still translate into Prisma include arguments, while adapter-owned relation batch loading and raw SQL predicates throw targeted unsupported-adapter errors and remain documented as compatibility-only limitations
+- `QueryBuilder` now also compiles constrained `with({...})` callbacks into `RelationLoadPlan` specs, `Model.load(...)` reuses that same spec path, and the Kysely adapter reapplies those specs through Arkorm's generic eager loader so constrained eager loading, relation filters, and relation aggregates all share Arkorm-owned relation specs end to end
 - `Model` now documents adapter binding as its primary runtime API, while `setClient(...)`, `getDelegate(...)`, and `delegate` are explicitly treated as compatibility-only 2.x transition members rather than part of the primary surface
 - `Model.setClient(...)` and direct delegate-map helpers are now explicitly documented as compatibility-only migration paths rather than supported runtime bootstrap APIs
 - adapter-backed runtime queries no longer rely on `Model.getDelegate()`; the method is isolated to explicit compatibility callers and dedicated deprecation/error coverage
 - relation filters, relation aggregates, eager loading, and `Model.load(...)` now execute without routing through `Model.getDelegate()`, which closes the remaining delegate-shaped runtime fallback for relation execution even where Arkorm still uses its generic set-based loader
 - regression coverage now proves both relation fallback and eager loading execute without emitting the `Model.getDelegate()` deprecation path
 - PostgreSQL regression coverage now proves Kysely-owned `relationLoads` execution for nested eager loads while preserving current generic morph-relation loading behavior
+- Prisma adapter regression coverage now proves the remaining unsupported surface is isolated behind explicit capability flags and unsupported-adapter errors rather than leaking as implicit runtime behavior
+- relationship regression coverage now proves constrained eager-loading callbacks export `RelationLoadPlan` specs and that Kysely-backed `with({...})` and `Model.load(...)` preserve constrained eager-load behavior through the adapter-first path
+- CLI model generation, schema sync helpers, and bundled model stubs now use `table`/`TableName` terminology internally, with only explicit compatibility parsing still recognizing legacy `delegate` aliases
+- the versioned upgrade guide now teaches `table` as the normal model override instead of `delegate`, aligning examples with the adapter-first runtime contract
 - `PrismaDelegateLike` currently remains as a deprecated compatibility alias so Prisma-specific adapter and helper code can keep compiling while the rest of Phase 7 is completed
 
 Success criteria:

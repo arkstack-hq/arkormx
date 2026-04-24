@@ -379,7 +379,7 @@ export class CliApp {
     } {
         const baseName = str(name.replace(/Model$/, '')).pascal().toString()
         const modelName = `${baseName}`
-        const delegateName = str(baseName).camel().plural().toString()
+        const tableName = str(baseName).camel().plural().toString()
         const outputExt = this.resolveOutputExt()
         const modelsDir = this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
 
@@ -404,7 +404,7 @@ export class CliApp {
 
         const modelPath = this.generateFile(stubPath, outputPath, {
             ModelName: modelName,
-            DelegateName: delegateName,
+            TableName: tableName,
             FactoryImport: shouldBuildFactory
                 ? `import { ${factoryName} } from '${factoryImportPath}'\n`
                 : '',
@@ -416,7 +416,7 @@ export class CliApp {
         }, options)
 
         const prisma = this.isUsingPrismaAdapter()
-            ? this.ensurePrismaModelEntry(modelName, delegateName)
+            ? this.ensurePrismaModelEntry(modelName, tableName)
             : undefined
 
         const created = {
@@ -441,36 +441,36 @@ export class CliApp {
             created.seeder = this.makeSeeder(baseName, { force: options.force })
 
         if (shouldBuildMigration)
-            created.migration = this.makeMigration(`create ${delegateName} table`)
+            created.migration = this.makeMigration(`create ${tableName} table`)
 
         return created
     }
 
     /**
      * Ensure that the Prisma schema has a model entry for the given model 
-     * and delegate names.
+     * and table names.
      * If the entry does not exist, it will be created with a default `id` field.
      * 
      * @param modelName The name of the model to ensure in the Prisma schema.
-     * @param delegateName The name of the delegate (table) to ensure in the Prisma schema.
+     * @param tableName The table name to ensure in the Prisma schema.
      */
     private ensurePrismaModelEntry (
         modelName: string,
-        delegateName: string
+        tableName: string
     ): { path: string, updated: boolean } | undefined {
         const schemaPath = join(process.cwd(), 'prisma', 'schema.prisma')
         if (!existsSync(schemaPath))
             return undefined
 
         const source = readFileSync(schemaPath, 'utf-8')
-        const existingByTable = findModelBlock(source, delegateName)
+        const existingByTable = findModelBlock(source, tableName)
         const existingByName = new RegExp(`model\\s+${modelName}\\s*\\{`, 'm').test(source)
         if (existingByTable || existingByName)
             return { path: schemaPath, updated: false }
 
         const updated = applyCreateTableOperation(source, {
             type: 'createTable',
-            table: delegateName,
+            table: tableName,
             columns: [
                 {
                     name: 'id',
@@ -820,11 +820,11 @@ export class CliApp {
 
         const className = classMatch[1]
         const tableMatch = modelSource.match(/protected\s+static\s+override\s+table\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+table\s*=\s*['"]([^'"]+)['"]/)
-        const delegateMatch = modelSource.match(/protected\s+static\s+override\s+delegate\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+delegate\s*=\s*['"]([^'"]+)['"]/)
+        const compatibilityDelegateMatch = modelSource.match(/protected\s+static\s+override\s+delegate\s*=\s*['"]([^'"]+)['"]/) ?? modelSource.match(/static\s+delegate\s*=\s*['"]([^'"]+)['"]/)
 
         return {
             className,
-            table: tableMatch?.[1] ?? delegateMatch?.[1] ?? str(className).camel().plural().toString(),
+            table: tableMatch?.[1] ?? compatibilityDelegateMatch?.[1] ?? str(className).camel().plural().toString(),
         }
     }
 

@@ -405,10 +405,12 @@ relationship path does not exist. That applies to both direct names such as
 
 For adapter authors, unconstrained `with(...)` graphs can now route through the
 adapter `relationLoads` seam when the adapter explicitly advertises that
-capability. The Kysely adapter now implements that seam for unconstrained eager
-loads by delegating through Arkorm's set-based eager loader. Constrained eager
-loading callbacks and direct `Model.load(...)` still use Arkorm's generic
-set-based eager loader until later migration steps.
+capability. The Kysely adapter now implements that seam for both unconstrained
+and constrained eager loads by consuming `RelationLoadPlan` specs and then
+delegating execution through Arkorm's set-based eager loader. `Model.load(...)`
+uses that same plan path. The Prisma compatibility adapter intentionally does
+not advertise `relationLoads`, so eager loads there continue to use Arkorm's
+generic loader on the compatibility path.
 
 ## Relationship filters and aggregates
 
