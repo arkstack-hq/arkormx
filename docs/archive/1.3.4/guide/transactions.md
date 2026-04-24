@@ -87,34 +87,9 @@ await User.transaction(async () => {
 
 If the outer transaction rolls back, the inner work rolls back with it.
 
-## Raw table transactions with DB
-
-When you want transaction-scoped table queries without defining a model, use
-`DB.transaction(...)` together with `db.table(...)`.
-
-```ts
-import { DB } from 'arkormx';
-
-await DB.transaction(async (db) => {
-  await db.table('users').insert({
-    name: 'Mia',
-    email: 'mia@example.com',
-    isActive: 1,
-  });
-
-  await db
-    .table('users')
-    .where({ email: 'john@example.com' })
-    .updateFrom({ isActive: 1 });
-});
-```
-
-Inside the callback, every query created through that `db` instance uses the
-transaction-scoped adapter.
-
 ## Using the transaction client directly
 
-The callback also receives the active runtime transaction client.
+The callback also receives the active Prisma transaction client.
 Use it when you need to mix Arkorm queries with direct delegate calls.
 
 ```ts
@@ -136,8 +111,8 @@ already uses the active transaction client automatically.
 
 ## Transaction options
 
-Arkorm forwards the optional second argument to the active adapter transaction
-implementation or the compatibility client's interactive transaction call.
+Arkorm forwards the optional second argument to the underlying Prisma
+interactive transaction call.
 
 ```ts
 await User.transaction(
@@ -156,11 +131,9 @@ Use this when you need to control transaction timeouts or isolation semantics.
 
 ## Requirements
 
-`Model.transaction(...)` depends on Arkorm having access to either an adapter
-with transaction support or a runtime compatibility client. Use
-`defineConfig({ client })`, `defineConfig({ prisma })`, or
-`configureArkormRuntime(...)` during application boot when you want
-client-backed transaction scoping.
+Transaction support depends on Arkorm having access to a runtime Prisma client.
+Use `defineConfig({ prisma })` or `configureArkormRuntime(...)` during
+application boot so Arkorm can start and scope transactions correctly.
 
 ```ts
 import { configureArkormRuntime } from 'arkormx';
@@ -168,10 +141,5 @@ import { configureArkormRuntime } from 'arkormx';
 configureArkormRuntime(() => prisma);
 ```
 
-If your app uses an adapter-first runtime path such as Kysely, prefer the
-adapter's own `transaction(...)` method or `DB.transaction(...)` when you want
-table-centric access without model classes.
-
 If your current adapter does not expose transaction support, Arkorm throws an
-unsupported-adapter error when `Model.transaction()` or `DB.transaction()` is
-called.
+unsupported-adapter error when `Model.transaction()` is called.

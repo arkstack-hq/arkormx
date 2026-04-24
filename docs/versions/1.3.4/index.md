@@ -11,21 +11,21 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: ./guide/getting-started
+      link: /guide/getting-started
     - theme: alt
       text: Query Builder
-      link: ./guide/query-builder
+      link: /guide/query-builder
 features:
   - icon:
       src: /prisma-icon.svg
       alt: Prisma Icon
       width: 20
-    title: Adapter First
-    details: Arkormˣ ships as an adapter-first ORM, with Prisma compatibility retained as an optional 2.x compatibility path.
+    title: Prisma's Power
+    details: Arkormˣ is built on top of Prisma, providing a familiar and powerful API for database interactions.
   - icon:
       src: /flashlight-fill.svg
     title: Performance
-    details: Adapter-backed query execution with practical ORM ergonomics.
+    details: Delegate-backed query execution with practical ORM ergonomics.
   - icon:
       src: /markdown-fill.svg
     title: Documentation
