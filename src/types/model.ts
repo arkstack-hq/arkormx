@@ -127,7 +127,7 @@ export type QuerySchemaForModel<
 /**
  * @deprecated Use AttributeQuerySchema instead.
  */
-export interface AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> extends AttributeQuerySchema<TAttributes> {}
+export type AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> = AttributeQuerySchema<TAttributes>
 
 /**
  * @deprecated Use QuerySchemaForModel instead.
@@ -160,10 +160,10 @@ type BaseModelInstance = Model<any, any>
 
 export type ModelDeclaredAttributeKey<TModel> = {
     [TKey in keyof TModel & string]: TKey extends keyof BaseModelInstance
-        ? never
-        : TModel[TKey] extends (...args: any[]) => any
-            ? never
-            : TKey
+    ? never
+    : TModel[TKey] extends (...args: any[]) => any
+    ? never
+    : TKey
 }[keyof TModel & string]
 
 type RelationshipResultProvider<TResult = unknown> = {
@@ -172,14 +172,14 @@ type RelationshipResultProvider<TResult = unknown> = {
 
 export type ModelRelationshipKey<TModel> = {
     [TKey in keyof TModel & string]: TKey extends keyof BaseModelInstance
-        ? never
-        : TModel[TKey] extends (...args: any[]) => infer TReturn
-        ? Parameters<TModel[TKey]> extends []
-            ? TReturn extends RelationshipResultProvider<any>
-                ? TKey
-                : never
-            : never
-        : never
+    ? never
+    : TModel[TKey] extends (...args: any[]) => infer TReturn
+    ? Parameters<TModel[TKey]> extends []
+    ? TReturn extends RelationshipResultProvider<any>
+    ? TKey
+    : never
+    : never
+    : never
 }[keyof TModel & string]
 
 export type ModelRelationshipResult<
@@ -187,8 +187,8 @@ export type ModelRelationshipResult<
     TKey extends ModelRelationshipKey<TModel>,
 > = TModel[TKey] extends (...args: any[]) => infer TReturn
     ? TReturn extends RelationshipResultProvider<infer TResult>
-        ? TResult
-        : never
+    ? TResult
+    : never
     : never
 
 export type ModelAttributeValue<
@@ -198,10 +198,10 @@ export type ModelAttributeValue<
 > = TKey extends ModelRelationshipKey<TModel>
     ? ModelRelationshipResult<TModel, TKey>
     : TKey extends ModelDeclaredAttributeKey<TModel>
-        ? TModel[TKey]
-        : TKey extends keyof TAttributes & string
-            ? TAttributes[TKey]
-            : unknown
+    ? TModel[TKey]
+    : TKey extends keyof TAttributes & string
+    ? TAttributes[TKey]
+    : unknown
 
 export type ModelCreateData<TModel, TDelegate extends ModelQuerySchemaLike> =
     TModel extends Model<any, infer TAttributes>
