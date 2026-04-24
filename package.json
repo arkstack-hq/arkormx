@@ -98,6 +98,6 @@
     "pg": "^8.19.0"
   },
   "peerDependencies": {
-    "@prisma/client": "^7.6.0"
+    "@prisma/client": "^7.8"
   }
 }
