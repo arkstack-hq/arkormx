@@ -46,6 +46,9 @@ const resolveDefaultStubsPath = (): string => {
 }
 
 const baseConfig: Partial<ArkormConfig> = {
+    naming: {
+        modelTableCase: 'snake',
+    },
     features: {
         persistedColumnMappings: true,
         persistedEnums: true,
@@ -62,6 +65,9 @@ const baseConfig: Partial<ArkormConfig> = {
 }
 const userConfig: Partial<ArkormConfig> = {
     ...baseConfig,
+    naming: {
+        ...(baseConfig.naming ?? {}),
+    },
     features: {
         ...(baseConfig.features ?? {}),
     },
@@ -103,6 +109,19 @@ const resolveDebugHandler = (debug: ArkormConfig['debug']): ArkormDebugHandler |
         return defaultDebugHandler
 
     return typeof debug === 'function' ? debug : undefined
+}
+
+const mergeNamingConfig = (
+    naming?: ArkormConfig['naming']
+): NonNullable<ArkormConfig['naming']> => {
+    const defaults = baseConfig.naming ?? {}
+    const current = userConfig.naming ?? {}
+
+    return {
+        ...defaults,
+        ...current,
+        ...(naming ?? {}),
+    }
 }
 
 const mergePathConfig = (paths?: ArkormConfig['paths']): NonNullable<ArkormConfig['paths']> => {
@@ -202,6 +221,7 @@ export const configureArkormRuntime = (
     const resolvedClient = client ?? options.client
     const nextConfig: Partial<ArkormConfig> = {
         ...userConfig,
+        naming: mergeNamingConfig(options.naming),
         features: mergeFeatureConfig(options.features),
         paths: mergePathConfig(options.paths),
     }
@@ -250,6 +270,9 @@ export const configureArkormRuntime = (
 export const resetArkormRuntimeForTests = (): void => {
     Object.assign(userConfig, {
         ...baseConfig,
+        naming: {
+            ...(baseConfig.naming ?? {}),
+        },
         features: {
             ...(baseConfig.features ?? {}),
         },
@@ -309,6 +332,7 @@ const resolveAndApplyConfig = (imported: unknown): void => {
         adapter: config.adapter,
         boot: config.boot,
         debug: config.debug,
+        naming: config.naming,
         features: config.features,
         pagination: config.pagination,
         paths: config.paths,

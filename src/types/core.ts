@@ -99,6 +99,7 @@ export interface ArkormDebugEvent {
 }
 
 export type ArkormDebugHandler = (event: ArkormDebugEvent) => void
+export type ModelTableCase = 'camel' | 'snake' | 'kebab' | 'studly'
 
 export interface ArkormConfig {
     /**
@@ -129,6 +130,16 @@ export interface ArkormConfig {
     pagination?: {
         urlDriver?: PaginationURLDriverFactory
         resolveCurrentPage?: PaginationCurrentPageResolver
+    }
+    /**
+     * @property naming Naming strategy options for inferred model table names.
+     */
+    naming?: {
+        /**
+         * @property modelTableCase Case transformer applied to inferred table names.
+         * Defaults to 'snake'.
+         */
+        modelTableCase?: ModelTableCase
     }
     /**
      * @property features Optional feature flags for persisted non-Prisma runtime metadata.
