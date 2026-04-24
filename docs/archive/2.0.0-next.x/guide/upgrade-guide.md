@@ -43,7 +43,7 @@ const prisma = new PrismaClient();
 Model.setClient(prisma);
 ```
 
-Recommended 2.x compatibility-first upgrade:
+Recommended 2.x Prisma compatibility bootstrap:
 
 ```ts
 import { PrismaClient } from '@prisma/client';
@@ -57,8 +57,8 @@ export default defineConfig({
 });
 ```
 
-This keeps Prisma available for compatibility features while moving the app to
-the 2.x runtime shape.
+This keeps Prisma available for compatibility features while using the standard
+2.x runtime contract.
 
 ### 2. Prefer one global adapter
 
@@ -157,7 +157,7 @@ This keeps your type surface aligned with your model data instead of coupling
 it to one specific delegate implementation.
 
 If you built custom helpers around Arkorm's older delegate-shaped utility
-types, move them toward the neutral query-schema names during the 2.x window.
+types, move them toward the neutral query-schema names in 2.x.
 In practice that means preferring `ModelQuerySchemaLike`, `QuerySchemaWhere`,
 `QuerySchemaRow`, `QuerySchemaCreateData`, `QuerySchemaUpdateData`, and
 `QuerySchemaForModel` over the older `Delegate*` names. When you build
@@ -197,7 +197,7 @@ const prisma = new PrismaClient();
 Model.setClient(prisma);
 ```
 
-### After: 2.x compatibility-first bootstrap
+### After: 2.x Prisma compatibility bootstrap
 
 ```ts
 import { PrismaClient } from '@prisma/client';

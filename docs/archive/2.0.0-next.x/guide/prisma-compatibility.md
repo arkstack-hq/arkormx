@@ -2,8 +2,8 @@
 
 Arkorm now treats adapter binding as the primary runtime path.
 
-Prisma is still supported through the compatibility adapter during the
-transition window.
+Prisma is still supported through the compatibility adapter across the Arkorm
+2.x line.
 
 If you are coming from Arkorm 1.x, read
 [Upgrade Guide](./upgrade-guide.md) first, then use this page
@@ -38,8 +38,8 @@ const adapter = createPrismaDatabaseAdapter(prisma, {
 
 ## Deprecated runtime APIs
 
-These APIs still work during the transition window, but they should not be used
-for new code:
+These APIs still work on the 2.x compatibility path, but they should not be
+used for new code:
 
 - `Model.setClient(...)`
 - `Model.getDelegate(...)`
@@ -51,7 +51,8 @@ the primary path is adapter-first setup via `Model.setAdapter(...)`,
 `defineConfig({ adapter })`, or `configureArkormRuntime(..., { adapter })`.
 
 Direct delegate-map bootstrapping is also no longer part of the supported runtime
-path, it currently only exists for temporary migration compatibility.
+path, it currently only exists as a backward-compatibility bridge for older
+bootstrap code.
 
 `Model.setClient(...)`, `Model.getDelegate(...)`, and `Model.delegate` now emit
 or participate in deprecation-driven compatibility behavior and are scheduled
@@ -74,7 +75,7 @@ still needs access to the Prisma client for:
 3. Move any custom delegate-name mapping into `createPrismaDatabaseAdapter(prisma, mapping)`.
 4. Keep parity tests running against the compatibility adapter while you roll out SQL-backed adapters.
 
-## Typing during the transition
+## Typing on the compatibility path
 
 If you maintain Arkorm extensions, shared query helpers, or other advanced type
 wrappers, prefer the neutral core query-schema names:

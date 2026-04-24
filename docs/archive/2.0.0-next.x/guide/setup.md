@@ -4,7 +4,7 @@ This page contains a complete starter setup for adapter-first Arkormˣ.
 
 The primary 2.x path is to configure one global adapter in
 `arkormx.config.ts`. Prisma remains optional for compatibility mode, CLI flows,
-and Prisma-backed transaction helpers during the transition window.
+and Prisma-backed transaction helpers on the supported 2.x compatibility path.
 
 ## 1. Create `arkormx.config.ts`
 
@@ -53,8 +53,8 @@ export class Article extends Model {
 }
 ```
 
-Only add `delegate` or `table` when your model names do not match the storage
-names Arkorm would infer by convention.
+Only add `table` when your model names do not match the storage names Arkorm
+would infer by convention.
 
 ## 3. Query usage
 

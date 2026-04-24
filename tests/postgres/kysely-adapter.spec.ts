@@ -393,6 +393,61 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('select * from "comments" where ("commentableId" = $1 and "commentableType" = $2)')
     })
 
+    it('matches Prisma compatibility and Kysely adapter behavior for adapter-first relation filters and eager loading without delegate warnings', async () => {
+        const warningSpy = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined)
+
+        const runScenario = async (adapter: typeof prismaAdapter) => {
+            setPostgresModelAdapter(adapter)
+
+            const users = await DbUser.query()
+                .has('comments', '>=', 1)
+                .with({
+                    posts: (query) => (query as QueryBuilder<DbPost>)
+                        .where({ title: 'A' })
+                        .orderBy({ id: 'desc' })
+                        .take(1)
+                        .with('comments'),
+                })
+                .orderBy({ id: 'asc' })
+                .get()
+
+            const user = users.all()[0]
+            if (!user)
+                throw new Error('Expected user to exist.')
+
+            await user.load('roles')
+
+            const posts = user.getAttribute('posts') as ArkormCollection<DbPost>
+            const roles = user.getAttribute('roles') as ArkormCollection<DbRole>
+            const firstPost = posts.all()[0]
+            const firstPostComments = firstPost?.getAttribute('comments') as ArkormCollection<unknown>
+
+            return {
+                userIds: users.all().map(loadedUser => loadedUser.getAttribute('id')),
+                postTitles: posts.all().map(post => post.getAttribute('title')),
+                firstPostCommentCount: firstPostComments.all().length,
+                roleNames: roles.all().map(role => role.getAttribute('name')).sort(),
+            }
+        }
+
+        const prismaGraph = await runScenario(prismaAdapter)
+        const kyselyGraph = await runScenario(kyselyAdapter)
+
+        expect(prismaGraph).toEqual({
+            userIds: [1],
+            postTitles: ['A'],
+            firstPostCommentCount: 1,
+            roleNames: ['admin', 'editor'],
+        })
+        expect(kyselyGraph).toEqual(prismaGraph)
+        expect(warningSpy).not.toHaveBeenCalledWith(
+            expect.stringContaining('Model.getDelegate() is deprecated'),
+            expect.anything(),
+        )
+
+        warningSpy.mockRestore()
+    })
+
     it('supports SQL-backed belongsToMany relation filters and aggregates through QueryBuilder', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 
