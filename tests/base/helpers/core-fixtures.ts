@@ -96,6 +96,24 @@ function matchesWhere (row: Row, where: Record<string, unknown> | undefined): bo
                     return false
             }
 
+            if ('contains' in clause) {
+                const candidate = clause.contains
+                if (typeof rowValue !== 'string' || typeof candidate !== 'string' || !rowValue.includes(candidate))
+                    return false
+            }
+
+            if ('startsWith' in clause) {
+                const candidate = clause.startsWith
+                if (typeof rowValue !== 'string' || typeof candidate !== 'string' || !rowValue.startsWith(candidate))
+                    return false
+            }
+
+            if ('endsWith' in clause) {
+                const candidate = clause.endsWith
+                if (typeof rowValue !== 'string' || typeof candidate !== 'string' || !rowValue.endsWith(candidate))
+                    return false
+            }
+
             if ('gt' in clause) {
                 const compareTo = clause.gt
                 const leftValue = toComparable(rowValue, compareTo)
@@ -227,7 +245,7 @@ export class User extends Model<'user'> {
     declare isActive: number
     declare createdAt: Date
 
-    protected static override delegate = 'users'
+    protected static override table = 'users'
     protected override casts = {
         isActive: 'boolean',
         meta: 'json',
@@ -276,13 +294,13 @@ export class User extends Model<'user'> {
         return String(value).trim()
     }
 
-    public scopeActive (query: QueryBuilder<User>) {
+    public scopeActive (query: QueryBuilder<User>): QueryBuilder<User> {
         return query.whereKey('isActive', 1)
     }
 }
 
 export class Profile extends Model {
-    protected static override delegate = 'profiles'
+    protected static override table = 'profiles'
 
     public user () {
         return this.belongsTo(User, 'userId')
@@ -294,7 +312,7 @@ export class Profile extends Model {
 }
 
 export class Post extends Model {
-    protected static override delegate = 'posts'
+    protected static override table = 'posts'
 
     public user () {
         return this.belongsTo(User, 'userId')
@@ -306,15 +324,15 @@ export class Post extends Model {
 }
 
 export class Role extends Model {
-    protected static override delegate = 'roles'
+    protected static override table = 'roles'
 }
 
 export class Image extends Model {
-    protected static override delegate = 'images'
+    protected static override table = 'images'
 }
 
 export class Comment extends Model {
-    protected static override delegate = 'comments'
+    protected static override table = 'comments'
 
     public user () {
         return this.belongsTo(User, 'commentableId', 'id')
@@ -322,11 +340,11 @@ export class Comment extends Model {
 }
 
 export class Tag extends Model {
-    protected static override delegate = 'tags'
+    protected static override table = 'tags'
 }
 
 export class Article extends Model<'article'> {
-    protected static override delegate = 'articles'
+    protected static override table = 'articles'
     protected static override softDeletes = true
 }
 
@@ -334,7 +352,7 @@ export class UserWithAttributeObjects extends Model<'user'> {
     declare id: number
     declare isActive: number
 
-    protected static override delegate = 'users'
+    protected static override table = 'users'
     protected override casts = {
         isActive: 'boolean',
     } as const
@@ -389,8 +407,26 @@ export function createCoreClient () {
             { id: 501, name: 'editor' },
         ],
         roleUsers: [
-            { userId: 1, roleId: 500 },
-            { userId: 1, roleId: 501 },
+            {
+                userId: 1,
+                roleId: 500,
+                approved: true,
+                priority: 1,
+                assignedAt: '2026-03-05T12:00:00.000Z',
+                createdAt: '2026-03-05T12:00:00.000Z',
+                updatedAt: '2026-03-06T12:00:00.000Z',
+                revokedAt: null,
+            },
+            {
+                userId: 1,
+                roleId: 501,
+                approved: false,
+                priority: 3,
+                assignedAt: '2026-03-07T12:00:00.000Z',
+                createdAt: '2026-03-07T12:00:00.000Z',
+                updatedAt: '2026-03-08T12:00:00.000Z',
+                revokedAt: '2026-03-09T12:00:00.000Z',
+            },
         ],
         images: [
             { id: 900, profileId: 10, postId: 100, url: 'a.png' },

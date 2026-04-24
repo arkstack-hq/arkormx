@@ -1,7 +1,8 @@
+import type { HasManyThroughRelationMetadata, RelationshipModelStatic } from 'src/types'
+
 import { ArkormCollection } from '../Collection'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
-import type { RelationshipModelStatic } from 'src/types'
 
 /**
  * Defines a has-many-through relationship, which provides a convenient way to access 
@@ -14,7 +15,7 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
     public constructor(
         private readonly parent: TParent & { getAttribute: (key: string) => unknown },
         private readonly related: RelationshipModelStatic,
-        private readonly throughDelegate: string,
+        private readonly throughTable: string,
         private readonly firstKey: string,
         private readonly secondKey: string,
         private readonly localKey: string,
@@ -30,10 +31,32 @@ export class HasManyThroughRelation<TParent, TRelated> extends Relation<TRelated
      */
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const localValue = this.parent.getAttribute(this.localKey)
-        const intermediates = await this.related.getDelegate(this.throughDelegate).findMany({ where: { [this.firstKey]: localValue } }) as Record<string, unknown>[]
-        const keys = intermediates.map(row => row[this.secondLocalKey])
+        const keys = await this.createRelationTableLoader().selectColumnValues({
+            lookup: {
+                table: this.throughTable,
+                where: {
+                    type: 'comparison',
+                    column: this.firstKey,
+                    operator: '=',
+                    value: localValue as never,
+                },
+            },
+            column: this.secondLocalKey,
+        })
 
         return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: keys } }))
+    }
+
+    public getMetadata (): HasManyThroughRelationMetadata {
+        return {
+            type: 'hasManyThrough',
+            relatedModel: this.related,
+            throughTable: this.throughTable,
+            firstKey: this.firstKey,
+            secondKey: this.secondKey,
+            localKey: this.localKey,
+            secondLocalKey: this.secondLocalKey,
+        }
     }
 
     /**

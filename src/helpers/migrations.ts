@@ -1,4 +1,5 @@
 import { GenerateMigrationOptions, GeneratedMigrationFile, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaForeignKey, SchemaForeignKeyAction, SchemaIndex, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
+import type { DatabaseAdapter } from 'src/types/adapter'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
 import { ArkormException } from '../Exceptions/ArkormException'
@@ -221,8 +222,8 @@ export const buildFieldLine = (column: SchemaColumn): string => {
     const updatedAt = column.updatedAt ? ' @updatedAt' : ''
     const defaultValue = column.type === 'enum'
         ? formatEnumDefaultValue(column.default)
-        : formatDefaultValue(column.default)
-        ?? (column.type === 'uuid' && column.primary ? '@default(uuid())' : undefined)
+        : column.primaryKeyGeneration?.prismaDefault
+        ?? formatDefaultValue(column.default)
     const defaultSuffix = defaultValue ? ` ${defaultValue}` : ''
 
 
@@ -956,6 +957,56 @@ export const getMigrationPlan = async (
         await instance.down(schema)
 
     return schema.getOperations()
+}
+
+export const supportsDatabaseMigrationExecution = (
+    adapter?: DatabaseAdapter
+): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'executeSchemaOperations'>> => {
+    return typeof adapter?.executeSchemaOperations === 'function'
+}
+
+export const supportsDatabaseReset = (
+    adapter?: DatabaseAdapter
+): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'resetDatabase'>> => {
+    return typeof adapter?.resetDatabase === 'function'
+}
+
+export const stripPrismaSchemaModelsAndEnums = (schema: string): string => {
+    const stripped = schema
+        .replace(PRISMA_MODEL_REGEX, '')
+        .replace(PRISMA_ENUM_REGEX, '')
+        .replace(/\n{3,}/g, '\n\n')
+        .trimEnd()
+
+    return stripped.length > 0
+        ? `${stripped}\n`
+        : ''
+}
+
+export const applyMigrationToDatabase = async (
+    adapter: DatabaseAdapter,
+    migration: Migration | (new () => Migration)
+): Promise<{ operations: SchemaOperation[] }> => {
+    if (!supportsDatabaseMigrationExecution(adapter))
+        throw new ArkormException('The configured adapter does not support database-backed migration execution.')
+
+    const operations = await getMigrationPlan(migration, 'up')
+    await adapter.executeSchemaOperations(operations)
+
+    return { operations }
+}
+
+export const applyMigrationRollbackToDatabase = async (
+    adapter: DatabaseAdapter,
+    migration: Migration | (new () => Migration)
+): Promise<{ operations: SchemaOperation[] }> => {
+    if (!supportsDatabaseMigrationExecution(adapter))
+        throw new ArkormException('The configured adapter does not support database-backed migration execution.')
+
+    const operations = await getMigrationPlan(migration, 'down')
+    await adapter.executeSchemaOperations(operations)
+
+    return { operations }
 }
 
 /**

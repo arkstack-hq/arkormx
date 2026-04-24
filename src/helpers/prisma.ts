@@ -1,27 +1,30 @@
-import { configureArkormRuntime, defineConfig, isDelegateLike } from './runtime-config'
+import { configureArkormRuntime, defineConfig, isQuerySchemaLike } from './runtime-config'
+import { createPrismaCompatibilityAdapter, createPrismaDatabaseAdapter, type PrismaDelegateNameMapping } from '../adapters/PrismaDatabaseAdapter'
 
-import type { PrismaClientLike, PrismaDelegateLike } from '../types/core'
+import type { ModelQuerySchemaLike, RuntimeClientLike } from '../types/core'
 
-export type PrismaDelegateMap<TClient extends PrismaClientLike> = {
-    [K in keyof TClient as TClient[K] extends PrismaDelegateLike ? K : never]:
-    TClient[K] extends PrismaDelegateLike ? TClient[K] : never
+export type PrismaDelegateMap<TClient extends RuntimeClientLike> = {
+    [K in keyof TClient as TClient[K] extends ModelQuerySchemaLike ? K : never]:
+    TClient[K] extends ModelQuerySchemaLike ? TClient[K] : never
 }
 
 /**
- * Create an adapter to convert a Prisma client instance into a format 
- * compatible with ArkORM's expectations.
- * 
+ * Compatibility-only helper that exposes Prisma query schemas as a plain object map.
+ * It is retained for migration support and tests, not as a supported runtime bootstrap path.
+ *
+ * @deprecated Prefer createPrismaDatabaseAdapter(prisma) for runtime usage.
+ *
  * @param prisma The Prisma client instance to adapt.
  * @param mapping An optional mapping of Prisma delegate names to ArkORM delegate names.
- * @returns A record of adapted Prisma delegates compatible with ArkORM.
+ * @returns A record of adapted Prisma compatibility query schemas.
  */
 export function createPrismaAdapter (
-    prisma: PrismaClientLike
-): Record<string, PrismaDelegateLike> {
+    prisma: RuntimeClientLike
+): Record<string, ModelQuerySchemaLike> {
     return Object
         .entries(prisma)
-        .reduce<Record<string, PrismaDelegateLike>>((accumulator, [key, value]) => {
-            if (!isDelegateLike(value))
+        .reduce<Record<string, ModelQuerySchemaLike>>((accumulator, [key, value]) => {
+            if (!isQuerySchemaLike(value))
                 return accumulator
 
             accumulator[key] = value
@@ -31,16 +34,33 @@ export function createPrismaAdapter (
 }
 
 /**
- * Create a delegate mapping record for Model.setClient() from a Prisma client.
+ * Compatibility-only helper for legacy delegate-map bootstrapping during migration.
+ *
+ * @deprecated Prefer createPrismaDatabaseAdapter(prisma, mapping). Direct delegate-map
+ * bootstrapping is no longer part of the supported runtime path.
  *
  * @param prisma The Prisma client instance.
  * @param mapping Optional mapping of Arkormˣ delegate names to Prisma delegate names.
- * @returns A delegate map keyed by Arkormˣ delegate names.
+ * @returns A compatibility map keyed by Arkormˣ query-schema names.
  */
 export function createPrismaDelegateMap (
-    prisma: PrismaClientLike
-): Record<string, PrismaDelegateLike> {
-    return createPrismaAdapter(prisma)
+    prisma: RuntimeClientLike,
+    mapping: PrismaDelegateNameMapping = {}
+): Record<string, ModelQuerySchemaLike> {
+    const delegates = createPrismaAdapter(prisma)
+
+    if (Object.keys(mapping).length === 0)
+        return delegates
+
+    return Object.entries(mapping).reduce<Record<string, ModelQuerySchemaLike>>((accumulator, [arkormDelegate, prismaDelegate]) => {
+        const resolved = delegates[prismaDelegate]
+        if (!resolved)
+            return accumulator
+
+        accumulator[arkormDelegate] = resolved
+
+        return accumulator
+    }, {})
 }
 
 /**
@@ -53,4 +73,9 @@ export function inferDelegateName (modelName: string): string {
     return `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}s`
 }
 
-export { configureArkormRuntime, defineConfig }
+export {
+    configureArkormRuntime,
+    createPrismaCompatibilityAdapter,
+    createPrismaDatabaseAdapter,
+    defineConfig,
+}

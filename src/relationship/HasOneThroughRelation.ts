@@ -1,5 +1,6 @@
+import type { HasOneThroughRelationMetadata, RelatedModelClass } from 'src/types'
+
 import type { QueryBuilder } from '../QueryBuilder'
-import type { RelatedModelClass } from 'src/types'
 import { SingleResultRelation } from './SingleResultRelation'
 
 /**
@@ -13,7 +14,7 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
     public constructor(
         parent: TParent & { getAttribute: (key: string) => unknown },
         related: RelatedModelClass<TRelated>,
-        private readonly throughDelegate: string,
+        private readonly throughTable: string,
         private readonly firstKey: string,
         private readonly secondKey: string,
         private readonly localKey: string,
@@ -29,12 +30,35 @@ export class HasOneThroughRelation<TParent, TRelated> extends SingleResultRelati
      */
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const localValue = this.parent.getAttribute(this.localKey)
-        const intermediate = await this.related.getDelegate(this.throughDelegate).findFirst({ where: { [this.firstKey]: localValue } }) as Record<string, unknown> | null
+        const intermediateKey = await this.createRelationTableLoader().selectColumnValue({
+            lookup: {
+                table: this.throughTable,
+                where: {
+                    type: 'comparison',
+                    column: this.firstKey,
+                    operator: '=',
+                    value: localValue as never,
+                },
+            },
+            column: this.secondLocalKey,
+        })
 
-        if (!intermediate)
+        if (intermediateKey == null)
             return this.applyConstraint(this.related.query().where({ [this.secondKey]: { in: [] } }))
 
-        return this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediate[this.secondLocalKey] }))
+        return this.applyConstraint(this.related.query().where({ [this.secondKey]: intermediateKey }))
+    }
+
+    public getMetadata (): HasOneThroughRelationMetadata {
+        return {
+            type: 'hasOneThrough',
+            relatedModel: this.related,
+            throughTable: this.throughTable,
+            firstKey: this.firstKey,
+            secondKey: this.secondKey,
+            localKey: this.localKey,
+            secondLocalKey: this.secondLocalKey,
+        }
     }
 
     /**

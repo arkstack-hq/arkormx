@@ -7,12 +7,12 @@
 [![Deploy Documentation](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml)
 [![codecov](https://codecov.io/gh/arkstack-hq/arkormx/graph/badge.svg?token=ls1VVoFkYh)](https://codecov.io/gh/arkstack-hq/arkormx)
 
-Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of Prisma delegates, enabling clean, modern, and type-safe development.
+Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility available as an optional 2.x compatibility path.
 
 ## Features
 
-- Arkormˣ is built on top of Prisma, providing a familiar and powerful API for database interactions.
-- Delegate-backed query execution with practical ORM ergonomics.
+- Adapter-backed query execution with practical ORM ergonomics.
+- Adapter-first runtime setup with Kysely/Postgres support and optional Prisma compatibility for existing 2.x integrations.
 - End-to-end guides for setup, querying, relationships, migrations, and CLI usage.
 - Full TypeScript support, providing strong typing and improved developer experience.
 - Follows best practices for security, ensuring your data is protected.
@@ -23,12 +23,41 @@ Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It b
 
 ### Installation
 
+Stable release:
+
 ```sh
-pnpm add arkormx @prisma/client
-pnpm add -D prisma
+pnpm add arkormx kysely pg
+```
+
+Preview release (`next`):
+
+```sh
+pnpm add arkormx@next kysely pg
 ```
 
 ### Configuration
+
+Primary runtime path:
+
+```ts
+import { createKyselyAdapter, defineConfig } from 'arkormx';
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
+
+export default defineConfig({
+  adapter: createKyselyAdapter(
+    new Kysely<Record<string, never>>({
+      dialect: new PostgresDialect({
+        pool: new Pool({
+          connectionString: process.env.DATABASE_URL,
+        }),
+      }),
+    }),
+  ),
+});
+```
+
+Optional compatibility/runtime config for CLI and transaction helpers:
 
 Create `arkormx.config.js` in your project root:
 
@@ -36,8 +65,10 @@ Create `arkormx.config.js` in your project root:
 import { defineConfig } from 'arkormx';
 import { PrismaClient } from '@prisma/client';
 
+const prisma = new PrismaClient();
+
 export default defineConfig({
-  prisma: new PrismaClient(...),
+  prisma: () => prisma,
 });
 ```
 
@@ -48,15 +79,21 @@ Or run the Arkormˣ CLI command `npx arkorm init` to initialize your project alo
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model<'users'> {
-  protected static override delegate = 'users'; // not required if your model name matches the delegate name or the pluralized form of it
-}
+type UserAttributes = {
+  id: number;
+  email: string;
+  name: string;
+  isActive: boolean;
+};
+
+export class User extends Model<UserAttributes> {}
 ```
 
-### Generate Prisma client
+### Optional Prisma compatibility
 
 ```sh
-pnpm prisma generate
+pnpm add @prisma/client
+pnpm add -D prisma
 ```
 
 ### Run queries
@@ -89,6 +126,7 @@ await User.transaction(async () => {
 
 - [Setup](https://arkormx.toneflix.net/guide/setup)
 - [Configuration](https://arkormx.dev/guide/configuration)
+- [Prisma Compatibility](https://arkormx.dev/guide/prisma-compatibility)
 - [Typing](https://arkormx.dev/guide/typing)
 - [Models](https://arkormx.dev/guide/models)
 - [Query Builder](https://arkormx.dev/guide/query-builder)

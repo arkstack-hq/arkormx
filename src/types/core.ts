@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client'
+import type { DatabaseAdapter } from './adapter'
 
 export type CastType = 'string' | 'number' | 'boolean' | 'date' | 'json' | 'array'
 
@@ -12,38 +13,137 @@ export type CastDefinition = CastType | CastHandler
 export type CastMap = Record<string, CastDefinition>
 
 
-export type PrismaClientLike = PrismaClient | Record<string, unknown>
+export type RuntimeClientLike = PrismaClient | Record<string, unknown>
 
-export interface PrismaTransactionOptions {
+export interface TransactionOptions {
     maxWait?: number
     timeout?: number
     isolationLevel?: string
 }
 
-export type PrismaTransactionCallback<TResult = unknown> = (
-    client: PrismaClientLike,
+export interface TransactionContext {
+    client?: RuntimeClientLike
+    adapter?: DatabaseAdapter
+}
+
+export type TransactionCallback<TResult = unknown> = (
+    context: TransactionContext,
 ) => TResult | Promise<TResult>
 
-export interface PrismaTransactionCapableClient {
+export interface TransactionCapableClient {
     $transaction: <TResult>(
-        callback: PrismaTransactionCallback<TResult>,
-        options?: PrismaTransactionOptions,
+        callback: (client: RuntimeClientLike) => TResult | Promise<TResult>,
+        options?: TransactionOptions,
     ) => Promise<TResult>
 }
 
-export type ClientResolver = PrismaClientLike | (() => PrismaClientLike)
+/**
+ * @deprecated Use RuntimeClientLike instead.
+ */
+export type PrismaClientLike = RuntimeClientLike
+
+/**
+ * @deprecated Use TransactionOptions instead.
+ */
+export type PrismaTransactionOptions = TransactionOptions
+
+/**
+ * @deprecated Use TransactionContext instead.
+ */
+export type PrismaTransactionContext = TransactionContext
+
+/**
+ * @deprecated Use TransactionCallback instead.
+ */
+export type PrismaTransactionCallback<TResult = unknown> = TransactionCallback<TResult>
+
+/**
+ * @deprecated Use TransactionCapableClient instead.
+ */
+export type PrismaTransactionCapableClient = TransactionCapableClient
+
+export type ClientResolver = RuntimeClientLike | (() => RuntimeClientLike)
+
+export interface AdapterBindableModel {
+    setAdapter: (adapter?: DatabaseAdapter) => void
+}
+
+export interface ArkormBootContext {
+    client?: RuntimeClientLike
+    /**
+     * @deprecated Use client instead.
+     */
+    prisma?: RuntimeClientLike
+    bindAdapter: (adapter: DatabaseAdapter, models: AdapterBindableModel[]) => DatabaseAdapter
+}
+
+export interface AdapterQueryInspection {
+    adapter: string
+    operation: string
+    target?: string
+    sql?: string
+    parameters?: ReadonlyArray<unknown>
+    detail?: Record<string, unknown>
+}
+
+export interface ArkormDebugEvent {
+    type: 'query'
+    phase: 'before' | 'after' | 'error'
+    adapter: string
+    operation: string
+    target?: string
+    inspection?: AdapterQueryInspection | null
+    meta?: Record<string, unknown>
+    durationMs?: number
+    error?: unknown
+}
+
+export type ArkormDebugHandler = (event: ArkormDebugEvent) => void
 
 export interface ArkormConfig {
     /**
-     * @property prisma A Prisma client instance or a function that returns a Prisma client instance.
+    * @property client Optional runtime client instance or resolver used for compatibility mode, CLI flows, and client-backed transactions.
+    */
+    client?: ClientResolver
+    /**
+    * @deprecated Use client instead.
+    * @property prisma Optional Prisma client instance or resolver used for compatibility mode, CLI flows, and Prisma-backed transactions.
      */
-    prisma: ClientResolver
+    prisma?: ClientResolver
+    /**
+     * @property adapter Optional global adapter applied automatically to models that do not define a model-specific adapter.
+     */
+    adapter?: DatabaseAdapter
+    /**
+     * @property boot Optional synchronous runtime boot hook for central adapter binding.
+     */
+    boot?: (context: ArkormBootContext) => void
+    /**
+     * @property debug Optional runtime query debugging. `true` logs through Arkorm's default logger;
+     * a callback receives structured debug events for custom handling.
+     */
+    debug?: boolean | ArkormDebugHandler
     /**
      * @property pagination Configuration options related to pagination behavior and URL generation.
      */
     pagination?: {
         urlDriver?: PaginationURLDriverFactory
         resolveCurrentPage?: PaginationCurrentPageResolver
+    }
+    /**
+     * @property features Optional feature flags for persisted non-Prisma runtime metadata.
+     */
+    features?: {
+        /**
+         * @property persistedColumnMappings Persist migration-defined column mappings for non-Prisma adapters.
+         * Defaults to true.
+         */
+        persistedColumnMappings?: boolean
+        /**
+         * @property persistedEnums Persist migration-defined enum values for non-Prisma adapters.
+         * Defaults to true.
+         */
+        persistedEnums?: boolean
     }
     /**
      * @property paths Optional custom paths for various generated files.
@@ -191,7 +291,7 @@ export interface SoftDeleteConfig {
     column: string
 }
 
-export interface PrismaDelegateLike {
+export interface ModelQuerySchemaLike {
     findMany: (args?: any) => Promise<unknown[]>
     findFirst: (args?: any) => Promise<unknown | null>
     create: (args: any) => Promise<unknown>
@@ -200,6 +300,11 @@ export interface PrismaDelegateLike {
     count: (args?: any) => Promise<number>
 }
 
+/**
+ * @deprecated Use ModelQuerySchemaLike instead.
+ */
+export type PrismaDelegateLike = ModelQuerySchemaLike
+
 type FallbackIfUnknownOrNever<TValue, TFallback> =
     [TValue] extends [never]
     ? TFallback
@@ -207,49 +312,104 @@ type FallbackIfUnknownOrNever<TValue, TFallback> =
     ? TFallback
     : TValue
 
-export type DelegateFindManyArgs<TDelegate extends PrismaDelegateLike> =
-    FallbackIfUnknownOrNever<NonNullable<Parameters<TDelegate['findMany']>[0]>, PrismaFindManyArgsLike>
+export type QuerySchemaFindManyArgs<TSchema extends ModelQuerySchemaLike> =
+    FallbackIfUnknownOrNever<NonNullable<Parameters<TSchema['findMany']>[0]>, PrismaFindManyArgsLike>
 
-export type DelegateWhere<TDelegate extends PrismaDelegateLike> =
-    DelegateFindManyArgs<TDelegate> extends { where?: infer TWhere }
+export type QuerySchemaWhere<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { where?: infer TWhere }
     ? FallbackIfUnknownOrNever<TWhere, PrismaLikeWhereInput>
     : PrismaLikeWhereInput
 
-export type DelegateInclude<TDelegate extends PrismaDelegateLike> =
-    DelegateFindManyArgs<TDelegate> extends { include?: infer TInclude }
+export type QuerySchemaInclude<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { include?: infer TInclude }
     ? FallbackIfUnknownOrNever<TInclude, PrismaLikeInclude>
     : PrismaLikeInclude
 
-export type DelegateOrderBy<TDelegate extends PrismaDelegateLike> =
-    DelegateFindManyArgs<TDelegate> extends { orderBy?: infer TOrderBy }
+export type QuerySchemaOrderBy<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { orderBy?: infer TOrderBy }
     ? FallbackIfUnknownOrNever<TOrderBy, PrismaLikeOrderBy>
     : PrismaLikeOrderBy
 
-export type DelegateSelect<TDelegate extends PrismaDelegateLike> =
-    DelegateFindManyArgs<TDelegate> extends { select?: infer TSelect }
+export type QuerySchemaSelect<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaFindManyArgs<TSchema> extends { select?: infer TSelect }
     ? FallbackIfUnknownOrNever<TSelect, PrismaLikeSelect>
     : PrismaLikeSelect
 
-export type DelegateCreateData<TDelegate extends PrismaDelegateLike> =
-    Parameters<TDelegate['create']>[0] extends { data: infer TData }
+export type QuerySchemaCreateData<TSchema extends ModelQuerySchemaLike> =
+    Parameters<TSchema['create']>[0] extends { data: infer TData }
     ? TData
     : Record<string, unknown>
 
-export type DelegateUpdateArgs<TDelegate extends PrismaDelegateLike> = Parameters<TDelegate['update']>[0]
+export type QuerySchemaUpdateArgs<TSchema extends ModelQuerySchemaLike> = Parameters<TSchema['update']>[0]
 
-export type DelegateUpdateData<TDelegate extends PrismaDelegateLike> =
-    DelegateUpdateArgs<TDelegate> extends { data: infer TData }
+export type QuerySchemaUpdateData<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaUpdateArgs<TSchema> extends { data: infer TData }
     ? FallbackIfUnknownOrNever<TData, Record<string, unknown>>
     : Record<string, unknown>
 
-export type DelegateUniqueWhere<TDelegate extends PrismaDelegateLike> =
-    DelegateUpdateArgs<TDelegate> extends { where: infer TWhere }
+export type QuerySchemaUniqueWhere<TSchema extends ModelQuerySchemaLike> =
+    QuerySchemaUpdateArgs<TSchema> extends { where: infer TWhere }
     ? FallbackIfUnknownOrNever<TWhere, Record<string, unknown>>
     : Record<string, unknown>
 
-export type DelegateRow<TDelegate extends PrismaDelegateLike> = Exclude<Awaited<ReturnType<TDelegate['findFirst']>>, null>
+export type QuerySchemaRow<TSchema extends ModelQuerySchemaLike> = Exclude<Awaited<ReturnType<TSchema['findFirst']>>, null>
 
-export type DelegateRows<TDelegate extends PrismaDelegateLike> = Awaited<ReturnType<TDelegate['findMany']>>
+export type QuerySchemaRows<TSchema extends ModelQuerySchemaLike> = Awaited<ReturnType<TSchema['findMany']>>
+
+/**
+ * @deprecated Use QuerySchemaFindManyArgs instead.
+ */
+export type DelegateFindManyArgs<TSchema extends ModelQuerySchemaLike> = QuerySchemaFindManyArgs<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaWhere instead.
+ */
+export type DelegateWhere<TSchema extends ModelQuerySchemaLike> = QuerySchemaWhere<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaInclude instead.
+ */
+export type DelegateInclude<TSchema extends ModelQuerySchemaLike> = QuerySchemaInclude<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaOrderBy instead.
+ */
+export type DelegateOrderBy<TSchema extends ModelQuerySchemaLike> = QuerySchemaOrderBy<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaSelect instead.
+ */
+export type DelegateSelect<TSchema extends ModelQuerySchemaLike> = QuerySchemaSelect<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaCreateData instead.
+ */
+export type DelegateCreateData<TSchema extends ModelQuerySchemaLike> = QuerySchemaCreateData<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaUpdateArgs instead.
+ */
+export type DelegateUpdateArgs<TSchema extends ModelQuerySchemaLike> = QuerySchemaUpdateArgs<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaUpdateData instead.
+ */
+export type DelegateUpdateData<TSchema extends ModelQuerySchemaLike> = QuerySchemaUpdateData<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaUniqueWhere instead.
+ */
+export type DelegateUniqueWhere<TSchema extends ModelQuerySchemaLike> = QuerySchemaUniqueWhere<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaRow instead.
+ */
+export type DelegateRow<TSchema extends ModelQuerySchemaLike> = QuerySchemaRow<TSchema>
+
+/**
+ * @deprecated Use QuerySchemaRows instead.
+ */
+export type DelegateRows<TSchema extends ModelQuerySchemaLike> = QuerySchemaRows<TSchema>
 
 export type Serializable = Record<string, unknown>
 export * from './ModelStatic'

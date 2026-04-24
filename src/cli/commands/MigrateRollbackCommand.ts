@@ -1,11 +1,12 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
-import { applyMigrationRollbackToPrismaSchema, runPrismaCommand } from '../../helpers/migrations'
-import { buildMigrationIdentity, getLastMigrationRun, getLatestAppliedMigrations, readAppliedMigrationsState, removeAppliedMigration, resolveMigrationStateFilePath, writeAppliedMigrationsState } from '../../helpers/migration-history'
+import { applyMigrationRollbackToDatabase, applyMigrationRollbackToPrismaSchema, runPrismaCommand, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
+import { buildMigrationIdentity, getLastMigrationRun, getLatestAppliedMigrations, readAppliedMigrationsStateFromStore, removeAppliedMigration, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -49,7 +50,10 @@ export class MigrateRollbackCommand extends Command<CliApp> {
             process.cwd(),
             this.option('state-file') ? String(this.option('state-file')) : undefined
         )
-        let appliedState = readAppliedMigrationsState(stateFilePath)
+        const adapter = this.app.getConfig('adapter')
+        const useDatabaseMigrations = supportsDatabaseMigrationExecution(adapter)
+        const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
+        let appliedState = await readAppliedMigrationsStateFromStore(adapter, stateFilePath)
 
         const stepOption = this.option('step')
         const stepCount = stepOption == null ? undefined : Number(stepOption)
@@ -91,20 +95,31 @@ export class MigrateRollbackCommand extends Command<CliApp> {
             return
         }
 
-        for (const [MigrationClassItem] of rollbackClasses)
+        for (const [MigrationClassItem] of rollbackClasses) {
+            if (useDatabaseMigrations) {
+                await applyMigrationRollbackToDatabase(adapter, MigrationClassItem)
+                continue
+            }
+
             await applyMigrationRollbackToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
+        }
 
         for (const [migrationClass, file] of rollbackClasses) {
             const identity = buildMigrationIdentity(file, migrationClass.name)
             appliedState = removeAppliedMigration(appliedState, identity)
         }
 
-        writeAppliedMigrationsState(stateFilePath, appliedState)
+        await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+        try {
+            await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, available, persistedFeatures)
+        } catch (error) {
+            return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+        }
 
-        if (!this.option('skip-generate'))
+        if (!useDatabaseMigrations && !this.option('skip-generate'))
             runPrismaCommand(['generate'], process.cwd())
 
-        if (!this.option('skip-migrate')) {
+        if (!useDatabaseMigrations && !this.option('skip-migrate')) {
             if (this.option('deploy')) {
                 runPrismaCommand(['migrate', 'deploy'], process.cwd())
             } else {

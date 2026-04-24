@@ -1,5 +1,6 @@
+import type { MorphOneRelationMetadata, RelatedModelClass } from 'src/types'
+
 import type { QueryBuilder } from '../QueryBuilder'
-import type { RelatedModelClass } from 'src/types'
 import { SingleResultRelation } from './SingleResultRelation'
 
 /**
@@ -28,6 +29,17 @@ export class MorphOneRelation<TParent, TRelated> extends SingleResultRelation<TP
         const type = (this.parent as { constructor: { name: string } }).constructor.name
 
         return this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
+    }
+
+    public getMetadata (): MorphOneRelationMetadata {
+        return {
+            type: 'morphOne',
+            relatedModel: this.related,
+            morphName: this.morphName,
+            morphIdColumn: `${this.morphName}Id`,
+            morphTypeColumn: `${this.morphName}Type`,
+            localKey: this.localKey,
+        }
     }
 
     /**

@@ -1,9 +1,12 @@
+import * as migrationHelpers from '../../src/helpers/migrations'
+
 import {
     CliApp,
     configureArkormRuntime,
+    createPrismaDatabaseAdapter,
     resetArkormRuntimeForTests,
 } from '../../src'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { readAppliedMigrationsState, writeAppliedMigrationsState } from '../../src/helpers/migration-history'
 
@@ -14,6 +17,7 @@ import { MakeMigrationCommand } from '../../src/cli/commands/MakeMigrationComman
 import { MakeModelCommand } from '../../src/cli/commands/MakeModelCommand'
 import { MakeSeederCommand } from '../../src/cli/commands/MakeSeederCommand'
 import { MigrateCommand } from '../../src/cli/commands/MigrateCommand'
+import { MigrateFreshCommand } from '../../src/cli/commands/MigrateFreshCommand'
 import { MigrateRollbackCommand } from '../../src/cli/commands/MigrateRollbackCommand'
 import { MigrationHistoryCommand } from '../../src/cli/commands/MigrationHistoryCommand'
 import { ModelsSyncCommand } from '../../src/cli/commands/ModelsSyncCommand'
@@ -92,6 +96,7 @@ describe('CLI command classes', () => {
         process.chdir(workspace)
 
         configureArkormRuntime(() => ({}), {
+            adapter: createPrismaDatabaseAdapter({} as never),
             outputExt: 'js',
             paths: {
                 stubs: join(originalCwd, 'stubs'),
@@ -211,6 +216,64 @@ describe('CLI command classes', () => {
         expect(successLines.some(line => line.includes('Model'))).toBe(true)
     })
 
+    it('MakeModelCommand skips Prisma schema output when no schema file exists', async () => {
+        const workspace = makeTempDir('arkormx-cmd-make-model-no-prisma-')
+        process.chdir(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            outputExt: 'js',
+            paths: {
+                stubs: join(originalCwd, 'stubs'),
+                models: join(workspace, 'src', 'models'),
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MakeModelCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {}, {
+            name: 'User',
+        })
+
+        await command.handle()
+
+        expect(existsSync(join(workspace, 'src', 'models', 'User.js'))).toBe(true)
+        expect(existsSync(join(workspace, 'prisma', 'schema.prisma'))).toBe(false)
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('Prisma schema'))).toBe(false)
+    })
+
+    it('MakeModelCommand does not mutate prisma schema files for non-Prisma adapters', async () => {
+        const workspace = makeTempDir('arkormx-cmd-make-model-non-prisma-adapter-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const schemaBefore = readFileSync(schemaPath, 'utf-8')
+
+        configureArkormRuntime(() => ({}), {
+            adapter: { capabilities: {} } as never,
+            outputExt: 'js',
+            paths: {
+                stubs: join(originalCwd, 'stubs'),
+                models: join(workspace, 'src', 'models'),
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MakeModelCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {}, {
+            name: 'User',
+        })
+
+        await command.handle()
+
+        expect(existsSync(join(workspace, 'src', 'models', 'User.js'))).toBe(true)
+        expect(readFileSync(schemaPath, 'utf-8')).toBe(schemaBefore)
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('Prisma schema'))).toBe(false)
+    })
+
     it('InitCommand creates arkormx.config.js from configured stub path', async () => {
         const workspace = makeTempDir('arkormx-cmd-init-')
         process.chdir(workspace)
@@ -262,9 +325,7 @@ describe('CLI command classes', () => {
         writeFileSync(userModelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
-            '    protected static override delegate = \'users\'',
-            '}',
+            'export class User extends Model {}',
             '',
         ].join('\n'))
 
@@ -319,9 +380,7 @@ describe('CLI command classes', () => {
         writeFileSync(userModelPath, [
             'import { Model } from \'arkormx\'',
             '',
-            'export class User extends Model<\'users\'> {',
-            '    protected static override delegate = \'users\'',
-            '}',
+            'export class User extends Model {}',
             '',
         ].join('\n'))
 
@@ -344,6 +403,244 @@ describe('CLI command classes', () => {
         expect(updatedSource).toContain('declare tags: Array<UserStatus>')
         expect(errorLines).toHaveLength(0)
         expect(successLines.some(line => line.includes('SUCCESS: Model sync completed'))).toBe(true)
+    })
+
+    it('ModelsSyncCommand prefers adapter introspection when the active adapter supports it', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'id', type: 'number', nullable: false },
+                            { name: 'email', type: 'string', nullable: false },
+                            { name: 'isActive', type: 'boolean', nullable: false },
+                        ],
+                    },
+                ]),
+            } as any,
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        const updatedSource = readFileSync(userModelPath, 'utf-8')
+        expect(updatedSource).toContain('declare id: number')
+        expect(updatedSource).toContain('declare email: string')
+        expect(updatedSource).toContain('declare isActive: boolean')
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('adapter introspection'))).toBe(true)
+    })
+
+    it('ModelsSyncCommand applies persisted enum metadata to adapter introspection results', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-enums-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                users: {
+                    columns: {},
+                    enums: {
+                        status: ['draft', 'published'],
+                        tags: ['draft', 'published'],
+                    },
+                },
+            },
+        }, null, 2))
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'id', type: 'number', nullable: false },
+                            { name: 'status', type: 'string', nullable: false },
+                            { name: 'tags', type: 'Array<string>', nullable: false },
+                        ],
+                    },
+                ]),
+            } as any,
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        const updatedSource = readFileSync(userModelPath, 'utf-8')
+        expect(updatedSource).toContain('declare status: \'draft\' | \'published\'')
+        expect(updatedSource).toContain('declare tags: Array<\'draft\' | \'published\'>')
+        expect(updatedSource).not.toContain('@prisma/client')
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('adapter introspection'))).toBe(true)
+    })
+
+    it('ModelsSyncCommand prefers persisted mapped attribute names for adapter introspection results', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-columns-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                users: {
+                    columns: {
+                        accountType: 'account_type',
+                    },
+                    enums: {
+                        accountType: ['personal', 'family', 'business'],
+                    },
+                },
+            },
+        }, null, 2))
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'id', type: 'number', nullable: false },
+                            { name: 'account_type', type: 'string', nullable: true },
+                        ],
+                    },
+                ]),
+            } as any,
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        const updatedSource = readFileSync(userModelPath, 'utf-8')
+        expect(updatedSource).toContain('declare accountType: \'personal\' | \'family\' | \'business\' | null')
+        expect(updatedSource).not.toContain('declare account_type:')
+        expect(errorLines).toHaveLength(0)
+        expect(successLines.some(line => line.includes('adapter introspection'))).toBe(true)
+    })
+
+    it('ModelsSyncCommand reports a clear error when persisted enum metadata is disabled', async () => {
+        const workspace = makeTempDir('arkormx-cmd-models-sync-adapter-enums-disabled-')
+        process.chdir(workspace)
+
+        const modelsDir = join(workspace, 'src', 'models')
+        mkdirSync(modelsDir, { recursive: true })
+        mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+        writeFileSync(join(workspace, '.arkormx', 'column-mappings.json'), JSON.stringify({
+            version: 1,
+            tables: {
+                users: {
+                    columns: {},
+                    enums: {
+                        status: ['draft', 'published'],
+                    },
+                },
+            },
+        }, null, 2))
+
+        const userModelPath = join(modelsDir, 'User.ts')
+        writeFileSync(userModelPath, [
+            'import { Model } from \'arkormx\'',
+            '',
+            'export class User extends Model {}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(undefined, {
+            adapter: {
+                capabilities: {},
+                introspectModels: async () => ([
+                    {
+                        table: 'users',
+                        fields: [
+                            { name: 'status', type: 'string', nullable: false },
+                        ],
+                    },
+                ]),
+            } as any,
+            features: {
+                persistedEnums: false,
+            },
+            paths: {
+                models: modelsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new ModelsSyncCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+            models: modelsDir,
+        })
+
+        await command.handle()
+
+        expect(successLines).toHaveLength(0)
+        expect(errorLines.some(line => line.includes('persisted enum metadata'))).toBe(true)
     })
 
     it('SeedCommand loads and runs TypeScript seeder classes from configured directory', async () => {
@@ -617,5 +914,218 @@ describe('CLI command classes', () => {
         const schemaAfterStepRollback = readFileSync(schemaPath, 'utf-8')
         expect(schemaAfterStepRollback).toContain('model User')
         expect(schemaAfterStepRollback).not.toContain('model Post')
+    })
+
+    it('MigrateFreshCommand rebuilds schema and tracked state from a clean baseline', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'email\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const migrateCommand = new MigrateCommand(app, new Kernel(app))
+            ; (migrateCommand as unknown as { app: CliApp }).app = app
+        const migrateIo = attachCommandIo(migrateCommand as unknown as any, {
+            all: true,
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await migrateCommand.handle()
+        expect(migrateIo.errorLines).toHaveLength(0)
+
+        writeFileSync(schemaPath, `${readFileSync(schemaPath, 'utf-8')}\nmodel Legacy {\n  id Int @id\n}\n`)
+
+        const freshCommand = new MigrateFreshCommand(app, new Kernel(app))
+            ; (freshCommand as unknown as { app: CliApp }).app = app
+        const freshIo = attachCommandIo(freshCommand as unknown as any, {
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await freshCommand.handle()
+
+        expect(freshIo.errorLines).toHaveLength(0)
+        expect(freshIo.successLines.some(line => line.includes('Refreshed database with 1 migration(s).'))).toBe(true)
+
+        const schemaAfterFresh = readFileSync(schemaPath, 'utf-8')
+        expect(schemaAfterFresh).toContain('model User')
+        expect(schemaAfterFresh).not.toContain('model Legacy')
+
+        const stateAfterFresh = readAppliedMigrationsState(join(workspace, '.arkormx', 'migrations.applied.json'))
+        expect(stateAfterFresh.migrations).toHaveLength(1)
+        expect(stateAfterFresh.runs).toHaveLength(1)
+    })
+
+    it('MigrateFreshCommand runs prisma generate and db push when skip flags are not set', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-prisma-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const prismaCommandSpy = vi.spyOn(migrationHelpers, 'runPrismaCommand').mockImplementation(() => undefined)
+
+        try {
+            const app = new CliApp()
+            const currentWorkspace = process.cwd()
+            const freshCommand = new MigrateFreshCommand(app, new Kernel(app))
+                ; (freshCommand as unknown as { app: CliApp }).app = app
+            const freshIo = attachCommandIo(freshCommand as unknown as any, {
+                schema: schemaPath,
+            })
+
+            await freshCommand.handle()
+
+            expect(freshIo.errorLines).toHaveLength(0)
+            expect(prismaCommandSpy).toHaveBeenNthCalledWith(1, ['generate', '--schema', schemaPath], currentWorkspace)
+            expect(prismaCommandSpy).toHaveBeenNthCalledWith(2, ['db', 'push', '--force-reset', '--schema', schemaPath], currentWorkspace)
+        } finally {
+            prismaCommandSpy.mockRestore()
+        }
+    })
+
+    it('MigrateFreshCommand reports missing migrations directories', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-missing-dir-')
+        process.chdir(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: join(workspace, 'database', 'missing-migrations'),
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any)
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('Migrations directory not found'))).toBe(true)
+    })
+
+    it('MigrateFreshCommand reports when no migration classes are available', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-empty-dir-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+        writeBaseSchema(workspace)
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any)
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('No migration classes found to run.'))).toBe(true)
+    })
+
+    it('MigrateFreshCommand reports missing prisma schema files on file-backed runs', async () => {
+        const workspace = makeTempDir('arkormx-cmd-migrate-fresh-missing-schema-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app))
+            ; (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, {
+            schema: join(workspace, 'prisma', 'missing.prisma'),
+        })
+
+        await command.handle()
+
+        expect(io.successLines).toHaveLength(0)
+        expect(io.errorLines.some(line => line.includes('Prisma schema file not found'))).toBe(true)
     })
 })
