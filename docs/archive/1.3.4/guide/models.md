@@ -1,52 +1,16 @@
 # Models
 
-Models are the core abstraction in Arkormˣ. They represent an Arkorm model
-backed by your configured adapter and provide attribute APIs,
-casts, mutators/accessors, scopes, events, and relationship definitions.
+Models are the core abstraction in Arkormˣ. They represent a Prisma delegate and provide attribute APIs, casts, mutators/accessors, scopes, events, and relationship definitions.
 
 ## Basic model
 
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model {}
-```
-
-For conventional model names, this is enough. Arkorm falls back to the model
-name when you do not provide explicit metadata.
-
-## Metadata (Arkormˣ next)
-
-Arkorm can now expose explicit model metadata for adapters and future SQL planning,
-while still preserving convention-based fallback behavior for existing models.
-
-```ts
-export class User extends Model {
-  protected static override table = 'app_users';
-  protected static override primaryKey = 'uuid';
-  protected static override columns = {
-    displayName: 'display_name',
-  };
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
 }
 ```
-
-Available metadata helpers:
-
-- `Model.getTable()`
-- `Model.getPrimaryKey()`
-- `Model.getColumnMap()`
-- `Model.getColumnName(attribute)`
-- `Model.getModelMetadata()`
-- `Model.getRelationMetadata(name)`
-
-Fallback rules:
-
-- `table` falls back to `delegate`, then the model name in plural camel case.
-- `delegate` is only needed when you want to override Arkorm's conventional
-  model-name-based resolution.
-- `primaryKey` falls back to `'id'`.
-- `columns` falls back to an empty map.
-- soft delete metadata still comes from `softDeletes` and `deletedAtColumn`.
 
 ## Attributes
 
@@ -116,7 +80,8 @@ For focused guides, see:
 ## Soft deletes
 
 ```ts
-export class Article extends Model {
+export class Article extends Model<'articles'> {
+  protected static override delegate = 'articles';
   protected static override softDeletes = true;
 }
 ```
@@ -140,7 +105,9 @@ Define `scopeXxx` methods on the model prototype and call them with
 ```ts
 import { Model, QueryBuilder } from 'arkormx';
 
-export class User extends Model {
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
   public scopeActive(query: QueryBuilder<User>) {
     return query.whereKey('isActive', 1);
   }
@@ -191,7 +158,9 @@ once for the model class when Arkorm first touches it:
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model {
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
   protected static override boot(): void {
     this.addGlobalScope('active', (query) => {
       query.whereKey('isActive', 1);
@@ -256,7 +225,9 @@ User.retrieved((model) => {
 ```ts
 import { Model } from 'arkormx';
 
-export class User extends Model {
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
   protected static override booted(): void {
     this.creating((model) => {
       model.setAttribute(
@@ -287,7 +258,9 @@ class SendWelcomeEmail {
   }
 }
 
-export class User extends Model {
+export class User extends Model<'users'> {
+  protected static override delegate = 'users';
+
   protected static override dispatchesEvents = {
     created: SendWelcomeEmail,
   };

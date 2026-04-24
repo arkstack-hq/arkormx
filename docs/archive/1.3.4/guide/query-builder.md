@@ -1,42 +1,9 @@
 # Query Builder
 
-Arkormˣ query builder is fluent, typed, and adapter-backed.
+Arkormˣ query builder is fluent, typed, and delegate-backed.
 
 For multi-step write flows that need atomic commit/rollback behavior, see
 [Transactions](./transactions.md).
-
-## Raw table access
-
-Use `DB.table(...)` when you want the fluent query builder without model
-hydration, scopes, relations, or lifecycle behavior.
-
-```ts
-import { DB } from 'arkormx';
-
-const users = await DB.table<{ id: number; name: string }>('users')
-  .where({ name: 'Jane' })
-  .get();
-
-const rows = users.all();
-```
-
-You can pass table metadata when the builder needs help resolving updates,
-deletes, mapped columns, soft deletes, or generated keys.
-
-```ts
-await DB.table('users', {
-  primaryKey: 'uuid',
-  columns: {
-    createdAt: 'created_at',
-  },
-  softDelete: {
-    enabled: true,
-    column: 'deletedAt',
-  },
-})
-  .where({ email: 'jane@example.com' })
-  .update({ name: 'Jane Updated' });
-```
 
 ## Common reads
 
@@ -57,38 +24,6 @@ await User.query()
   .whereIn('id', [1, 2, 3])
   .get();
 ```
-
-String matching helpers are available on both top-level queries and relation
-queries:
-
-```ts
-await User.query().whereLike('email', '@example.com').get();
-await User.query().whereStartsWith('email', 'jane').get();
-await User.query().whereEndsWith('email', '@example.com').get();
-
-const posts = await user.posts().whereStartsWith('title', 'Ann').getResults();
-```
-
-## Raw where clauses
-
-Use raw where clauses when you need SQL expressions that do not map cleanly to
-the fluent helpers.
-
-```ts
-const normalizedLocalPart = 'jane';
-
-const users = await User.query()
-  .whereRaw('LOWER("email") = ? OR LOWER("email") LIKE ?', [
-    `${normalizedLocalPart}@example.com`,
-    `%${normalizedLocalPart}@%`,
-  ])
-  .get();
-```
-
-- `whereRaw(sql, bindings?)` adds a raw clause with `AND` semantics.
-- `orWhereRaw(sql, bindings?)` adds a raw clause with `OR` semantics.
-- Raw where clauses are currently supported by the Kysely adapter.
-- Raw where clauses are not supported by the Prisma compatibility adapter.
 
 ## Date and range helpers
 

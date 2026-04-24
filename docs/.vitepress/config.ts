@@ -62,11 +62,11 @@ export default defineVersionedConfig({
     description: 'Modern TypeScript-first ORM for Node.js',
 
     versionsConfig: {
-        current: '1.3.4',  // Label for current version
+        current: '2.x',  // Label for current version
         sources: 'src',     // Current version source directory
         archive: 'versions', // Archive directory for older versions
         versionSwitcher: {
-            text: 'v1.3.x',
+            text: 'v2.x',
             includeCurrentVersion: true
         }
     },
@@ -97,8 +97,8 @@ export default defineVersionedConfig({
             },
         ],
         sidebar: {
-            root: sidebar,
-            '2.0.0-next.x': sidebar2x
+            root: sidebar2x,
+            '1.3.4': sidebar
         },
         socialLinks: [
             { icon: 'github', link: 'https://github.com/arkstack-hq/arkormx' },
