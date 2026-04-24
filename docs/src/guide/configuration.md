@@ -46,6 +46,9 @@ class AppURLDriver extends URLDriver {}
 
 export default defineConfig({
   adapter: createKyselyAdapter(db),
+  naming: {
+    modelTableCase: 'snake',
+  },
   features: {
     persistedColumnMappings: true,
     persistedEnums: true,
@@ -81,20 +84,23 @@ export default defineConfig({
 
 ## Config reference
 
-- `client` (optional): runtime client instance or resolver function for compatibility mode, CLI flows, and transaction fallback when no adapter transaction path is available.
-- `prisma` (optional, deprecated alias): Prisma client instance or resolver function kept for 2.x compatibility with older config.
-- `adapter`: optional global adapter applied automatically to models that do not define their own adapter.
-- `features.persistedColumnMappings`: enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`.
-- `features.persistedEnums`: enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.
-- `boot`: optional low-level synchronous hook for advanced runtime binding work.
-- `pagination.urlDriver`: custom URL driver factory for paginator links.
-- `pagination.resolveCurrentPage`: runtime hook used when `paginate()` or `simplePaginate()` is called without an explicit page argument.
-- `paths.models`: generated model directory.
-- `paths.factories`: generated factory directory.
-- `paths.seeders`: generated seeder directory.
-- `paths.migrations`: generated migration directory.
-- `paths.buildOutput`: build output root used to map runtime files in production.
-- `outputExt`: preferred generated extension (`'ts'` by default, falls back to `'js'` when TypeScript is unavailable).
+| Key                                   | Description                                                                                                                                                     |
+| ------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `client` (optional)                   | Runtime client instance or resolver function for compatibility mode, CLI flows, and transaction fallback when no adapter transaction path is available.         |
+| `prisma` (optional, deprecated alias) | Prisma client instance or resolver function kept for 2.x compatibility with older config.                                                                       |
+| `adapter`                             | Optional global adapter applied automatically to models that do not define their own adapter.                                                                   |
+| `naming.modelTableCase`               | Inferred model table-name casing strategy (`'snake'` default, also supports `'camel'`, `'kebab'`, and `'studly'`).                                              |
+| `features.persistedColumnMappings`    | Enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`. |
+| `features.persistedEnums`             | Enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.                                                  |
+| `boot`                                | Optional low-level synchronous hook for advanced runtime binding work.                                                                                          |
+| `pagination.urlDriver`                | Custom URL driver factory for paginator links.                                                                                                                  |
+| `pagination.resolveCurrentPage`       | Runtime hook used when `paginate()` or `simplePaginate()` is called without an explicit page argument.                                                          |
+| `paths.models`                        | Generated model directory.                                                                                                                                      |
+| `paths.factories`                     | Generated factory directory.                                                                                                                                    |
+| `paths.seeders`                       | Generated seeder directory.                                                                                                                                     |
+| `paths.migrations`                    | Generated migration directory.                                                                                                                                  |
+| `paths.buildOutput`                   | Build output root used to map runtime files in production.                                                                                                      |
+| `outputExt`                           | Preferred generated extension (`'ts'` by default, falls back to `'js'` when TypeScript is unavailable).                                                         |
 
 ## Runtime configuration
 
