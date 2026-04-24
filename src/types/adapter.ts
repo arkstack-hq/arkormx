@@ -1,7 +1,7 @@
+import type { AdapterQueryInspection, SoftDeleteConfig } from './core'
 import type { AppliedMigrationsState, PrimaryKeyGeneration, SchemaOperation, TimestampColumnBehavior } from './migrations'
 
 import type { ModelStatic } from './ModelStatic'
-import type { AdapterQueryInspection, SoftDeleteConfig } from './core'
 
 export type DatabasePrimitive = string | number | boolean | bigint | Date | null
 
@@ -94,6 +94,11 @@ export interface QueryNotCondition {
 
 export interface QueryRawCondition {
     type: 'raw'
+    sql: string
+    bindings?: DatabaseValue[]
+}
+
+export interface RawQuerySpec {
     sql: string
     bindings?: DatabaseValue[]
 }
@@ -276,6 +281,7 @@ export interface DatabaseAdapter {
     deleteMany?: <TModel = unknown>(spec: DeleteManySpec<TModel>) => Promise<number>
     count: <TModel = unknown>(spec: AggregateSpec<TModel>) => Promise<number>
     exists?: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<boolean>
+    rawQuery?: <TRow = unknown>(spec: RawQuerySpec) => Promise<DatabaseRows>
     loadRelations?: <TModel = unknown>(spec: RelationLoadSpec<TModel>) => Promise<void>
     inspectQuery?: <TModel = unknown>(request: AdapterInspectionRequest<TModel>) => AdapterQueryInspection | null
     introspectModels?: (options?: AdapterModelIntrospectionOptions) => Promise<AdapterModelStructure[]>

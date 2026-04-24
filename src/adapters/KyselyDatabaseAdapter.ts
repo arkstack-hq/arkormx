@@ -8,6 +8,7 @@ import type {
     AggregateSpec,
     DatabaseAdapter,
     DatabaseRow,
+    DatabaseRows,
     DatabaseValue,
     DeleteManySpec,
     DeleteSpec,
@@ -21,6 +22,7 @@ import type {
     QueryRawCondition,
     QuerySelectColumn,
     QueryTarget,
+    RawQuerySpec,
     RelationAggregateSpec,
     RelationFilterSpec,
     RelationLoadPlan,
@@ -45,8 +47,8 @@ import type {
 import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaOperation } from '../types/migrations'
 
 import { ArkormException } from '../Exceptions/ArkormException'
-import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
 import { QueryBuilder } from '../QueryBuilder'
+import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
 import { SetBasedEagerLoader } from '../relationship/SetBasedEagerLoader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { emitRuntimeDebugEvent } from '../helpers/runtime-config'
@@ -112,8 +114,53 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return `'${String(value).replace(/'/g, '\'\'')}'`
     }
 
+    private interpolateRawSql (sourceSql: string, bindings: DatabaseValue[] = []): string {
+        if (bindings.length === 0)
+            return sourceSql
+
+        let bindingIndex = 0
+
+        return sourceSql.replace(/\?/g, () => {
+            const value = bindings[bindingIndex]
+            bindingIndex += 1
+
+            return this.quoteLiteral(value)
+        })
+    }
+
     private async executeRawStatement (statement: string, executor: KyselyExecutor = this.db): Promise<void> {
         await sql.raw(statement).execute(executor)
+    }
+
+    public async rawQuery<_TRow = unknown> (spec: RawQuerySpec): Promise<DatabaseRows> {
+        const statement = this.interpolateRawSql(spec.sql, spec.bindings)
+
+        try {
+            const result = await sql.raw(statement).execute(this.db)
+
+            return (result.rows as DatabaseRows) ?? []
+        } catch (error) {
+            throw new QueryExecutionException('Raw query execution failed for the Kysely adapter.', {
+                code: 'QUERY_EXECUTION_FAILED',
+                operation: 'adapter.rawQuery',
+                delegate: 'raw',
+                inspection: this.tryInspectRawQuery(statement),
+                meta: {
+                    sql: statement,
+                },
+                cause: error,
+            })
+        }
+    }
+
+    private tryInspectRawQuery (statement: string): AdapterQueryInspection | null {
+        return {
+            adapter: 'kysely',
+            operation: 'select',
+            target: 'raw',
+            sql: statement,
+            parameters: [],
+        }
     }
 
     private resolveSchemaColumnName (columnName: string, columns: SchemaColumn[] = []): string {

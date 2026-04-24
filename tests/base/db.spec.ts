@@ -1,5 +1,5 @@
 import { DB, resetArkormRuntimeForTests } from '../../src'
-import type { DatabaseAdapter, InsertSpec, SelectSpec, UpdateSpec } from '../../src/types/adapter'
+import type { DatabaseAdapter, InsertSpec, RawQuerySpec, SelectSpec, UpdateSpec } from '../../src/types/adapter'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 
@@ -27,6 +27,107 @@ afterEach(() => {
 })
 
 describe('DB facade', () => {
+    it('supports direct raw queries without setting a table target', async () => {
+        const rawSpecs: RawQuerySpec[] = []
+        const adapter: DatabaseAdapter = {
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async () => ({}),
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            rawQuery: async (spec) => {
+                rawSpecs.push(spec)
+
+                return [{ id: 1, name: 'Jane' }]
+            },
+            transaction: async <TResult = unknown> (
+                callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(adapter),
+        }
+
+        DB.setAdapter(adapter)
+
+        const rows = await DB.raw<{ id: number, name: string }>('select * from users where name = ?', ['Jane'])
+
+        expect(rows.all()).toEqual([{ id: 1, name: 'Jane' }])
+        expect(rawSpecs[0]).toEqual({
+            sql: 'select * from users where name = ?',
+            bindings: ['Jane'],
+        })
+    })
+
+    it('runs direct raw queries against the transaction-scoped adapter', async () => {
+        const rootRawSpecs: RawQuerySpec[] = []
+        const transactionRawSpecs: RawQuerySpec[] = []
+
+        const transactionAdapter: DatabaseAdapter = {
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async () => ({}),
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            rawQuery: async (spec) => {
+                transactionRawSpecs.push(spec)
+
+                return [{ id: 1, mode: 'tx' }]
+            },
+            transaction: async <TResult = unknown> (
+                callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(transactionAdapter),
+        }
+
+        const adapter: DatabaseAdapter = {
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async () => ({}),
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            rawQuery: async (spec) => {
+                rootRawSpecs.push(spec)
+
+                return [{ id: 0, mode: 'root' }]
+            },
+            transaction: async <TResult = unknown> (
+                callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(transactionAdapter),
+        }
+
+        DB.setAdapter(adapter)
+
+        const rows = await DB.transaction(async (db) => {
+            return (await db.raw<{ id: number, mode: string }>('select 1 as id, \'tx\' as mode')).all()
+        })
+
+        expect(rows).toEqual([{ id: 1, mode: 'tx' }])
+        expect(rootRawSpecs).toHaveLength(0)
+        expect(transactionRawSpecs).toEqual([{ sql: 'select 1 as id, \'tx\' as mode', bindings: [] }])
+    })
+
+    it('throws when direct raw query execution is unsupported by the current adapter', async () => {
+        const adapter: DatabaseAdapter = {
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async () => ({}),
+            update: async () => ({}),
+            delete: async () => ({}),
+            count: async () => 0,
+            exists: async () => false,
+            transaction: async <TResult = unknown> (
+                callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>,
+            ): Promise<TResult> => await callback(adapter),
+        }
+
+        DB.setAdapter(adapter)
+
+        await expect(DB.raw('select 1')).rejects.toThrow('Raw queries are not supported by the current adapter.')
+    })
+
     it('queries raw table rows without model hydration constraints', async () => {
         const selectSpecs: Array<SelectSpec<any>> = []
         const adapter: DatabaseAdapter = {
