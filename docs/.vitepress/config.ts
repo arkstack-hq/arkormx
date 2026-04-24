@@ -98,7 +98,7 @@ export default defineVersionedConfig({
         ],
         sidebar: {
             root: sidebar2x,
-            '1.3.4': sidebar
+            '1.3': sidebar
         },
         socialLinks: [
             { icon: 'github', link: 'https://github.com/arkstack-hq/arkormx' },
