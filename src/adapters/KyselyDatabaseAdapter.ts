@@ -34,6 +34,7 @@ import type {
     AdapterQueryInspection,
     BelongsToManyRelationMetadata,
     BelongsToRelationMetadata,
+    EagerLoadConstraint,
     EagerLoadMap,
     HasManyRelationMetadata,
     HasManyThroughRelationMetadata,
@@ -45,6 +46,7 @@ import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaInde
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
+import { QueryBuilder } from '../QueryBuilder'
 import { SetBasedEagerLoader } from '../relationship/SetBasedEagerLoader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { emitRuntimeDebugEvent } from '../helpers/runtime-config'
@@ -946,23 +948,35 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             && typeof (value as EagerLoadableModel).setLoadedRelation === 'function'
     }
 
-    private toEagerLoadMap (relations: RelationLoadPlan[], prefix = ''): EagerLoadMap {
-        return relations.reduce<EagerLoadMap>((all, relation) => {
-            if (relation.constraint || relation.orderBy || relation.limit !== undefined || relation.offset !== undefined || relation.columns) {
-                throw new UnsupportedAdapterFeatureException('Kysely adapter relation-load execution currently supports unconstrained eager load plans only.', {
-                    operation: 'adapter.loadRelations',
-                    meta: {
-                        feature: 'relationLoads',
-                        relation: prefix ? `${prefix}.${relation.relation}` : relation.relation,
-                    },
-                })
-            }
+    private toEagerLoadConstraint (relation: RelationLoadPlan): EagerLoadConstraint | undefined {
+        if (!relation.constraint
+            && !relation.softDeleteMode
+            && !relation.orderBy
+            && relation.limit === undefined
+            && relation.offset === undefined
+            && !relation.columns
+            && !relation.relationLoads) {
+            return undefined
+        }
 
-            const path = prefix ? `${prefix}.${relation.relation}` : relation.relation
-            all[path] = undefined
+        return (query: unknown) => {
+            const builder = query as QueryBuilder<any, any>
+            builder.applyRelationLoadPlan({
+                ...relation,
+                relationLoads: undefined,
+            })
 
             if (relation.relationLoads)
-                Object.assign(all, this.toEagerLoadMap(relation.relationLoads, path))
+                builder.with(this.toEagerLoadMap(relation.relationLoads))
+
+            return builder
+        }
+    }
+
+    private toEagerLoadMap (relations: RelationLoadPlan[], prefix = ''): EagerLoadMap {
+        return relations.reduce<EagerLoadMap>((all, relation) => {
+            const path = prefix ? `${prefix}.${relation.relation}` : relation.relation
+            all[path] = this.toEagerLoadConstraint(relation)
 
             return all
         }, {})

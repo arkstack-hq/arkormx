@@ -121,7 +121,7 @@ match your storage name:
 
 ```ts
 export class User extends Model {
-  protected static override delegate = 'users';
+  protected static override table = 'users';
 }
 ```
 
@@ -242,6 +242,7 @@ Use this when you want the smallest behavioral jump.
 3. Replace old client bootstrap with `defineConfig({ client: () => prisma, adapter: createPrismaDatabaseAdapter(prisma) })`.
 4. Remove deprecated `Model.setClient(...)` usage and any direct delegate-map bootstrap.
 5. Update typing gradually.
+6. Treat raw SQL predicates and adapter-owned eager-load batching as SQL-backed adapter features; on Prisma compatibility they remain intentionally isolated behind Arkorm's generic eager loader and unsupported-adapter errors.
 
 ### Full adapter-first path
 

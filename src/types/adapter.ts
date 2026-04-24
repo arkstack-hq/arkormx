@@ -129,6 +129,7 @@ export interface RelationFilterSpec {
 export interface RelationLoadPlan {
     relation: string
     constraint?: QueryCondition
+    softDeleteMode?: SoftDeleteQueryMode
     orderBy?: QueryOrderBy[]
     limit?: number
     offset?: number

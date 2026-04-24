@@ -7,7 +7,7 @@ This guide documents the Postgres-specific work from Phase 9 of our migration fr
 These improvements stay behind Arkorm's adapter seam and are not tied to Postgres-specific SQL syntax in the public API:
 
 - set-based eager loading from Phase 7
-- adapter-owned `relationLoads` execution for unconstrained eager loads on the Kysely path
+- adapter-owned `relationLoads` execution for both unconstrained and constrained eager loads on the Kysely path
 - SQL-backed relation filters and aggregates from Phase 8
 - optional adapter capabilities such as `upsert`, `updateFirst`, and `deleteFirst`
 - `QueryBuilder` choosing optimized write paths only when the active adapter advertises the required capability

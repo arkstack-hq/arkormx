@@ -9,8 +9,9 @@ This document tracks all implemented and upcoming features for Arkormˣ.
 - `Model.setClient(...)` and direct delegate-map bootstrapping are deprecated in the current `next` line.
 - `Model.setAdapter(...)` with `createPrismaDatabaseAdapter(...)` or `createKyselyAdapter(...)` is the primary documented runtime path.
 - Prisma compatibility remains supported and covered by CI through the Arkorm 2.x transition window.
+- Prisma compatibility boundaries are now explicit: raw SQL predicates and adapter-owned relation batch loading stay compatibility-only gaps, while direct select/include translation remains supported.
 - SQL-backed relation filters and aggregates now fail fast when a callback shape cannot be compiled into adapter specs instead of silently dropping to the generic in-memory path.
-- Unconstrained `with(...)` eager loads now route through the adapter-owned `relationLoads` seam on the Kysely path, while constrained eager loads and `Model.load(...)` stay on Arkorm's generic loader.
+- Eager loading, relation filters, and relation aggregates now compile through Arkorm-owned relation specs end to end on the adapter-first path; the Kysely adapter consumes those specs for both unconstrained and constrained eager loading while Prisma compatibility keeps the generic eager-loader path.
 - Earliest removal target for delegate-first runtime APIs is Arkorm 3.0 after migration docs, parity coverage, and adapter-first examples remain in place.
 
 ### Core ORM
@@ -151,9 +152,9 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] Move transaction APIs to adapter-first contracts without requiring Prisma client callback types in core runtime APIs
 - [x] Eliminate remaining runtime fallbacks that still depend on delegate-shaped behavior for relation execution
 - [x] Complete adapter-level relation load execution for the Kysely path
-- [ ] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
-- [ ] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
-- [ ] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
+- [x] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
+- [x] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
+- [x] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
 - [ ] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
 - [ ] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
 - [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline

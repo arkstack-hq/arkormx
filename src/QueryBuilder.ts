@@ -29,6 +29,7 @@ import type {
     RelationFilterSpec,
     RelationLoadPlan,
     SelectSpec,
+    SoftDeleteQueryMode,
     UpdateManySpec,
     UpdateSpec,
     UpsertSpec,
@@ -2176,6 +2177,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             return {
                 relation: plan.relation,
                 constraint: plan.constraint,
+                softDeleteMode: plan.softDeleteMode,
                 orderBy: plan.orderBy ? [...plan.orderBy] : undefined,
                 limit: plan.limit,
                 offset: plan.offset,
@@ -2185,6 +2187,111 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                     : undefined,
             }
         })
+    }
+
+    private mergeRelationLoadPlans (
+        primary?: RelationLoadPlan[],
+        secondary?: RelationLoadPlan[],
+    ): RelationLoadPlan[] | undefined {
+        if ((!primary || primary.length === 0) && (!secondary || secondary.length === 0))
+            return undefined
+
+        const merged = new Map<string, RelationLoadPlan>()
+        const appendPlans = (plans?: RelationLoadPlan[]) => {
+            plans?.forEach((plan) => {
+                const existing = merged.get(plan.relation)
+                if (!existing) {
+                    merged.set(plan.relation, {
+                        relation: plan.relation,
+                        constraint: plan.constraint,
+                        softDeleteMode: plan.softDeleteMode,
+                        orderBy: plan.orderBy ? [...plan.orderBy] : undefined,
+                        limit: plan.limit,
+                        offset: plan.offset,
+                        columns: plan.columns ? [...plan.columns] : undefined,
+                        relationLoads: plan.relationLoads ? this.cloneRelationLoads(plan.relationLoads) : undefined,
+                    })
+
+                    return
+                }
+
+                existing.constraint = plan.constraint ?? existing.constraint
+                existing.softDeleteMode = plan.softDeleteMode ?? existing.softDeleteMode
+                existing.orderBy = plan.orderBy ? [...plan.orderBy] : existing.orderBy
+                existing.limit = plan.limit ?? existing.limit
+                existing.offset = plan.offset ?? existing.offset
+                existing.columns = plan.columns ? [...plan.columns] : existing.columns
+                existing.relationLoads = this.mergeRelationLoadPlans(existing.relationLoads, plan.relationLoads)
+            })
+        }
+
+        appendPlans(primary)
+        appendPlans(secondary)
+
+        return [...merged.values()]
+    }
+
+    private relationLoadPlansToEagerLoadMap (plans: RelationLoadPlan[]): EagerLoadMap {
+        return plans.reduce<EagerLoadMap>((all, plan) => {
+            all[plan.relation] = (query: unknown) => {
+                return (query as QueryBuilder<any, any>).applyRelationLoadPlan(plan)
+            }
+
+            return all
+        }, {})
+    }
+
+    private getRelationLoadSoftDeleteMode (): SoftDeleteQueryMode | undefined {
+        if (this.onlyTrashedRecords)
+            return 'only'
+
+        if (this.includeTrashed)
+            return 'include'
+
+        return undefined
+    }
+
+    public applyRelationLoadPlan (plan: RelationLoadPlan): this {
+        if (plan.constraint) {
+            const normalizedWhere = this.toQuerySchemaWhere(plan.constraint)
+            if (!normalizedWhere) {
+                throw new UnsupportedAdapterFeatureException('Relation load plan constraints could not be normalized back into query where syntax.', {
+                    operation: 'relationLoads.applyPlan',
+                    model: this.model.name,
+                })
+            }
+
+            this.addLogicalWhere('AND', normalizedWhere as QuerySchemaWhere<TDelegate>)
+        }
+
+        if (plan.softDeleteMode === 'include') {
+            this.includeTrashed = true
+            this.onlyTrashedRecords = false
+        } else if (plan.softDeleteMode === 'only') {
+            this.includeTrashed = false
+            this.onlyTrashedRecords = true
+        }
+
+        if (plan.orderBy)
+            this.queryOrderBy = [...plan.orderBy]
+
+        if (plan.columns)
+            this.querySelect = [...plan.columns]
+
+        if (plan.offset !== undefined)
+            this.offsetValue = plan.offset
+
+        if (plan.limit !== undefined)
+            this.limitValue = plan.limit
+
+        if (plan.relationLoads)
+            this.with(this.relationLoadPlansToEagerLoadMap(plan.relationLoads))
+
+        return this
+    }
+
+    public async loadIntoModels (models: TModel[]): Promise<void> {
+        await this.eagerLoadModels(models)
     }
 
     /**
@@ -2205,9 +2312,6 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const tree = new Map<string, RelationLoadTreeNode>()
 
         for (const [path, constraint] of entries) {
-            if (constraint)
-                return null
-
             const segments = path
                 .split('.')
                 .map(segment => segment.trim())
@@ -2217,25 +2321,71 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 continue
 
             let current = tree
-            for (const segment of segments) {
+            segments.forEach((segment, index) => {
                 const existing = current.get(segment) ?? { constraint: undefined, children: new Map<string, RelationLoadTreeNode>() }
+                if (index === segments.length - 1 && constraint)
+                    existing.constraint = constraint
+
                 current.set(segment, existing)
                 current = existing.children
-            }
-        }
-
-        const toPlans = (nodes: Map<string, RelationLoadTreeNode>): RelationLoadPlan[] => {
-            return Array.from(nodes.entries()).map(([relation, node]) => {
-                return {
-                    relation,
-                    relationLoads: node.children.size > 0
-                        ? toPlans(node.children)
-                        : undefined,
-                }
             })
         }
 
-        return toPlans(tree)
+        const toPlans = (owner: ModelStatic<any, any>, nodes: Map<string, RelationLoadTreeNode>): RelationLoadPlan[] | null => {
+            const plans: RelationLoadPlan[] = []
+
+            for (const [relation, node] of nodes.entries()) {
+                const metadata = owner.getRelationMetadata(relation)
+                const relatedModel = metadata?.relatedModel
+                if (!relatedModel)
+                    return null
+
+                const relatedQuery = relatedModel.query()
+                const constrained = node.constraint ? node.constraint(relatedQuery) : relatedQuery
+                const normalizedQuery = constrained instanceof QueryBuilder
+                    ? constrained as QueryBuilder<any, any>
+                    : relatedQuery
+
+                if (constrained && !(constrained instanceof QueryBuilder) && constrained !== relatedQuery)
+                    return null
+
+                if (normalizedQuery.randomOrderEnabled)
+                    return null
+
+                const callbackRelationLoads = normalizedQuery.tryBuildAdapterRelationLoadPlans()
+                const childRelationLoads = node.children.size > 0
+                    ? toPlans(relatedModel as ModelStatic<any, any>, node.children)
+                    : []
+
+                if (callbackRelationLoads === null || childRelationLoads === null)
+                    return null
+
+                const where = normalizedQuery.legacyWhere
+                    ? normalizedQuery.tryBuildQueryCondition(normalizedQuery.legacyWhere as QuerySchemaWhere<any>)
+                    : normalizedQuery.queryWhere
+
+                if (where === null)
+                    return null
+
+                plans.push({
+                    relation,
+                    constraint: where ?? undefined,
+                    softDeleteMode: normalizedQuery.getRelationLoadSoftDeleteMode(),
+                    orderBy: normalizedQuery.queryOrderBy ? [...normalizedQuery.queryOrderBy] : undefined,
+                    limit: normalizedQuery.limitValue,
+                    offset: normalizedQuery.offsetValue,
+                    columns: normalizedQuery.querySelect ? [...normalizedQuery.querySelect] : undefined,
+                    relationLoads: this.mergeRelationLoadPlans(
+                        normalizedQuery.queryRelationLoads ? this.cloneRelationLoads(normalizedQuery.queryRelationLoads) : undefined,
+                        this.mergeRelationLoadPlans(callbackRelationLoads, childRelationLoads),
+                    ),
+                })
+            }
+
+            return plans
+        }
+
+        return toPlans(this.model as unknown as ModelStatic<any, any>, tree)
     }
 
     private async eagerLoadModels (models: TModel[]): Promise<void> {

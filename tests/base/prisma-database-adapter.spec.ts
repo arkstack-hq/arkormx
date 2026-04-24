@@ -1,5 +1,6 @@
 import {
     QueryExecutionException,
+    UnsupportedAdapterFeatureException,
     configureArkormRuntime,
     createPrismaDatabaseAdapter,
     createPrismaDelegateMap,
@@ -263,6 +264,35 @@ describe('Prisma database adapter', () => {
                 },
             },
         }))
+    })
+
+    it('isolates compatibility-only Prisma adapter gaps behind explicit capability flags and unsupported-feature errors', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+
+        expect(adapter.capabilities.relationLoads).toBe(false)
+        expect(adapter.capabilities.rawWhere).toBe(false)
+
+        await expect(adapter.loadRelations({
+            target: { table: 'users' },
+            models: [{ id: 1 }],
+            relations: [{ relation: 'posts' }],
+        })).rejects.toMatchObject({
+            constructor: UnsupportedAdapterFeatureException,
+            message: expect.stringContaining('Adapter-owned relation batch loading is intentionally unavailable on the Prisma compatibility adapter'),
+        })
+
+        await expect(adapter.select({
+            target: { table: 'users' },
+            where: {
+                type: 'raw',
+                sql: 'LOWER(email) = ?',
+                bindings: ['jane@example.com'],
+            },
+        })).rejects.toMatchObject({
+            constructor: UnsupportedAdapterFeatureException,
+            message: expect.stringContaining('use a SQL-backed adapter for raw SQL predicates'),
+        })
     })
 
     it('introspects model structure from Prisma runtime data model metadata when available', async () => {

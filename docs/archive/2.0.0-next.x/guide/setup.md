@@ -178,7 +178,7 @@ const article = await Article.query().onlyTrashed().first();
 Current Phase 6 scope:
 
 - Kysely-backed execution covers core reads, writes, count, exists, pagination, and adapter transactions.
-- Relation eager loading, relation filters, and relation aggregates still follow later migration phases.
+- Relation eager loading, relation filters, and relation aggregates now compile through Arkorm-owned relation specs; Kysely consumes those specs directly, while Prisma compatibility keeps the generic eager-loader path for unsupported adapter-owned relation loading.
 
 Transaction example:
 

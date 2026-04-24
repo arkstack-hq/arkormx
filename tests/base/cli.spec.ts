@@ -1,8 +1,8 @@
+import { CliApp, createPrismaDatabaseAdapter } from '../../src'
 import { afterEach, describe, expect, it } from 'vitest'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 
 import type { ArkormConfig } from '../../src/types'
-import { CliApp, createPrismaDatabaseAdapter } from '../../src'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
@@ -85,6 +85,7 @@ describe('CLI application', () => {
         const modelSource = readFileSync(created.model.path, 'utf-8')
         expect(modelSource).toContain('import { UserFactory } from')
         expect(modelSource).toContain('/database/factories/UserFactory')
+        expect(modelSource).toContain('protected static override table = \'users\'')
         expect(modelSource).toContain('protected static override factoryClass = UserFactory')
 
         const schemaSource = readFileSync(join(workspace, 'prisma', 'schema.prisma'), 'utf-8')
@@ -104,7 +105,7 @@ describe('CLI application', () => {
                 models: join(workspace, 'src', 'models'),
             },
         })
-        ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
+            ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
 
         const created = app.makeModel('User')
 
@@ -127,7 +128,7 @@ describe('CLI application', () => {
                 models: join(workspace, 'src', 'models'),
             },
         })
-        ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
+            ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () => true
 
         const before = readFileSync(schemaPath, 'utf-8')
         const created = app.makeModel('User')

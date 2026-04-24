@@ -99,7 +99,10 @@ than the Kysely SQL-backed adapter.
 
 - `whereLike(...)`, `whereStartsWith(...)`, and `whereEndsWith(...)` work on the compatibility adapter.
 - `whereRaw(...)` and `orWhereRaw(...)` do not work on the compatibility adapter.
+- direct `include(...)` / relation-load plans on adapter selects still translate into Prisma `include` arguments.
+- adapter-owned relation batch loading (`adapter.loadRelations(...)`) is intentionally unavailable on the Prisma compatibility path, so `with(...)` and `Model.load(...)` stay on Arkorm's generic eager loader there.
 - If you need raw SQL predicates such as `LOWER(email)` expressions, use a SQL-backed adapter such as Kysely.
+- If you need adapter-owned eager-load execution instead of Arkorm's generic loader, use a SQL-backed adapter such as Kysely.
 
 ## Compatibility window
 

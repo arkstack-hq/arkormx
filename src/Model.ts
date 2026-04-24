@@ -42,7 +42,6 @@ import { QueryBuilder } from './QueryBuilder'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
-import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
 
 /**
  * Base model class that all models should extend. 
@@ -977,13 +976,10 @@ export abstract class Model<
      */
     public async load (relations: string | string[] | EagerLoadMap): Promise<this> {
         const relationMap = this.normalizeRelationMap(relations)
+        const constructor = this.constructor as typeof Model
+        const query = constructor.query().with(relationMap) as unknown as QueryBuilder<this, QuerySchemaForModel<TSchema, TAttributes>>
 
-        await new SetBasedEagerLoader([
-            this as unknown as {
-                getAttribute: (key: string) => unknown
-                setLoadedRelation: (name: string, value: unknown) => void
-            },
-        ], relationMap).load()
+        await query.loadIntoModels([this])
 
         return this
     }
