@@ -1,15 +1,17 @@
-import type { AdapterTransactionContext, DatabaseAdapter } from './types/adapter'
-import { PrismaDatabaseAdapter } from './adapters/PrismaDatabaseAdapter'
+import type { AdapterTransactionContext, DatabaseAdapter, RawQuerySpec } from './types/adapter'
 import type { ModelQuerySchemaLike, SoftDeleteConfig } from './types/core'
-import { getRuntimeAdapter, getUserConfig } from './helpers/runtime-config'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
-import { getRuntimeCompatibilityAdapter } from './helpers/runtime-compatibility'
+import { getRuntimeAdapter, getUserConfig } from './helpers/runtime-config'
 
+import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import type { DatabaseTableOptions } from './types/db'
 import type { ModelMetadata } from './types/metadata'
 import type { ModelStatic } from './types/ModelStatic'
+import { PrismaDatabaseAdapter } from './adapters/PrismaDatabaseAdapter'
 import { QueryBuilder } from './QueryBuilder'
+import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
+import { getRuntimeCompatibilityAdapter } from './helpers/runtime-compatibility'
 
 const defaultSoftDeleteConfig: SoftDeleteConfig = {
     enabled: false,
@@ -55,6 +57,40 @@ export class DB {
         options: DatabaseTableOptions = {},
     ): QueryBuilder<TRow, ModelQuerySchemaLike> {
         return DB.createTableModel<TRow>(table, options, this.getAdapter()).query()
+    }
+
+    public static async raw<TRow extends Record<string, unknown> = Record<string, unknown>> (
+        sql: string,
+        bindings: unknown[] = [],
+    ): Promise<ArkormCollection<TRow>> {
+        return await new DB().raw<TRow>(sql, bindings)
+    }
+
+    public async raw<TRow extends Record<string, unknown> = Record<string, unknown>> (
+        sql: string,
+        bindings: unknown[] = [],
+    ): Promise<ArkormCollection<TRow>> {
+        const adapter = this.getAdapter()
+        if (!adapter)
+            throw new ArkormException('Raw queries require a configured database adapter.', {
+                code: 'ADAPTER_NOT_CONFIGURED',
+                operation: 'db.raw',
+            })
+
+        if (!adapter.rawQuery)
+            throw new UnsupportedAdapterFeatureException('Raw queries are not supported by the current adapter.', {
+                operation: 'db.raw',
+                meta: {
+                    feature: 'rawQuery',
+                },
+            })
+
+        const rows = await adapter.rawQuery<TRow>({
+            sql,
+            bindings: bindings as RawQuerySpec['bindings'],
+        })
+
+        return ArkormCollection.make(rows as TRow[])
     }
 
     public static async transaction<TResult> (
