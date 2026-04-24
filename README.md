@@ -6,6 +6,9 @@
 [![CI](https://github.com/arkstack-hq/arkormx/actions/workflows/ci.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/ci.yml)
 [![Deploy Documentation](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml)
 [![codecov](https://codecov.io/gh/arkstack-hq/arkormx/graph/badge.svg?token=ls1VVoFkYh)](https://codecov.io/gh/arkstack-hq/arkormx)
+[![CI](https://github.com/arkstack-hq/arkormx/actions/workflows/ci.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/ci.yml)
+[![Deploy Documentation](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml)
+[![Publish to NPM](https://github.com/arkstack-hq/arkormx/actions/workflows/publish.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/publish.yml)
 
 Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility available as an optional 2.x compatibility path.
 
