@@ -54,7 +54,8 @@ export class Article extends Model {
 ```
 
 Only add `table` when your model names do not match the storage names Arkorm
-would infer by convention.
+would infer by convention. The inferred fallback is plural snake case, and you
+can change it globally with `defineConfig({ naming: { modelTableCase: ... } })`.
 
 ## 3. Query usage
 

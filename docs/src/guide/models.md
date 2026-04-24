@@ -41,12 +41,24 @@ Available metadata helpers:
 
 Fallback rules:
 
-- `table` falls back to `delegate`, then the model name in plural camel case.
+- `table` falls back to `delegate`, then the model name in plural snake case.
 - `delegate` is only needed when you want to override Arkorm's conventional
   model-name-based resolution.
 - `primaryKey` falls back to `'id'`.
 - `columns` falls back to an empty map.
 - soft delete metadata still comes from `softDeletes` and `deletedAtColumn`.
+
+You can customize inferred table casing globally:
+
+```ts
+import { defineConfig } from 'arkormx';
+
+export default defineConfig({
+  naming: {
+    modelTableCase: 'camel', // 'snake' (default), 'camel', 'kebab', 'studly'
+  },
+});
+```
 
 ## Attributes
 
