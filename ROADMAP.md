@@ -157,7 +157,7 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
 - [x] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
 - [x] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
-- [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
+- [x] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
 
 Success criteria:
 
@@ -165,6 +165,15 @@ Success criteria:
 - adapter-first execution is the only primary runtime path for new code, including relation execution fallback paths
 - Prisma support remains only as a compatibility adapter, not as a shaping abstraction for core internals
 - `next` can merge into `main` as the fully completed adapter-first architecture
+
+Final merge checklist status:
+
+- [x] docs and examples teach adapter-first as the default 2.x runtime path
+- [x] delegate-first runtime APIs are isolated to compatibility-only surfaces with explicit deprecation/removal guidance
+- [x] neutral query-schema typing is the primary core type surface
+- [x] relation execution and eager loading no longer depend on delegate-only runtime APIs
+- [x] parity/regression coverage exists for both Prisma compatibility and Kysely adapter-backed execution
+- [x] repo state is currently clean and the latest `pnpm test:all` run passed
 
 ### Out of scope
 

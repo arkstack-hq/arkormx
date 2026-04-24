@@ -671,7 +671,7 @@ Implementation checklist:
 - [x] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
 - [x] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
 - [x] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
-- [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
+- [x] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
 
 Started in code:
 
@@ -714,6 +714,24 @@ Success criteria:
 - adapter-first execution is the only primary runtime path for new code
 - Prisma support remains only as a compatibility adapter, not as a shaping abstraction for core internals
 - `next` can merge into `main` as the fully completed adapter-first architecture
+
+## Final Merge Checklist
+
+Executed against the current `2.0.0-next.27` baseline:
+
+- [x] primary runtime docs and examples now teach adapter-first setup as the default 2.x path
+- [x] delegate-first runtime APIs are isolated to explicit compatibility surfaces with deprecation warnings and a documented Arkorm 3.0 removal target
+- [x] core model, query, and helper typing now use neutral `QuerySchema*` and `AttributeQuerySchema` contracts instead of Prisma-shaped primary generics
+- [x] relation execution, eager loading, relation filters, relation aggregates, and `Model.load(...)` no longer rely on `Model.getDelegate()` during normal adapter-backed execution
+- [x] Kysely relation loading, constrained eager-load planning, and Prisma compatibility boundaries are covered by focused regression tests
+- [x] adapter parity coverage now proves equivalent relation-filter and eager-load behavior on both the Prisma compatibility adapter and the Kysely adapter without delegate deprecation warnings
+- [x] documentation, roadmap, and versioned upgrade guides describe the adapter-first architecture as the completed 2.x baseline rather than an in-flight migration
+- [x] repository state is currently clean with no staged, unstaged, or merge-conflict files
+- [x] latest full-suite validation passed via `pnpm test:all`
+
+Merge note:
+
+- Arkorm 2.x still intentionally retains the Prisma compatibility adapter and deprecated delegate-shaped aliases as compatibility-only surfaces; merging `next` into `main` does not remove those 2.x compatibility shims, it establishes adapter-first as the baseline architecture they sit on top of
 
 ## Compatibility Strategy
 

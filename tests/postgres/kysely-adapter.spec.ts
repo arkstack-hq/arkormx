@@ -13,6 +13,7 @@ import { Kysely, PostgresDialect } from 'kysely'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     ArkormCollection,
+    type DatabaseAdapter,
     QueryExecutionException,
     QueryBuilder,
     createKyselyAdapter,
@@ -396,7 +397,7 @@ describe('PostgreSQL Kysely adapter', () => {
     it('matches Prisma compatibility and Kysely adapter behavior for adapter-first relation filters and eager loading without delegate warnings', async () => {
         const warningSpy = vi.spyOn(process, 'emitWarning').mockImplementation(() => undefined)
 
-        const runScenario = async (adapter: typeof prismaAdapter) => {
+        const runScenario = async (adapter: DatabaseAdapter) => {
             setPostgresModelAdapter(adapter)
 
             const users = await DbUser.query()
