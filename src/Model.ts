@@ -164,6 +164,8 @@ export abstract class Model<
     }
 
     public static getTable (): string {
+        ensureArkormConfigLoading()
+
         if (this.table)
             return this.table
 
@@ -176,7 +178,19 @@ export abstract class Model<
             return this.delegate
         }
 
-        return `${str(this.name).camel().plural()}`
+        const modelTableCase = getUserConfig('naming')?.modelTableCase ?? 'snake'
+        const modelName = str(this.name)
+
+        if (modelTableCase === 'camel')
+            return `${modelName.camel().plural()}`
+
+        if (modelTableCase === 'kebab')
+            return `${modelName.kebab().plural()}`
+
+        if (modelTableCase === 'studly')
+            return `${modelName.studly().plural()}`
+
+        return `${modelName.snake().plural()}`
     }
 
     public static getPrimaryKey (): string {

@@ -43,6 +43,24 @@ afterEach(() => {
 })
 
 describe('runtime config defaults', () => {
+    it('defaults inferred model table names to snake case', () => {
+        class RuntimeBlogPost extends Model { }
+
+        expect(RuntimeBlogPost.getTable()).toBe('runtime_blog_posts')
+    })
+
+    it('allows configuring inferred model table names to camel case', () => {
+        class RuntimeBlogPost extends Model { }
+
+        configureArkormRuntime(() => ({}), {
+            naming: {
+                modelTableCase: 'camel',
+            },
+        })
+
+        expect(RuntimeBlogPost.getTable()).toBe('runtimeBlogPosts')
+    })
+
     it('uses a configured global adapter for models without model-specific bindings', () => {
         class RuntimeUser extends Model<'users'> {
             protected static override table = 'users'
