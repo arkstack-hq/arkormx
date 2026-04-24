@@ -669,23 +669,23 @@ Implementation checklist:
 - [x] Close the remaining Prisma compatibility adapter feature gaps or explicitly isolate them to compatibility-only behavior
 - [x] Ensure eager loading, relation aggregates, and relation filters run through Arkorm-owned specs end to end
 - [x] Remove or rename delegate-oriented metadata and internals where `table` or adapter terminology is now the real runtime contract
-- [ ] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
-- [ ] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
+- [x] Update docs, examples, and upgrade guides to mark the adapter-first migration as complete rather than transitional
+- [x] Add parity and regression coverage proving adapter-first behavior without delegate-only runtime APIs
 - [ ] Define and execute the final removal checklist for merging `next` into `main` as the completed adapter-first baseline
 
 Started in code:
 
 - core query-shape generics now use an adapter-native `ModelQuerySchemaLike` contract in `src/types/core.ts`
 - `Model`, `QueryBuilder`, `ModelStatic`, `DB`, and `src/types/model.ts` now compile against adapter-native core schema types instead of using `PrismaDelegateLike` as their primary generic constraint
-- core query helper types now expose neutral `QuerySchema*` names in `src/types/core.ts`, while the older `Delegate*` exports remain as deprecated compatibility aliases during the rest of Phase 7
-- `src/types/model.ts` now exposes neutral `AttributeQuerySchema` and `QuerySchemaForModel` helpers, while `AttributeSchemaDelegate` and `DelegateForModelSchema` remain as deprecated aliases for transition compatibility
+- core query helper types now expose neutral `QuerySchema*` names in `src/types/core.ts`, while the older `Delegate*` exports remain as deprecated compatibility aliases through the 2.x compatibility window
+- `src/types/model.ts` now exposes neutral `AttributeQuerySchema` and `QuerySchemaForModel` helpers, while `AttributeSchemaDelegate` and `DelegateForModelSchema` remain as deprecated aliases for 2.x compatibility
 - `src/types/model.ts` and `src/types/ModelStatic.ts` now use `QuerySchemaRow`, `QuerySchemaCreateData`, and `QuerySchemaUpdateData` as their primary type surface instead of the older delegate-shaped helper names
 - `Model` generic defaults and `QueryBuilder` internals now use the neutral `QuerySchema*` helper family end to end rather than relying on delegate-shaped helper names in the primary core typing path
 - shared transaction typing now uses neutral `TransactionContext`, `TransactionOptions`, and `RuntimeClientLike` contracts instead of requiring Prisma-named callback types in `Model` and `runtime-config`
 - `Model.transaction()` now prefers adapter-backed transactions and routes transaction-scoped adapters through runtime storage so `Model.query()` and `DB.table()` stay inside the active transaction
 - `ArkormConfig`, `ArkormBootContext`, and `configureArkormRuntime(...)` now expose a neutral `client` runtime path for transaction fallback, while `prisma` remains only as a deprecated compatibility alias during the 2.x window
 - runtime transaction fallback errors now describe the missing requirement as a runtime client or adapter instead of treating the core API as Prisma-owned
-- `src/helpers/runtime-config.ts` and `src/helpers/prisma.ts` now use neutral query-schema/runtime contracts internally, while keeping Prisma compatibility aliases and helper names available during the remainder of Phase 7
+- `src/helpers/runtime-config.ts` and `src/helpers/prisma.ts` now use neutral query-schema/runtime contracts internally, while keeping Prisma compatibility aliases and helper names available through the 2.x compatibility window
 - Prisma compatibility adapter/query-schema fallback is now centralized in `src/helpers/runtime-compatibility.ts`, so `Model` and `DB` no longer each rebuild that fallback path independently
 - deprecated `Model.getDelegate()` resolution now delegates to the compatibility helper layer instead of probing runtime clients directly inside `Model`
 - relation internals that were already table-backed now use `throughTable` terminology instead of `throughDelegate` across `Model` and the through/pivot relation classes
@@ -694,7 +694,7 @@ Started in code:
 - the Kysely adapter now implements `loadRelations(...)` for unconstrained eager-load graphs by delegating through Arkorm's set-based eager loader, which closes the adapter-level relation load seam for the supported Kysely path without reintroducing delegate resolution
 - Prisma compatibility gaps are now isolated explicitly: direct select/include relation plans still translate into Prisma include arguments, while adapter-owned relation batch loading and raw SQL predicates throw targeted unsupported-adapter errors and remain documented as compatibility-only limitations
 - `QueryBuilder` now also compiles constrained `with({...})` callbacks into `RelationLoadPlan` specs, `Model.load(...)` reuses that same spec path, and the Kysely adapter reapplies those specs through Arkorm's generic eager loader so constrained eager loading, relation filters, and relation aggregates all share Arkorm-owned relation specs end to end
-- `Model` now documents adapter binding as its primary runtime API, while `setClient(...)`, `getDelegate(...)`, and `delegate` are explicitly treated as compatibility-only 2.x transition members rather than part of the primary surface
+- `Model` now documents adapter binding as its primary runtime API, while `setClient(...)`, `getDelegate(...)`, and `delegate` are explicitly treated as compatibility-only 2.x members rather than part of the primary surface
 - `Model.setClient(...)` and direct delegate-map helpers are now explicitly documented as compatibility-only migration paths rather than supported runtime bootstrap APIs
 - adapter-backed runtime queries no longer rely on `Model.getDelegate()`; the method is isolated to explicit compatibility callers and dedicated deprecation/error coverage
 - relation filters, relation aggregates, eager loading, and `Model.load(...)` now execute without routing through `Model.getDelegate()`, which closes the remaining delegate-shaped runtime fallback for relation execution even where Arkorm still uses its generic set-based loader
@@ -702,9 +702,11 @@ Started in code:
 - PostgreSQL regression coverage now proves Kysely-owned `relationLoads` execution for nested eager loads while preserving current generic morph-relation loading behavior
 - Prisma adapter regression coverage now proves the remaining unsupported surface is isolated behind explicit capability flags and unsupported-adapter errors rather than leaking as implicit runtime behavior
 - relationship regression coverage now proves constrained eager-loading callbacks export `RelationLoadPlan` specs and that Kysely-backed `with({...})` and `Model.load(...)` preserve constrained eager-load behavior through the adapter-first path
+- PostgreSQL parity coverage now runs the same relation-filter, constrained eager-loading, and `Model.load(...)` scenario against both the Prisma compatibility adapter and the Kysely adapter, and it asserts that neither path emits the `Model.getDelegate()` deprecation warning during normal adapter-backed execution
 - CLI model generation, schema sync helpers, and bundled model stubs now use `table`/`TableName` terminology internally, with only explicit compatibility parsing still recognizing legacy `delegate` aliases
 - the versioned upgrade guide now teaches `table` as the normal model override instead of `delegate`, aligning examples with the adapter-first runtime contract
-- `PrismaDelegateLike` currently remains as a deprecated compatibility alias so Prisma-specific adapter and helper code can keep compiling while the rest of Phase 7 is completed
+- README, docs home pages, and the setup/configuration/upgrade guides now describe adapter-first as the completed 2.x baseline, while Prisma-specific guidance is scoped to the supported compatibility path
+- `PrismaDelegateLike` currently remains as a deprecated compatibility alias so Prisma-specific adapter and helper code can keep compiling through the current 2.x compatibility window
 
 Success criteria:
 

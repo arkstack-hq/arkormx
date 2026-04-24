@@ -30,8 +30,8 @@ over the older delegate-shaped ones. `ModelQuerySchemaLike`,
 `QuerySchemaUpdateData`, and `QuerySchemaForModel` are now the primary type
 surface. For attribute-backed helper schemas, prefer `AttributeQuerySchema`.
 The older `Delegate*` names, `DelegateForModelSchema`, and
-`AttributeSchemaDelegate` still exist as deprecated aliases during the 2.x
-transition window.
+`AttributeSchemaDelegate` still exist as deprecated aliases for 2.x
+compatibility.
 
 ## Typed accessors
 

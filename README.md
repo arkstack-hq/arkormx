@@ -7,12 +7,12 @@
 [![Deploy Documentation](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml/badge.svg)](https://github.com/arkstack-hq/arkormx/actions/workflows/deploy-docs.yml)
 [![codecov](https://codecov.io/gh/arkstack-hq/arkormx/graph/badge.svg?token=ls1VVoFkYh)](https://codecov.io/gh/arkstack-hq/arkormx)
 
-Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility kept during the current transition window.
+Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility available as an optional 2.x compatibility path.
 
 ## Features
 
 - Adapter-backed query execution with practical ORM ergonomics.
-- Adapter-first runtime setup with Kysely/Postgres support and a Prisma compatibility adapter during migration.
+- Adapter-first runtime setup with Kysely/Postgres support and optional Prisma compatibility for existing 2.x integrations.
 - End-to-end guides for setup, querying, relationships, migrations, and CLI usage.
 - Full TypeScript support, providing strong typing and improved developer experience.
 - Follows best practices for security, ensuring your data is protected.

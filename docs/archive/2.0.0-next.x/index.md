@@ -21,7 +21,7 @@ features:
       alt: Prisma Icon
       width: 20
     title: Adapter First
-    details: Arkormˣ now documents adapter-backed execution first, with Prisma compatibility preserved during the transition window.
+    details: Arkormˣ ships as an adapter-first ORM, with Prisma compatibility retained as an optional 2.x compatibility path.
   - icon:
       src: /flashlight-fill.svg
     title: Performance

@@ -4,7 +4,7 @@ Arkormˣ loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkorm
 
 Adapter configuration is the primary runtime path. Prisma is optional and only
 needed when you want compatibility mode, CLI flows, or Prisma-backed
-transactions during the transition window.
+transactions on the supported 2.x compatibility path.
 
 ## defineConfig
 
