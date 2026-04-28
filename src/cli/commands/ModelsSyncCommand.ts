@@ -8,7 +8,7 @@ export class ModelsSyncCommand extends Command<CliApp> {
         {--models= : Path to models directory}
     `
 
-    protected description = 'Sync model declare attributes from the active adapter when supported, otherwise fall back to the Prisma schema'
+    protected description = 'Sync model declare attributes from the active adapter when supported'
 
     async handle () {
         this.app.command = this
