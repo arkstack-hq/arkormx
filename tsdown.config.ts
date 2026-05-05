@@ -6,11 +6,17 @@ export default defineConfig([
         exports: true,
         minify: false,
         tsconfig: 'tsconfig.json',
-        entry: ['src/index.ts'],
+        entry: [
+            'src/index.ts',
+            'src/relationship/index.ts'
+        ],
         platform: 'node',
         outDir: 'dist',
         format: ['esm', 'cjs'],
         skipNodeModulesBundle: true,
+        external: [
+            '@h3ravel/*'
+        ]
     },
     {
         dts: false,

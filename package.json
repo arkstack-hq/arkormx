@@ -1,6 +1,6 @@
 {
   "name": "arkormx",
-  "version": "2.0.6",
+  "version": "2.0.7",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",
@@ -32,6 +32,10 @@
     ".": {
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
+    },
+    "./relationship": {
+      "import": "./dist/relationship/index.mjs",
+      "require": "./dist/relationship/index.cjs"
     },
     "./package.json": "./package.json"
   },
