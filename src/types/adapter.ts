@@ -281,7 +281,7 @@ export interface DatabaseAdapter {
     deleteMany?: <TModel = unknown>(spec: DeleteManySpec<TModel>) => Promise<number>
     count: <TModel = unknown>(spec: AggregateSpec<TModel>) => Promise<number>
     exists?: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<boolean>
-    rawQuery?: <TRow = unknown>(spec: RawQuerySpec) => Promise<DatabaseRows>
+    rawQuery?: <_TRow = unknown>(spec: RawQuerySpec) => Promise<DatabaseRows>
     loadRelations?: <TModel = unknown>(spec: RelationLoadSpec<TModel>) => Promise<void>
     inspectQuery?: <TModel = unknown>(request: AdapterInspectionRequest<TModel>) => AdapterQueryInspection | null
     introspectModels?: (options?: AdapterModelIntrospectionOptions) => Promise<AdapterModelStructure[]>
