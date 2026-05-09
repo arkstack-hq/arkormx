@@ -52,5 +52,6 @@
         "clear-router": "^2.6.0",
         "express": "^5.2.1",
         "parasito": "^0.1.6"
-    }
+    },
+    "packageManager": "pnpm@10.0.0"
 }
