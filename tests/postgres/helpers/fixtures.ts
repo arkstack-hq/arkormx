@@ -1,7 +1,7 @@
 import { PrismaPg } from '@prisma/adapter-pg'
 import { PrismaClient } from '@prisma/client'
-import type { DatabaseAdapter } from '../../../src'
-import { configureArkormRuntime, Model, QueryBuilder } from '../../../src'
+import type { DatabaseAdapter } from 'arkormx'
+import { configureArkormRuntime, Model, QueryBuilder } from 'arkormx'
 
 export class DbUser extends Model<'user'> {
     protected static override table = 'users'

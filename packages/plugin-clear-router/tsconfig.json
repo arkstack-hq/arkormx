@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "rootDir": "../../",
+    "baseUrl": ".",
+    "moduleResolution": "bundler",
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "paths": {
+      "arkormx": ["../../src/index.ts"],
+      "@arkormx/plugin-clear-router": ["src/index.ts"]
+    }
+  },
+  "include": ["src/**/*", "tests/**/*", "tsdown.config.ts", "tests/app.d.ts"],
+  "exclude": ["dist", "node_modules"]
+}

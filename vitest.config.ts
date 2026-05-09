@@ -1,13 +1,12 @@
 import { defineConfig } from 'vitest/config'
-import tsConfigPaths from 'vite-tsconfig-paths'
 
 export default defineConfig({
-    plugins: [tsConfigPaths()],
     resolve: {
         alias: {
             'src': './src',
-        }
-    },
+        },
+        tsconfigPaths: true,
+    } as never,
     test: {
         root: './',
         passWithNoTests: true,

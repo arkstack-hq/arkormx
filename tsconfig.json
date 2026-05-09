@@ -4,11 +4,13 @@
     "target": "ES2023",
     "lib": ["es2022", "DOM"],
     "esModuleInterop": true,
-    "ignoreDeprecations": "5.0",
+    "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "strict": true,
     "moduleResolution": "bundler",
     "resolveJsonModule": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
     "declaration": true,
     "sourceMap": true,
     "outDir": "./dist",
@@ -16,7 +18,8 @@
     "types": ["node", "vitest"],
     "paths": {
       "src": ["./src"],
-      "src/*": ["./src/*"]
+      "src/*": ["./src/*"],
+      "arkormx": ["./src"]
     }
   },
   "include": [
