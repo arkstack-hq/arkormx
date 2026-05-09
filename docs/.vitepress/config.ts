@@ -107,6 +107,7 @@ export default defineVersionedConfig({
             '1.3': sidebar
         },
         socialLinks: [
+            { icon: 'discord', link: 'https://discord.gg/jmQybxKQ7R' },
             { icon: 'github', link: 'https://github.com/arkstack-hq/arkormx' },
             { icon: 'npm', link: 'https://www.npmjs.com/package/arkormx' },
         ],
