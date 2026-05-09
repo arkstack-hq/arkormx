@@ -50,6 +50,12 @@ const sidebar2x: SidebarType = sidebar.slice().map(section => {
         return {
             ...section,
             items: [...section.items].concat(
+                {
+                    collapsed: true,
+                    text: 'Plugins', items: [
+                        { text: 'Clear Router', link: 'plugins/clear-router' }
+                    ]
+                },
                 { text: 'Upgrade Guide', link: '/guide/upgrade-guide' },
             )
         }
