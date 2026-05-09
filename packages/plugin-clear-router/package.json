@@ -1,6 +1,6 @@
 {
     "name": "@arkormx/plugin-clear-router",
-    "version": "0.1.0",
+    "version": "0.1.1",
     "description": "Clear Router plugin for resolving Arkormx models from route parameters.",
     "publishConfig": {
         "access": "public"
@@ -13,7 +13,17 @@
         "plugin",
         "typescript"
     ],
+    "readme": "README.md",
     "license": "MIT",
+    "homepage": "https://arkorm.toneflix.net/plugins/plugin-clear-router",
+    "bugs": {
+        "url": "https://github.com/arkstack-hq/arkormx/issues"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/arkstack-hq/arkormx.git",
+        "directory": "packages/plugin-clear-router"
+    },
     "type": "module",
     "main": "./dist/index.cjs",
     "module": "./dist/index.mjs",
