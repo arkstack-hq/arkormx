@@ -31,11 +31,11 @@ export default defineConfig(
     },
     [
         globalIgnores([
-            'docs/.vitepress/**',
-            'bin/**',
-            'dist/**',
-            'build/**',
-            'node_modules/**',
+            '**/docs/.vitepress/**',
+            '**/bin/**',
+            '**/dist/**',
+            '**/build/**',
+            '**/node_modules/**',
         ])
     ],
     {
