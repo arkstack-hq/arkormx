@@ -36,14 +36,14 @@ jobs:
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
+      - name: Build project
+        run: pnpm build
+
       - name: Run linter
         run: pnpm lint
 
       - name: Run tests
         run: pnpm test
-
-      - name: Build project
-        run: pnpm build
 
   postgres-integration:
     name: PostgreSQL Integration Tests

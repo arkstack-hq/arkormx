@@ -8,7 +8,6 @@
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "paths": {
-      "arkormx": ["../../src/index.ts"],
       "@arkormx/plugin-clear-router": ["src/index.ts"]
     }
   },
