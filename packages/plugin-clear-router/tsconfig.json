@@ -12,6 +12,11 @@
       "@arkormx/plugin-clear-router": ["src/index.ts"]
     }
   },
-  "include": ["src/**/*", "tests/**/*", "tsdown.config.ts", "tests/app.d.ts"],
+  "include": [
+    "src/**/*",
+    "tests/**/*",
+    "tsdown.config.ts.off",
+    "tests/app.d.ts"
+  ],
   "exclude": ["dist", "node_modules"]
 }
