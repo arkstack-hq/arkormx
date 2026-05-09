@@ -11,10 +11,10 @@ hero:
   actions:
     - theme: brand
       text: Get Started
-      link: /guide/getting-started
+      link: /1.3/guide/getting-started
     - theme: alt
       text: Query Builder
-      link: /guide/query-builder
+      link: /1.3/guide/query-builder
 features:
   - icon:
       src: /prisma-icon.svg

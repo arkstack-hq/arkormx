@@ -50,6 +50,12 @@ const sidebar2x: SidebarType = sidebar.slice().map(section => {
         return {
             ...section,
             items: [...section.items].concat(
+                {
+                    collapsed: true,
+                    text: 'Plugins', items: [
+                        { text: 'Clear Router', link: 'plugins/clear-router' }
+                    ]
+                },
                 { text: 'Upgrade Guide', link: '/guide/upgrade-guide' },
             )
         }
@@ -101,6 +107,7 @@ export default defineVersionedConfig({
             '1.3': sidebar
         },
         socialLinks: [
+            { icon: 'discord', link: 'https://discord.gg/jmQybxKQ7R' },
             { icon: 'github', link: 'https://github.com/arkstack-hq/arkormx' },
             { icon: 'npm', link: 'https://www.npmjs.com/package/arkormx' },
         ],
