@@ -1,6 +1,6 @@
 # Clear Router Plugin
 
-Arkormˣ provides first class support for [Clear Router](https://arkstack-hq.github.io/clear-router) through the Clear Router plugin which connects Arkormˣ models to Clear Router route model binding, allowing controller method parameters to be resolved automatically from route parameters.
+Arkormˣ provides first class support for [Clear Router](https://arkstack-hq.github.io/clear-router) through the [Clear Router plugin](https://www.npmjs.com/package/@arkormx/plugin-clear-router) which connects Arkormˣ models to Clear Router route model binding, allowing controller method parameters to be resolved automatically from route parameters.
 
 ## Installation
 
@@ -25,7 +25,6 @@ yarn add arkormx @arkormx/plugin-clear-router
 Register the plugin with Clear Router:
 
 ```ts
-import path from 'node:path';
 import { ClearRouter } from 'clear-router';
 import { clearRouterPlugin } from '@arkormx/plugin-clear-router';
 
