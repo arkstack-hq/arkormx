@@ -2,21 +2,14 @@ import 'clear-router/decorators/setup'
 
 import { getRouteBindingName, isModel, resolveRouteBinding } from './helpers'
 
-import { Container } from 'clear-router/decorators/setup'
+import { Container } from 'clear-router/decorators'
 import { Options } from './types'
 import { RouteBindingParamExtractor } from './RouteBindingParamExtractor'
 import { definePlugin } from 'clear-router/core'
 
 export const clearRouterPlugin = definePlugin<Options>({
     name: 'plugin-clear-router',
-    async setup ({ resolveArguments, configureDefaults }) {
-        configureDefaults({
-            container: {
-                enabled: true,
-                autoDiscover: true,
-            },
-        })
-
+    async setup ({ resolveArguments }) {
         resolveArguments(async ({
             request,
             tokens,
