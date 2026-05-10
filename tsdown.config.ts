@@ -13,10 +13,12 @@ export default defineConfig([
         platform: 'node',
         outDir: 'dist',
         format: ['esm', 'cjs'],
-        skipNodeModulesBundle: true,
-        external: [
-            '@h3ravel/*'
-        ]
+        deps: {
+            skipNodeModulesBundle: true,
+            neverBundle: [
+                '@h3ravel/*'
+            ]
+        },
     },
     {
         dts: false,
@@ -26,7 +28,9 @@ export default defineConfig([
         platform: 'node',
         outDir: 'dist',
         format: ['esm'],
-        skipNodeModulesBundle: true,
+        deps: {
+            skipNodeModulesBundle: true,
+        },
         outputOptions: {
             entryFileNames: 'cli.mjs',
         },

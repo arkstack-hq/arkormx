@@ -8,5 +8,7 @@ export default defineConfig({
     platform: 'node',
     outDir: 'dist',
     format: ['esm', 'cjs'],
-    skipNodeModulesBundle: true,
+    deps: {
+        skipNodeModulesBundle: true,
+    }
 })
