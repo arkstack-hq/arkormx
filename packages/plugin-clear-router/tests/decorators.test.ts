@@ -10,6 +10,7 @@ import { Request } from 'clear-router'
 import { Router } from 'clear-router/express'
 import { request } from 'parasito'
 
+// TODO: Review typescript configuration for full legacy decorators support so we can remove explicit binding.
 describe.skip('@Bind() — Controllers', () => {
     let app: express.Application
     let router: ExRouter
