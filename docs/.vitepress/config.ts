@@ -103,7 +103,7 @@ export default defineVersionedConfig({
         ],
         sidebar: {
             root: sidebar2x,
-            '1.3': sidebar
+            '1.x': sidebar
         },
         socialLinks: [
             { icon: 'discord', link: 'https://discord.gg/jmQybxKQ7R' },
