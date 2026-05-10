@@ -22,7 +22,7 @@ export class DB {
     private static adapter?: DatabaseAdapter
     private readonly scopedAdapter?: DatabaseAdapter
 
-    private constructor(adapter?: DatabaseAdapter) {
+    constructor(adapter?: DatabaseAdapter) {
         this.scopedAdapter = adapter
     }
 
