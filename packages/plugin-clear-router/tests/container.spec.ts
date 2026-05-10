@@ -21,12 +21,7 @@ describe('@resora/plugin-clear-router express', () => {
         ClearRouter.use(clearRouterPlugin, {
             modelsPath: path.join(process.cwd(), 'packages/plugin-clear-router/tests/models')
         })
-        ClearRouter.routes = []
-        ClearRouter.prefix = ''
-        ClearRouter.groupMiddlewares = []
-        ClearRouter.globalMiddlewares = []
-        ClearRouter.routesByPathMethod = {}
-        ClearRouter.routesByMethod = {}
+        ClearRouter.reset()
 
         app = express()
         router = ExpressRouter()
