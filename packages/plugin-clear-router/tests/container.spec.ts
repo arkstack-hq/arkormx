@@ -21,12 +21,7 @@ describe('@resora/plugin-clear-router express', () => {
         ClearRouter.use(clearRouterPlugin, {
             modelsPath: path.join(process.cwd(), 'packages/plugin-clear-router/tests/models')
         })
-        ClearRouter.routes = []
-        ClearRouter.prefix = ''
-        ClearRouter.groupMiddlewares = []
-        ClearRouter.globalMiddlewares = []
-        ClearRouter.routesByPathMethod = {}
-        ClearRouter.routesByMethod = {}
+        ClearRouter.reset()
 
         app = express()
         router = ExpressRouter()
@@ -48,7 +43,8 @@ describe('@resora/plugin-clear-router express', () => {
         vi.spyOn(User, 'query').mockReturnValue({ where } as any)
 
         class UserController extends Controller {
-            @Bind()
+            // TODO: Review typescript configuration for full legacy decorators support so we can remove explicit binding.
+            @Bind(Profile, Response, User)
             show (profile: Profile, req: Response, user: User) {
                 return {
                     data: {
@@ -99,7 +95,8 @@ describe('@resora/plugin-clear-router express', () => {
 
     it('uses model-level binding resolvers when present', async () => {
         class ProfileController extends Controller {
-            @Bind()
+            // TODO: Review typescript configuration for full legacy decorators support so we can remove explicit binding.
+            @Bind(Profile)
             show (profile: Profile) {
                 return {
                     data: {

@@ -11,6 +11,7 @@
     "resolveJsonModule": true,
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
+    "useDefineForClassFields": false,
     "declaration": true,
     "sourceMap": true,
     "outDir": "./dist",
@@ -30,7 +31,8 @@
     "arkormx.config.js",
     "arkormx.config.cjs",
     "vitest.config.ts",
-    "tsdown.config.ts"
+    "tsdown.config.ts",
+    "packages/plugin-clear-router/tests/decorators.test.ts"
   ],
   "exclude": ["node_modules", "dist"]
 }

@@ -1,6 +1,27 @@
 import { defineConfig } from 'vitest/config'
+import swc from 'vite-plugin-swc-transform'
 
 export default defineConfig({
+    plugins: [
+        swc({
+            swcOptions: {
+                jsc: {
+                    target: 'es2022',
+                    transform: {
+                        legacyDecorator: true,
+                        decoratorMetadata: true,
+                        useDefineForClassFields: false,
+                    },
+                    externalHelpers: true,
+                    parser: {
+                        decorators: true,
+                        syntax: 'typescript'
+
+                    }
+                },
+            },
+        }),
+    ],
     resolve: {
         alias: {
             'src': './src',
