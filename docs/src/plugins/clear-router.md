@@ -20,6 +20,21 @@ yarn add arkormx @arkormx/plugin-clear-router
 
 :::
 
+### Enable Legacy Metadata
+
+Clear Router's container binding feature depends heavily on legacy metadata for full support, update your project's `tsconfig.json` file and set `experimentalDecorators` and `emitDecoratorMetadata` to `true` to enable legacy metadata support.
+
+```json
+{
+  "compilerOptions": {
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true
+  }
+}
+```
+
+While this gives you complete access to how Clear Router's container binding feature is intended to be used, it is not required as [TypeScript 5.2+ Decorators](https://arkstack-hq.github.io/clear-router/guide/container-binding#typescript-5-2-decorators) are also supported.
+
 ## Usage
 
 Register the plugin with Clear Router:
