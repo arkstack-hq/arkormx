@@ -3,7 +3,7 @@ import { pathToFileURL } from 'node:url'
 import { resolve } from 'node:path'
 
 export class RuntimeModuleLoader {
-    static async load<T = unknown> (filePath: string): Promise<T> {
+    static async load<T = unknown> (filePath: string, useDefault = false): Promise<T> {
         const resolvedPath = resolve(filePath)
         const jiti = createJiti(pathToFileURL(resolvedPath).href, {
             interopDefault: false,
@@ -11,6 +11,9 @@ export class RuntimeModuleLoader {
             sourceMaps: true,
         })
 
-        return await jiti.import<T>(resolvedPath, { default: true })
+        return await jiti.import<T>(
+            resolvedPath,
+            useDefault ? { default: true } : {}
+        )
     }
 }           
