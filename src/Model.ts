@@ -738,6 +738,31 @@ export abstract class Model<
     }
 
     /**
+     * Update the model's state in the database using data from a plain object.
+     * If the model has no identifier (id), the process will be skipped and the 
+     * call will return false.
+     * 
+     * @param attributes 
+     * @returns 
+     */
+    public async update (attributes: Partial<TAttributes>): Promise<boolean>
+    public async update (attributes: Record<string, unknown>): Promise<boolean>
+    public async update (attributes: Record<string, unknown>): Promise<boolean> {
+        try {
+            const constructor = this.constructor as ModelStatic<this>
+            const primaryKey = constructor.getPrimaryKey()
+            const identifier = this.getAttribute(primaryKey)
+            if (!identifier) return false
+
+            await this.fill(attributes).save()
+
+            return true
+        } catch {
+            return false
+        }
+    }
+
+    /**
      * Get the value of an attribute, applying any get mutators or casts if defined.
      * 
      * @param key 
