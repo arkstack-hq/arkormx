@@ -130,4 +130,15 @@ describe('PostgreSQL model lifecycle', () => {
             'deleting', 'deleted',
         ])
     })
+
+    it('can update the model', async () => {
+        const fetched = await DbUser.query().find(1)
+        const name = fetched?.getAttribute('name')
+
+        const status = await fetched?.update({ name: 'Jane Joe' })
+
+        expect(status).toBe(true)
+        expect(name).toBe('Jane')
+        expect(fetched?.getAttribute('name')).toBe('Jane Joe')
+    })
 })
