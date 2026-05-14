@@ -1,12 +1,12 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
-import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
+import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, supportsDatabaseCreation, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
 import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
-import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -27,6 +27,7 @@ export class MigrateCommand extends Command<CliApp> {
         {--state-file= : Path to applied migration state file}
         {--schema= : Explicit prisma schema path}
         {--migration-name= : Name for prisma migrate dev}
+        {--create-database : Create the configured database without prompting}
     `
 
     protected description = 'Apply migration classes to schema.prisma and run Prisma workflow'
@@ -67,25 +68,31 @@ export class MigrateCommand extends Command<CliApp> {
             process.cwd(),
             this.option('state-file') ? String(this.option('state-file')) : undefined
         )
-        let appliedState = shouldTrackApplied
-            ? await readAppliedMigrationsStateFromStore(this.app.getConfig('adapter'), stateFilePath)
-            : undefined
         const adapter = this.app.getConfig('adapter')
         const useDatabaseMigrations = supportsDatabaseMigrationExecution(adapter)
         const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
 
+        const appliedState = shouldTrackApplied
+            ? await this.runWithDatabaseCreationRetry(adapter, () => readAppliedMigrationsStateFromStore(adapter, stateFilePath))
+            : { ok: true, value: undefined }
+
+        if (!appliedState.ok)
+            return
+
+        let appliedMigrationState = appliedState.value
+
         const skipped: [MigrationClass, string][] = []
         const changed: [MigrationClass, string][] = []
         const pending = classes.filter(([migrationClass, file]) => {
-            if (!appliedState)
+            if (!appliedMigrationState)
                 return true
 
             const identity = buildMigrationIdentity(file, migrationClass.name)
             const checksum = computeMigrationChecksum(file)
-            const alreadyApplied = isMigrationApplied(appliedState, identity, checksum)
+            const alreadyApplied = isMigrationApplied(appliedMigrationState, identity, checksum)
             if (alreadyApplied)
                 skipped.push([migrationClass, file])
-            else if (findAppliedMigration(appliedState, identity))
+            else if (findAppliedMigration(appliedMigrationState, identity))
                 changed.push([migrationClass, file])
 
             return !alreadyApplied
@@ -99,9 +106,9 @@ export class MigrateCommand extends Command<CliApp> {
         })
 
         if (pending.length === 0) {
-            if (appliedState) {
+            if (appliedMigrationState) {
                 try {
-                    await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
+                    await syncPersistedColumnMappingsFromState(process.cwd(), appliedMigrationState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
                 } catch (error) {
                     return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
                 }
@@ -122,19 +129,22 @@ export class MigrateCommand extends Command<CliApp> {
 
         for (const [MigrationClassItem] of pending) {
             if (useDatabaseMigrations) {
-                await applyMigrationToDatabase(adapter, MigrationClassItem)
+                const applied = await this.runWithDatabaseCreationRetry(adapter, () => applyMigrationToDatabase(adapter, MigrationClassItem))
+                if (!applied.ok)
+                    return
+
                 continue
             }
 
             await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
         }
 
-        if (appliedState) {
+        if (appliedMigrationState) {
             const runAppliedIds: string[] = []
 
             for (const [migrationClass, file] of pending) {
                 const identity = buildMigrationIdentity(file, migrationClass.name)
-                appliedState = markMigrationApplied(appliedState, {
+                appliedMigrationState = markMigrationApplied(appliedMigrationState, {
                     id: identity,
                     file,
                     className: migrationClass.name,
@@ -144,15 +154,18 @@ export class MigrateCommand extends Command<CliApp> {
                 runAppliedIds.push(identity)
             }
 
-            appliedState = markMigrationRun(appliedState, {
+            appliedMigrationState = markMigrationRun(appliedMigrationState, {
                 id: buildMigrationRunId(),
                 appliedAt: new Date().toISOString(),
                 migrationIds: runAppliedIds,
             })
 
-            await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+            const wroteState = await this.runWithDatabaseCreationRetry(adapter, () => writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedMigrationState!))
+            if (!wroteState.ok)
+                return
+
             try {
-                await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
+                await syncPersistedColumnMappingsFromState(process.cwd(), appliedMigrationState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
             } catch (error) {
                 return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
             }
@@ -247,5 +260,71 @@ export class MigrateCommand extends Command<CliApp> {
                     || typeof prototype?.up === 'function'
                     && typeof prototype?.down === 'function'
             })
+    }
+
+    private async runWithDatabaseCreationRetry<TResult> (
+        adapter: any,
+        callback: () => Promise<TResult>,
+    ): Promise<{ ok: true, value: TResult } | { ok: false }> {
+        if (!supportsDatabaseCreation(adapter))
+            return { ok: true, value: await callback() }
+
+        try {
+            return { ok: true, value: await callback() }
+        } catch (error) {
+            const database = this.getMissingDatabaseName(error)
+            if (!database)
+                throw error
+
+            if (!await this.shouldCreateDatabase(database)) {
+                this.error(`Error: Configured database [${database}] does not exist.`)
+
+                return { ok: false }
+            }
+
+            let created: Awaited<ReturnType<typeof adapter.createDatabaseFromError>>
+            try {
+                created = await adapter.createDatabaseFromError(error)
+            } catch (creationError) {
+                this.error(`Error: ${creationError instanceof Error ? creationError.message : String(creationError)}`)
+
+                return { ok: false }
+            }
+
+            if (!created) {
+                this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+
+                return { ok: false }
+            }
+
+            if (created.created)
+                this.success(`Created database: ${created.database ?? database}`)
+
+            return { ok: true, value: await callback() }
+        }
+    }
+
+    private getMissingDatabaseName (error: unknown): string | undefined {
+        const candidate = error as { code?: unknown, message?: unknown } | undefined
+        const message = typeof candidate?.message === 'string' ? candidate.message : ''
+        const matched = message.match(/database "([^"]+)" does not exist/i)
+
+        if (candidate?.code === '3D000' && matched?.[1])
+            return matched[1]
+
+        return undefined
+    }
+
+    private async shouldCreateDatabase (database?: string): Promise<boolean> {
+        if (this.option('create-database'))
+            return true
+
+        if (this.isNonInteractive())
+            return false
+
+        return await this.confirm(
+            `Configured database${database ? ` [${database}]` : ''} does not exist. Create it before running migrations?`,
+            true,
+        )
     }
 }

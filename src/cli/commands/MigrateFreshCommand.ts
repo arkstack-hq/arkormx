@@ -1,5 +1,5 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
-import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, stripPrismaSchemaModelsAndEnums, supportsDatabaseMigrationExecution, supportsDatabaseReset } from '../../helpers/migrations'
+import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, stripPrismaSchemaModelsAndEnums, supportsDatabaseCreation, supportsDatabaseMigrationExecution, supportsDatabaseReset } from '../../helpers/migrations'
 import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, createEmptyAppliedMigrationsState, markMigrationApplied, markMigrationRun, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
@@ -16,6 +16,7 @@ export class MigrateFreshCommand extends Command<CliApp> {
         {--skip-migrate : Skip prisma database sync}
         {--state-file= : Path to applied migration state file}
         {--schema= : Explicit prisma schema path}
+        {--create-database : Create the configured database without prompting}
     `
 
     protected description = 'Reset the database and rerun all migration classes'
@@ -61,7 +62,9 @@ export class MigrateFreshCommand extends Command<CliApp> {
                 )
             }
 
-            await adapter.resetDatabase()
+            const reset = await this.runWithDatabaseCreationRetry(adapter, () => adapter.resetDatabase())
+            if (!reset.ok)
+                return
         } else {
             if (!existsSync(schemaPath))
                 return void this.error(`Error: Prisma schema file not found: ${this.app.formatPathForLog(schemaPath)}`)
@@ -71,11 +74,16 @@ export class MigrateFreshCommand extends Command<CliApp> {
         }
 
         let appliedState = createEmptyAppliedMigrationsState()
-        await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+        const wroteEmptyState = await this.runWithDatabaseCreationRetry(adapter, () => writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState))
+        if (!wroteEmptyState.ok)
+            return
 
         for (const [MigrationClassItem] of migrations) {
             if (useDatabaseMigrations) {
-                await applyMigrationToDatabase(adapter, MigrationClassItem)
+                const applied = await this.runWithDatabaseCreationRetry(adapter, () => applyMigrationToDatabase(adapter, MigrationClassItem))
+                if (!applied.ok)
+                    return
+
                 continue
             }
 
@@ -98,7 +106,10 @@ export class MigrateFreshCommand extends Command<CliApp> {
             migrationIds: appliedState.migrations.map(migration => migration.id),
         })
 
-        await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
+        const wroteState = await this.runWithDatabaseCreationRetry(adapter, () => writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState))
+        if (!wroteState.ok)
+            return
+
         try {
             await syncPersistedColumnMappingsFromState(process.cwd(), appliedState, migrations, persistedFeatures)
         } catch (error) {
@@ -148,5 +159,71 @@ export class MigrateFreshCommand extends Command<CliApp> {
                     || typeof prototype?.up === 'function'
                     && typeof prototype?.down === 'function'
             })
+    }
+
+    private async runWithDatabaseCreationRetry<TResult> (
+        adapter: any,
+        callback: () => Promise<TResult>,
+    ): Promise<{ ok: true, value: TResult } | { ok: false }> {
+        if (!supportsDatabaseCreation(adapter))
+            return { ok: true, value: await callback() }
+
+        try {
+            return { ok: true, value: await callback() }
+        } catch (error) {
+            const database = this.getMissingDatabaseName(error)
+            if (!database)
+                throw error
+
+            if (!await this.shouldCreateDatabase(database)) {
+                this.error(`Error: Configured database [${database}] does not exist.`)
+
+                return { ok: false }
+            }
+
+            let created: Awaited<ReturnType<typeof adapter.createDatabaseFromError>>
+            try {
+                created = await adapter.createDatabaseFromError(error)
+            } catch (creationError) {
+                this.error(`Error: ${creationError instanceof Error ? creationError.message : String(creationError)}`)
+
+                return { ok: false }
+            }
+
+            if (!created) {
+                this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+
+                return { ok: false }
+            }
+
+            if (created.created)
+                this.success(`Created database: ${created.database ?? database}`)
+
+            return { ok: true, value: await callback() }
+        }
+    }
+
+    private getMissingDatabaseName (error: unknown): string | undefined {
+        const candidate = error as { code?: unknown, message?: unknown } | undefined
+        const message = typeof candidate?.message === 'string' ? candidate.message : ''
+        const matched = message.match(/database "([^"]+)" does not exist/i)
+
+        if (candidate?.code === '3D000' && matched?.[1])
+            return matched[1]
+
+        return undefined
+    }
+
+    private async shouldCreateDatabase (database?: string): Promise<boolean> {
+        if (this.option('create-database'))
+            return true
+
+        if (this.isNonInteractive())
+            return false
+
+        return await this.confirm(
+            `Configured database${database ? ` [${database}]` : ''} does not exist. Create it before running migrations?`,
+            true,
+        )
     }
 }

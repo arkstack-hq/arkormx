@@ -29,9 +29,11 @@ const attachCommandIo = (
         argument: (name: string) => unknown
         success: (line: string) => void
         error: (line: string) => void
+        confirm?: (line: string, defaultValue?: boolean) => Promise<boolean>
     },
     options: Record<string, unknown> = {},
-    argumentsMap: Record<string, unknown> = {}
+    argumentsMap: Record<string, unknown> = {},
+    confirmResponse = true,
 ) => {
     const successLines: string[] = []
     const errorLines: string[] = []
@@ -45,6 +47,7 @@ const attachCommandIo = (
     command.error = (line: string) => {
         errorLines.push(line)
     }
+    command.confirm = async () => confirmResponse
 
     return { successLines, errorLines }
 }
@@ -60,15 +63,27 @@ const createNoopAdapter = (): DatabaseAdapter => {
         runs: [],
     }
     const executed: SchemaOperation[][] = []
+    const assertDatabaseExists = (): void => {
+        if (!adapter.databaseExists) {
+            const error = new Error(`database "${adapter.databaseName}" does not exist`) as Error & { code: string }
+            error.code = '3D000'
+
+            throw error
+        }
+    }
 
     const adapter: DatabaseAdapter & {
         state: AppliedMigrationsState
         executed: SchemaOperation[][]
         resetCount: number
+        databaseExists: boolean
+        databaseName: string
     } = {
         state,
         executed,
         resetCount: 0,
+        databaseExists: true,
+        databaseName: 'arkorm_test',
         select: async <TModel = unknown> (_spec: SelectSpec<TModel>) => await notImplemented(),
         selectOne: async <TModel = unknown> (_spec: SelectSpec<TModel>) => await notImplemented(),
         insert: async <TModel = unknown> (_spec: InsertSpec<TModel>) => await notImplemented(),
@@ -78,21 +93,37 @@ const createNoopAdapter = (): DatabaseAdapter => {
         transaction: async <TResult = unknown> (
             callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
         ): Promise<TResult> => {
+            assertDatabaseExists()
+
             return await callback(adapter)
         },
         executeSchemaOperations: async (operations: SchemaOperation[]): Promise<void> => {
+            assertDatabaseExists()
             executed.push(operations)
         },
+        createDatabaseFromError: async (error: unknown): Promise<{ database?: string, created: boolean } | null> => {
+            const candidate = error as { code?: unknown, message?: unknown } | undefined
+            if (candidate?.code !== '3D000' || !String(candidate.message).includes(adapter.databaseName))
+                return null
+
+            adapter.databaseExists = true
+
+            return { database: adapter.databaseName, created: true }
+        },
         resetDatabase: async (): Promise<void> => {
+            assertDatabaseExists()
             adapter.resetCount += 1
             adapter.executed.splice(0, adapter.executed.length)
             adapter.state.migrations.splice(0, adapter.state.migrations.length)
             adapter.state.runs = []
         },
         readAppliedMigrationsState: async (): Promise<AppliedMigrationsState> => {
+            assertDatabaseExists()
+
             return JSON.parse(JSON.stringify(state)) as AppliedMigrationsState
         },
         writeAppliedMigrationsState: async (nextState: AppliedMigrationsState): Promise<void> => {
+            assertDatabaseExists()
             state.version = nextState.version
             state.migrations.splice(0, state.migrations.length, ...nextState.migrations)
             state.runs = [...(nextState.runs ?? [])]
@@ -202,6 +233,112 @@ describe('database-backed migration command fallback', () => {
         expect(existsSync(join(workspace, '.arkormx', 'column-mappings.json'))).toBe(false)
     })
 
+    it('offers to create the configured database before adapter-backed migrate runs', async () => {
+        const workspace = makeTempDir('arkormx-db-migrate-create-database-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '      table.string(\'email\')',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            databaseExists: boolean
+            executed: SchemaOperation[][]
+            state: AppliedMigrationsState
+        }
+        adapter.databaseExists = false
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateCommand(app, new Kernel(app));
+        (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, { all: true })
+
+        await command.handle()
+
+        expect(io.errorLines).toHaveLength(0)
+        expect(io.successLines.some(line => line.includes('Created database: arkorm_test'))).toBe(true)
+        expect(adapter.databaseExists).toBe(true)
+        expect(adapter.executed).toHaveLength(1)
+        expect(adapter.state.migrations).toHaveLength(1)
+    })
+
+    it('stops adapter-backed migrate when the user opts out of database creation', async () => {
+        const workspace = makeTempDir('arkormx-db-migrate-create-database-opt-out-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            databaseExists: boolean
+            executed: SchemaOperation[][]
+            state: AppliedMigrationsState
+        }
+        adapter.databaseExists = false
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateCommand(app, new Kernel(app));
+        (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any, { all: true }, {}, false)
+
+        await command.handle()
+
+        expect(io.errorLines.some(line => line.includes('Configured database [arkorm_test] does not exist'))).toBe(true)
+        expect(adapter.databaseExists).toBe(false)
+        expect(adapter.executed).toHaveLength(0)
+        expect(adapter.state.migrations).toHaveLength(0)
+    })
+
     it('resets adapter-backed databases before reapplying tracked migrations', async () => {
         const workspace = makeTempDir('arkormx-db-fresh-')
         process.chdir(workspace)
@@ -262,6 +399,61 @@ describe('database-backed migration command fallback', () => {
         expect(adapter.executed[0]?.[0]).toMatchObject({ type: 'createTable', table: 'users' })
         expect(adapter.state.migrations).toHaveLength(1)
         expect(adapter.state.migrations[0]?.id).toContain('CreateUsersMigration')
+    })
+
+    it('offers to create the configured database before adapter-backed fresh runs', async () => {
+        const workspace = makeTempDir('arkormx-db-fresh-create-database-')
+        process.chdir(workspace)
+
+        const migrationsDir = join(workspace, 'database', 'migrations')
+        mkdirSync(migrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(migrationsDir, 'CreateUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreateUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        const adapter = createNoopAdapter() as DatabaseAdapter & {
+            databaseExists: boolean
+            executed: SchemaOperation[][]
+            resetCount: number
+            state: AppliedMigrationsState
+        }
+        adapter.databaseExists = false
+
+        configureArkormRuntime(() => ({}), {
+            adapter,
+            paths: {
+                migrations: migrationsDir,
+            },
+        })
+
+        const app = new CliApp()
+        const command = new MigrateFreshCommand(app, new Kernel(app));
+        (command as unknown as { app: CliApp }).app = app
+        const io = attachCommandIo(command as unknown as any)
+
+        await command.handle()
+
+        expect(io.errorLines).toHaveLength(0)
+        expect(io.successLines.some(line => line.includes('Created database: arkorm_test'))).toBe(true)
+        expect(adapter.databaseExists).toBe(true)
+        expect(adapter.resetCount).toBe(1)
+        expect(adapter.executed).toHaveLength(1)
+        expect(adapter.state.migrations).toHaveLength(1)
     })
 
     it('reports an error when persisted column mappings are disabled for database-backed migrations', async () => {

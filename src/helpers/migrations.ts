@@ -965,6 +965,12 @@ export const supportsDatabaseMigrationExecution = (
     return typeof adapter?.executeSchemaOperations === 'function'
 }
 
+export const supportsDatabaseCreation = (
+    adapter?: DatabaseAdapter
+): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'createDatabaseFromError'>> => {
+    return typeof adapter?.createDatabaseFromError === 'function'
+}
+
 export const supportsDatabaseReset = (
     adapter?: DatabaseAdapter
 ): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'resetDatabase'>> => {

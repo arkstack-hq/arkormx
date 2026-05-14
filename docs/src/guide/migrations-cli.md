@@ -61,12 +61,14 @@ npx arkorm models:sync --schema ./prisma/schema.prisma --models ./src/models
 - `--skip-generate`: skip `prisma generate`.
 - `--skip-migrate`: skip `prisma migrate dev/deploy`.
 - `--deploy`: use `prisma migrate deploy` instead of `prisma migrate dev`.
+- `--create-database`: for adapters that support database creation, create the configured database when missing instead of prompting.
 
 ```sh
 npx arkorm migrate --all
 npx arkorm migrate CreateUsersMigration
 npx arkorm migrate --all --skip-generate --skip-migrate
 npx arkorm migrate --all --deploy
+npx arkorm migrate --all --create-database
 ```
 
 ## Rollback migrations

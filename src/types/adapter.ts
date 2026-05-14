@@ -266,6 +266,11 @@ export interface AdapterModelIntrospectionOptions {
     tables?: string[]
 }
 
+export interface AdapterDatabaseCreationResult {
+    database?: string
+    created: boolean
+}
+
 export interface DatabaseAdapter {
     readonly capabilities?: AdapterCapabilities
     select: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<DatabaseRows>
@@ -287,6 +292,7 @@ export interface DatabaseAdapter {
     introspectModels?: (options?: AdapterModelIntrospectionOptions) => Promise<AdapterModelStructure[]>
     executeSchemaOperations?: (operations: SchemaOperation[]) => Promise<void>
     resetDatabase?: () => Promise<void>
+    createDatabaseFromError?: (error: unknown) => Promise<AdapterDatabaseCreationResult | null>
     readAppliedMigrationsState?: () => Promise<AppliedMigrationsState>
     writeAppliedMigrationsState?: (state: AppliedMigrationsState) => Promise<void>
     transaction: <TResult = unknown>(

@@ -47,6 +47,7 @@ import type {
 import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaOperation } from '../types/migrations'
 
 import { ArkormException } from '../Exceptions/ArkormException'
+import { Pool } from 'pg'
 import { QueryBuilder } from '../QueryBuilder'
 import { QueryExecutionException } from '../Exceptions/QueryExecutionException'
 import { SetBasedEagerLoader } from '../relationship/SetBasedEagerLoader'
@@ -93,6 +94,36 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         private readonly db: KyselyExecutor,
         private readonly mapping: KyselyTableMapping = {},
     ) { }
+
+    private resolveConfiguredDatabaseName (connectionString: string): string {
+        const parsed = new URL(connectionString)
+        const database = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))
+
+        if (database.length === 0)
+            throw new ArkormException('Unable to resolve the configured database name from the Kysely connection string.')
+
+        return database
+    }
+
+    private createMaintenanceConnectionString (connectionString: string): string {
+        const parsed = new URL(connectionString)
+        parsed.pathname = '/postgres'
+        parsed.searchParams.delete('schema')
+        parsed.searchParams.delete('options')
+
+        return parsed.toString()
+    }
+
+    private getMissingDatabaseNameFromError (error: unknown): string | null {
+        const candidate = error as { code?: unknown, message?: unknown } | undefined
+        const message = typeof candidate?.message === 'string' ? candidate.message : ''
+        const matched = message.match(/database "([^"]+)" does not exist/i)
+
+        if (candidate?.code === '3D000' && matched?.[1])
+            return matched[1]
+
+        return null
+    }
 
     private quoteIdentifier (value: string): string {
         return `"${value.replace(/"/g, '""')}"`
@@ -1620,6 +1651,44 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
             await trxAdapter.resetDatabaseInternal(trxAdapter.db)
         })
+    }
+
+    public async createDatabaseFromError (error: unknown): Promise<{ database?: string, created: boolean } | null> {
+        const database = this.getMissingDatabaseNameFromError(error)
+        if (!database)
+            return null
+
+        const connectionString = process.env.DATABASE_URL
+        if (!connectionString)
+            throw new ArkormException('Unable to create the missing database because DATABASE_URL is not available.')
+
+        const configuredDatabase = this.resolveConfiguredDatabaseName(connectionString)
+        if (configuredDatabase !== database) {
+            throw new ArkormException(
+                `Unable to create database [${database}] because it does not match the database configured by DATABASE_URL.`
+            )
+        }
+
+        const pool = new Pool({
+            connectionString: this.createMaintenanceConnectionString(connectionString),
+        })
+
+        try {
+            const existsResult = await pool.query<{ exists: boolean }>(
+                'select exists(select 1 from pg_database where datname = $1) as exists',
+                [database],
+            )
+            const exists = existsResult.rows[0]?.exists === true
+
+            if (exists)
+                return { database, created: false }
+
+            await pool.query(`create database ${this.quoteIdentifier(database)}`)
+
+            return { database, created: true }
+        } finally {
+            await pool.end()
+        }
     }
 
     public async readAppliedMigrationsState (): Promise<AppliedMigrationsState> {
