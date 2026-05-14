@@ -46,6 +46,11 @@ jobs:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
       - name: Checkout publish branch
         if: github.event_name == 'release' || github.ref_type == 'tag'
         shell: bash
@@ -59,6 +64,25 @@ jobs:
           git fetch origin "$TARGET_BRANCH"
           git checkout "$TARGET_BRANCH"
 
+      - name: Resolve release version
+        id: release_version
+        shell: bash
+        run: |
+          VERSION="${{ github.event.inputs.version || github.event.release.tag_name || github.ref_name }}"
+          VERSION="${VERSION#v}"
+
+          if [[ -z "$VERSION" ]]; then
+            echo "Unable to resolve a release version. Provide workflow_dispatch input 'version' or run from a release/tag." >&2
+            exit 1
+          fi
+
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid semver version: $VERSION" >&2
+            exit 1
+          fi
+
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Install pnpm
         uses: pnpm/action-setup@v2
 
@@ -68,11 +92,6 @@ jobs:
           node-version: 20.x
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
-
-      - name: Configure Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
 
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
@@ -95,35 +114,24 @@ jobs:
       - name: Run PostgreSQL integration tests
         run: pnpm test:postgres
 
-      - name: Resolve release version
-        id: release_version
-        shell: bash
-        run: |
-          VERSION="${{ github.event.inputs.version || github.event.release.tag_name || github.ref_name }}"
-          VERSION="${VERSION#v}"
-
-          if [[ -z "$VERSION" ]]; then
-            echo "Unable to resolve a release version. Provide workflow_dispatch input 'version' or run from a release/tag." >&2
-            exit 1
-          fi
-
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?(\+[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid semver version: $VERSION" >&2
-            exit 1
-          fi
-
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
       - name: Set version from input
         if: steps.release_version.outputs.version != ''
         run: |
-          echo "Setting version to ${{ steps.release_version.outputs.version }}"
-          pnpm version "${{ steps.release_version.outputs.version }}" --no-git-tag-version
+          CURRENT_VERSION=$(node -p "require('./package.json').version")
+          TARGET_VERSION="${{ steps.release_version.outputs.version }}"
+
+          if [ "$CURRENT_VERSION" != "$TARGET_VERSION" ]; then
+            echo "Bumping version from $CURRENT_VERSION to $TARGET_VERSION"
+            pnpm version "$TARGET_VERSION" --no-git-tag-version
+            git add package.json
+            git commit -m "chore: set version to $TARGET_VERSION [skip ci]"
+            git push origin HEAD:main
+          else
+            echo "Version is already $CURRENT_VERSION, skipping bump"
+          fi
+
           echo "version_bumped=true" >> $GITHUB_OUTPUT
-          echo "new_version=${{ steps.release_version.outputs.version }}" >> $GITHUB_OUTPUT
-          git add package.json
-          git commit -m "chore: set version to ${{ steps.release_version.outputs.version }} [skip ci]"
-          git push origin HEAD:main
+          echo "new_version=$TARGET_VERSION" >> $GITHUB_OUTPUT
 
       - name: Publish to NPM
         run: pnpm release
