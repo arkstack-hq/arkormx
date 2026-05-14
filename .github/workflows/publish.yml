@@ -140,12 +140,8 @@ jobs:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
 
       - name: Publish summary
-        run: |
-          echo "Published version ${{ steps.release_version.outputs.version }} to npm" >> $GITHUB_STEP_SUMMARY
-          echo "Publish reason: ${{ steps.release_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
-
-      - name: Create release notes
         if: steps.release_version.outputs.version
         run: |
           echo "Published version ${{ steps.release_version.outputs.version }} to npm" >> $GITHUB_STEP_SUMMARY
+          echo "Publish reason: ${{ steps.release_version.outputs.version }}" >> $GITHUB_STEP_SUMMARY
           echo "Auto-bumped from published version" >> $GITHUB_STEP_SUMMARY
