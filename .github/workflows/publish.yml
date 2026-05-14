@@ -135,6 +135,9 @@ jobs:
           git commit -m "chore: set version to ${{ github.event.inputs.version }} [skip ci]"
           git push origin HEAD:main
 
+      - name: Build project
+        run: pnpm build
+
       - name: Run linter
         run: pnpm lint
 
@@ -149,9 +152,6 @@ jobs:
 
       - name: Run PostgreSQL integration tests
         run: pnpm test:postgres
-
-      - name: Build project
-        run: pnpm build
 
       - name: Detect publish metadata
         id: publish_gate
