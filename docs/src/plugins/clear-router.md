@@ -1,6 +1,6 @@
 # Clear Router Plugin
 
-Arkormˣ provides first class support for [Clear Router](https://arkstack-hq.github.io/clear-router) through the [Clear Router plugin](https://www.npmjs.com/package/@arkormx/plugin-clear-router) which connects Arkormˣ models to Clear Router route model binding, allowing controller method parameters to be resolved automatically from route parameters.
+Arkormˣ provides first class support for [Clear Router](https://arkstack-tmp.github.io/clear-router) through the [Clear Router plugin](https://www.npmjs.com/package/@arkormx/plugin-clear-router) which connects Arkormˣ models to Clear Router route model binding, allowing controller method parameters to be resolved automatically from route parameters.
 
 ## Installation
 
@@ -33,7 +33,7 @@ Clear Router's container binding feature depends heavily on legacy metadata for 
 }
 ```
 
-While this gives you complete access to how Clear Router's container binding feature is intended to be used, it is not required as [TypeScript 5.2+ Decorators](https://arkstack-hq.github.io/clear-router/guide/container-binding#typescript-5-2-decorators) are also supported.
+While this gives you complete access to how Clear Router's container binding feature is intended to be used, it is not required as [TypeScript 5.2+ Decorators](https://arkstack-tmp.github.io/clear-router/guide/container-binding#typescript-5-2-decorators) are also supported.
 
 ## Usage
 
