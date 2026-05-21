@@ -128,6 +128,17 @@ registerPaths({
 });
 ```
 
+The same focused path helpers are also available on the `Arkorm` class:
+
+```ts
+import { Arkorm } from 'arkormx';
+
+Arkorm.loadMigrationsFrom('./packages/audit/database/migrations');
+Arkorm.loadSeedersFrom('./packages/audit/database/seeders');
+Arkorm.loadModelsFrom('./packages/audit/src/models');
+Arkorm.loadFactoriesFrom('./packages/audit/database/factories');
+```
+
 These helpers augment runtime discovery only. They do not mutate
 `defineConfig({ paths: ... })`, and generated files still use the configured
 primary paths.
@@ -154,6 +165,20 @@ registerMigrations(CreateAuditTablesMigration);
 registerSeeders(AuditSeeder);
 registerModels(AuditLog);
 registerFactories(AuditLogFactory);
+```
+
+Or use the `Arkorm` class when you are already bootstrapping extensions through
+an Arkorm instance:
+
+```ts
+import { Arkorm } from 'arkormx';
+
+const arkorm = new Arkorm();
+
+arkorm.registerMigrations(CreateAuditTablesMigration);
+arkorm.registerSeeders(AuditSeeder);
+arkorm.registerModels(AuditLog);
+arkorm.registerFactories(AuditLogFactory);
 ```
 
 The migration and seeder CLI commands include explicitly registered classes

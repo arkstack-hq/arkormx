@@ -75,6 +75,16 @@ registerPaths({
 });
 ```
 
+The focused discovery helpers are also exposed on the `Arkorm` class:
+
+```ts
+import { Arkorm } from 'arkormx';
+
+Arkorm.loadSeedersFrom('./packages/audit/database/seeders');
+Arkorm.loadFactoriesFrom('./packages/audit/database/factories');
+Arkorm.loadModelsFrom('./packages/audit/src/models');
+```
+
 The `seed` command includes seeders from the configured seeder directory plus
 any directories registered with `loadSeedersFrom(...)`.
 
@@ -84,11 +94,7 @@ If a package exposes concrete classes instead of files to scan, register them
 directly:
 
 ```ts
-import {
-  registerFactories,
-  registerModels,
-  registerSeeders,
-} from 'arkormx';
+import { registerFactories, registerModels, registerSeeders } from 'arkormx';
 import { AuditLogFactory } from './database/factories/AuditLogFactory';
 import { AuditSeeder } from './database/seeders/AuditSeeder';
 import { AuditLog } from './src/models/AuditLog';
@@ -96,6 +102,18 @@ import { AuditLog } from './src/models/AuditLog';
 registerSeeders(AuditSeeder);
 registerModels(AuditLog);
 registerFactories(AuditLogFactory);
+```
+
+The equivalent `Arkorm` class API is:
+
+```ts
+import { Arkorm } from 'arkormx';
+
+const arkorm = new Arkorm();
+
+arkorm.registerSeeders(AuditSeeder);
+arkorm.registerModels(AuditLog);
+arkorm.registerFactories(AuditLogFactory);
 ```
 
 Explicit seeders can be run by name:

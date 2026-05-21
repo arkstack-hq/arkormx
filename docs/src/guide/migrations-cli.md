@@ -84,6 +84,17 @@ loadMigrationsFrom('./packages/audit/database/migrations');
 registerMigrations(CreateAuditTablesMigration);
 ```
 
+If you are using the `Arkorm` class as an extension surface, the same migration
+registration methods are available there:
+
+```ts
+import { Arkorm } from 'arkormx';
+import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration';
+
+Arkorm.loadMigrationsFrom('./packages/audit/database/migrations');
+Arkorm.registerMigrations(CreateAuditTablesMigration);
+```
+
 `migrate`, `migrate:fresh`, and `migrate:rollback` read the configured
 directory, any paths registered with `loadMigrationsFrom(...)`, and any classes
 registered with `registerMigrations(...)`.
