@@ -102,14 +102,14 @@ jobs:
       - name: Run linter
         run: pnpm lint
 
-      - name: Run tests
-        run: pnpm test:all
-
       - name: Generate Prisma client
         run: pnpm prisma:generate
 
       - name: Apply test migrations
         run: pnpm db:migrate:test
+
+      - name: Run tests
+        run: pnpm test:all
 
       - name: Run PostgreSQL integration tests
         run: pnpm test:postgres
