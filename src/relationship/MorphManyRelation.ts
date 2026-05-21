@@ -32,6 +32,13 @@ export class MorphManyRelation<TParent, TRelated> extends Relation<TRelated> {
         return this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
     }
 
+    protected override getCreationAttributes (): Record<string, unknown> {
+        return {
+            [`${this.morphName}Id`]: this.parent.getAttribute(this.localKey),
+            [`${this.morphName}Type`]: (this.parent as { constructor: { name: string } }).constructor.name,
+        }
+    }
+
     public getMetadata (): MorphManyRelationMetadata {
         return {
             type: 'morphMany',

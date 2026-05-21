@@ -31,6 +31,12 @@ export class HasManyRelation<TParent, TRelated> extends Relation<TRelated> {
         return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
     }
 
+    protected override getCreationAttributes (): Record<string, unknown> {
+        return {
+            [this.foreignKey]: this.parent.getAttribute(this.localKey),
+        }
+    }
+
     public getMetadata (): HasManyRelationMetadata {
         return {
             type: 'hasMany',

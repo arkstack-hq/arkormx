@@ -30,6 +30,12 @@ export class HasOneRelation<TParent, TRelated> extends SingleResultRelation<TPar
         return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
     }
 
+    protected override getCreationAttributes (): Record<string, unknown> {
+        return {
+            [this.foreignKey]: this.parent.getAttribute(this.localKey),
+        }
+    }
+
     public getMetadata (): HasOneRelationMetadata {
         return {
             type: 'hasOne',
