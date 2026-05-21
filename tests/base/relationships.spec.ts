@@ -214,6 +214,18 @@ describe('Model relationships', () => {
         expect(saved).toBeInstanceOf(Role)
         expect(saved.getAttribute('name')).toBe('auditor')
 
+        const batchCreated = await user.roles().createMany([
+            { id: 504, name: 'observer' },
+        ])
+        expect(batchCreated).toHaveLength(1)
+        expect(batchCreated[0]?.getAttribute('name')).toBe('observer')
+
+        const batchSaved = await user.roles().saveMany([
+            new Role({ id: 505, name: 'publisher' }),
+        ])
+        expect(batchSaved).toHaveLength(1)
+        expect(batchSaved[0]?.getAttribute('name')).toBe('publisher')
+
         const attached = await user.roles().attach(500, { approved: false, priority: 99 })
         expect(attached).toBe(1)
 
@@ -228,7 +240,80 @@ describe('Model relationships', () => {
         expect(attachedRole?.getAttribute('membership')).toMatchObject({ approved: false, priority: 99 })
 
         const allRoles = await user.roles().orderBy({ id: 'asc' }).getResults()
-        expect(allRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'editor', 'reviewer', 'auditor'])
+        expect(allRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'editor', 'reviewer', 'auditor', 'observer', 'publisher'])
+    })
+
+    it('supports query and persistence helpers on non-pivot relationships', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        const draft = user.posts().make({ id: 150, title: 'Draft' })
+        expect(draft).toBeInstanceOf(Post)
+        expect(draft.getAttribute('userId')).toBe(1)
+
+        const drafts = user.posts().makeMany([{ id: 151, title: 'One' }, { id: 152, title: 'Two' }])
+        expect(drafts.map(post => post.getAttribute('userId'))).toEqual([1, 1])
+
+        const created = await user.posts().create({ id: 153, title: 'Created' })
+        expect(created.getAttribute('userId')).toBe(1)
+
+        const createdMany = await user.posts().createMany([
+            { id: 154, title: 'Created many A' },
+            { id: 155, title: 'Created many B' },
+        ])
+        expect(createdMany.map(post => post.getAttribute('userId'))).toEqual([1, 1])
+
+        const saved = await user.posts().save(new Post({ id: 156, title: 'Saved' }))
+        expect(saved.getAttribute('userId')).toBe(1)
+
+        const quietlySaved = await user.posts().saveQuietly(new Post({ id: 157, title: 'Quiet' }))
+        expect(quietlySaved.getAttribute('userId')).toBe(1)
+
+        const savedMany = await user.posts().saveMany([
+            new Post({ id: 158, title: 'Saved many A' }),
+        ])
+        expect(savedMany[0]?.getAttribute('userId')).toBe(1)
+
+        const quietlySavedMany = await user.posts().saveManyQuietly([
+            new Post({ id: 159, title: 'Saved many quietly A' }),
+        ])
+        expect(quietlySavedMany[0]?.getAttribute('userId')).toBe(1)
+
+        expect(await user.posts().firstOrFail()).toBeInstanceOf(Post)
+        expect(await user.posts().firstOr(() => new Post({ id: 999, title: 'fallback' }))).toBeInstanceOf(Post)
+        expect(await user.posts().find(153)).toBeInstanceOf(Post)
+        expect((await user.posts().findMany([153, 154])).all()).toHaveLength(2)
+        expect(await user.posts().findOr(153, () => new Post({ id: 999 }))).toBeInstanceOf(Post)
+        await expect(user.posts().findOrFail(9999)).rejects.toThrow()
+        expect(await user.posts().firstWhere('title', 'Created')).toBeInstanceOf(Post)
+
+        const firstOrNew = await user.posts().firstOrNew({ title: 'Not persisted' }, { id: 160 })
+        expect(firstOrNew.getAttribute('userId')).toBe(1)
+        expect(firstOrNew.getAttribute('title')).toBe('Not persisted')
+
+        const existingFirstOrCreate = await user.posts().firstOrCreate({ title: 'Created' }, { id: 161 })
+        expect(existingFirstOrCreate.getAttribute('id')).toBe(153)
+
+        const missingFirstOrCreate = await user.posts().firstOrCreate({ title: 'First or create' }, { id: 162 })
+        expect(missingFirstOrCreate.getAttribute('userId')).toBe(1)
+
+        const updated = await user.posts().updateOrCreate({ id: 153 }, { title: 'Updated title' })
+        expect(updated.getAttribute('title')).toBe('Updated title')
+
+        const updateCreated = await user.posts().updateOrCreate({ id: 163 }, { title: 'Update created' })
+        expect(updateCreated.getAttribute('userId')).toBe(1)
+
+        const upserted = await user.posts().upsert([
+            { id: 164, title: 'Upserted' },
+        ], 'id')
+        expect(upserted).toBe(1)
+        expect((await user.posts().findOrFail(164)).getAttribute('userId')).toBe(1)
+
+        const page = await user.posts().orderBy({ id: 'asc' }).paginate(3, 1)
+        expect(page.data).toBeInstanceOf(ArkormCollection)
+        expect(page.data.all()).toHaveLength(3)
     })
 
     it('supports belongsToMany detach and sync helpers', async () => {
