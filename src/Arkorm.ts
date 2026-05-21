@@ -13,7 +13,7 @@ export class Arkorm {
      * @param options 
      * @returns 
      */
-    static configure (client?: ClientResolver, options?: Omit<ArkormConfig, 'prisma'>) {
+    static configure (options?: Omit<ArkormConfig, 'prisma'>, client?: ClientResolver) {
         return configureArkormRuntime(client, options)
     }
     configure = Arkorm.configure
