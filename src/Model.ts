@@ -1023,6 +1023,41 @@ export abstract class Model<
         return this
     }
 
+    /**
+     * Load relationship count aggregates onto the current model instance.
+     *
+     * @param relations
+     * @returns
+     */
+    public async loadCount (relations: string | string[]): Promise<this> {
+        const normalized = Array.isArray(relations) ? relations : [relations]
+        if (normalized.length === 0)
+            return this
+
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
+        if (identifier == null)
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot load counts for a model without an id.'
+                : `Cannot load counts for a model without a [${primaryKey}] value.`)
+
+        const counted = await constructor.query()
+            .where({ [primaryKey]: identifier })
+            .withCount(normalized)
+            .first()
+
+        if (!counted)
+            return this
+
+        normalized.forEach((relation) => {
+            const attribute = Model.buildRelationCountAttributeKey(relation)
+            this.setAttribute(attribute, counted.getAttribute(attribute) ?? 0)
+        })
+
+        return this
+    }
+
     public setLoadedRelation (name: string, value: unknown): this {
         this.attributes[name] = value
 
@@ -1558,6 +1593,17 @@ export abstract class Model<
         }
 
         return false
+    }
+
+    private static buildRelationCountAttributeKey (relation: string): string {
+        const base = relation.split('.').map((segment, index) => {
+            if (index === 0)
+                return segment
+
+            return str(segment).pascal()
+        }).join('')
+
+        return `${base}Count`
     }
 
     /**

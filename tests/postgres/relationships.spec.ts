@@ -299,6 +299,25 @@ describe('PostgreSQL model relationships', () => {
         expect(comments.all().length).toBe(1)
     })
 
+    it('supports loading relationship counts on an existing model instance', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        try {
+            const user = await DbUser.query().find(1)
+            expect(user).not.toBeNull()
+            if (!user)
+                throw new Error('Expected user to exist.')
+
+            await user.loadCount(['posts', 'roles', 'comments'])
+
+            expect(user.getAttribute('postsCount')).toBe(2)
+            expect(user.getAttribute('rolesCount')).toBe(2)
+            expect(user.getAttribute('commentsCount')).toBe(1)
+        } finally {
+            setPostgresModelAdapter(undefined)
+        }
+    })
+
     it('eager loads relations by string and list syntax', async () => {
         const user = await DbUser.query().with(['profile']).find(1)
         expect(user).not.toBeNull()

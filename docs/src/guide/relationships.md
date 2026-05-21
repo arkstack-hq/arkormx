@@ -393,6 +393,7 @@ await User.query()
 const user = await User.query().firstOrFail();
 
 await user.load(['posts.comments']);
+await user.loadCount(['posts', 'comments']);
 ```
 
 Use dotted relation paths when a child relationship should be eager loaded from
@@ -423,6 +424,11 @@ await User.query().withCount('posts').get();
 await User.query().withExists('posts').get();
 await User.query().withSum('posts', 'views').get();
 ```
+
+Use `loadCount(...)` when you already have a model instance and want to attach
+relationship counts without reloading the related records. Count attributes use
+the same names as `withCount(...)`, such as `postsCount` or
+`postsCommentsCount` for dotted relation paths.
 
 On SQL-backed adapters, keep relation filter callbacks predicate-focused. Query
 shapes such as nested eager loading, pagination, or other non-filter
