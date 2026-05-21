@@ -4,6 +4,8 @@ import { ArkormCollection } from '../Collection'
 import { LengthAwarePaginator, Paginator } from '../Paginator'
 import type { QueryBuilder } from '../QueryBuilder'
 import { Relation } from './Relation'
+import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from '../helpers/column-mappings'
+import { getUserConfig } from '../helpers/runtime-config'
 
 /**
  * Defines a many-to-many relationship.
@@ -258,10 +260,16 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
         }
     }
 
-    private buildPivotTarget (): { table: string, primaryKey: string } {
+    private buildPivotTarget (): { table: string, primaryKey: string, columns: Record<string, string> } {
+        const metadata = getPersistedTableMetadata(this.throughTable, {
+            features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+            strict: true,
+        })
+
         return {
             table: this.throughTable,
             primaryKey: this.relatedPivotKey,
+            columns: metadata.columns,
         }
     }
 

@@ -1,5 +1,6 @@
-import { ArkormCollection, QueryBuilder } from '../../src'
+import { ArkormCollection, QueryBuilder, createKyselyAdapter } from '../../src'
 import {
+    DbComment,
     DbImage,
     DbPost,
     DbProfile,
@@ -7,19 +8,41 @@ import {
     DbTag,
     DbUser,
     acquirePostgresTestLock,
+    prisma,
     releasePostgresTestLock,
-    seedPostgresFixtures
+    seedPostgresFixtures,
+    setPostgresModelAdapter,
 } from './helpers/fixtures'
+import { Kysely, PostgresDialect } from 'kysely'
 import { afterAll, beforeAll, describe, expect, expectTypeOf, it } from 'vitest'
+import { Pool } from 'pg'
 
 describe('PostgreSQL model relationships', () => {
+    const executedQueries: string[] = []
+    const pool = new Pool({
+        connectionString: process.env.DATABASE_URL,
+    })
+    const db = new Kysely<Record<string, never>>({
+        dialect: new PostgresDialect({ pool }),
+        log (event) {
+            if (event.level === 'query')
+                executedQueries.push(event.query.sql)
+        },
+    })
+    const kyselyAdapter = createKyselyAdapter(db, {
+        userProfile: 'profiles',
+        roleUsers: 'role_users',
+    })
+
     beforeAll(async () => {
         await acquirePostgresTestLock()
         await seedPostgresFixtures()
     })
 
     afterAll(async () => {
+        setPostgresModelAdapter(undefined)
         await releasePostgresTestLock()
+        await db.destroy()
     })
 
     it('supports HasOneRelation', async () => {
@@ -86,6 +109,96 @@ describe('PostgreSQL model relationships', () => {
 
         expect(comments).toBeInstanceOf(ArkormCollection)
         expect(comments?.all().length).toBe(1)
+    })
+
+    it('supports MorphManyRelation create helpers against real database records', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+        executedQueries.length = 0
+
+        try {
+            const user = await DbUser.query().find(1)
+            expect(user).not.toBeNull()
+            if (!user)
+                throw new Error('Expected user to exist.')
+
+            const created = await user.comments().create({ body: 'Morph created' })
+            const [manyCreated] = await user.comments().createMany([
+                { body: 'Morph created many' },
+            ])
+            const firstOrCreated = await user.comments().firstOrCreate({
+                body: 'Morph first or create',
+            })
+            const updatedOrCreated = await user.comments().updateOrCreate(
+                { body: 'Morph update or create' },
+                {},
+            )
+            const saved = await user.comments().save(new DbComment({
+                body: 'Morph saved',
+            }))
+
+            for (const comment of [created, manyCreated, firstOrCreated, updatedOrCreated, saved]) {
+                expect(comment?.getAttribute('commentableId')).toBe(user.getAttribute('id'))
+                expect(comment?.getAttribute('commentableType')).toBe('DbUser')
+            }
+
+            const persisted = await user.comments()
+                .whereIn('body', [
+                    'Morph created',
+                    'Morph created many',
+                    'Morph first or create',
+                    'Morph update or create',
+                    'Morph saved',
+                ])
+                .orderBy({ id: 'asc' })
+                .getResults()
+
+            expect(persisted.all().map(comment => ({
+                body: comment.getAttribute('body'),
+                commentableId: comment.getAttribute('commentableId'),
+                commentableType: comment.getAttribute('commentableType'),
+            }))).toEqual([
+                { body: 'Morph created', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph created many', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph first or create', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph update or create', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph saved', commentableId: 1, commentableType: 'DbUser' },
+            ])
+
+            const stored = await prisma.comment.findMany({
+                where: {
+                    body: {
+                        in: [
+                            'Morph created',
+                            'Morph created many',
+                            'Morph first or create',
+                            'Morph update or create',
+                            'Morph saved',
+                        ],
+                    },
+                },
+                orderBy: { id: 'asc' },
+            })
+
+            expect(stored.map(comment => ({
+                body: comment.body,
+                commentableId: comment.commentableId,
+                commentableType: comment.commentableType,
+            }))).toEqual([
+                { body: 'Morph created', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph created many', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph first or create', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph update or create', commentableId: 1, commentableType: 'DbUser' },
+                { body: 'Morph saved', commentableId: 1, commentableType: 'DbUser' },
+            ])
+
+            const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+            expect(normalizedSql).toContain('insert into "comments"')
+            expect(normalizedSql).toContain('"commentableId"')
+            expect(normalizedSql).toContain('"commentableType"')
+        } finally {
+            setPostgresModelAdapter(undefined)
+            await seedPostgresFixtures()
+        }
     })
 
     it('supports MorphToManyRelation', async () => {
