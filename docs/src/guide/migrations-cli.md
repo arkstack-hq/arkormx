@@ -71,6 +71,27 @@ npx arkorm migrate --all --deploy
 npx arkorm migrate --all --create-database
 ```
 
+### Package and plugin migrations
+
+Application config keeps one primary `paths.migrations` directory, but packages
+can add migration sources during boot:
+
+```ts
+import { loadMigrationsFrom, registerMigrations } from 'arkormx';
+import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration';
+
+loadMigrationsFrom('./packages/audit/database/migrations');
+registerMigrations(CreateAuditTablesMigration);
+```
+
+`migrate`, `migrate:fresh`, and `migrate:rollback` read the configured
+directory, any paths registered with `loadMigrationsFrom(...)`, and any classes
+registered with `registerMigrations(...)`.
+
+Registered migration classes are tracked with an identity like
+`registered:CreateAuditTablesMigration`. This lets bundled plugins provide
+migrations without relying on a physical migrations directory.
+
 ## Rollback migrations
 
 `migrate:rollback` applies `down` operations for tracked migration classes and updates migration history state.

@@ -102,6 +102,64 @@ export default defineConfig({
 | `paths.buildOutput`                   | Build output root used to map runtime files in production.                                                                                                      |
 | `outputExt`                           | Preferred generated extension (`'ts'` by default, falls back to `'js'` when TypeScript is unavailable).                                                         |
 
+## Additive runtime paths
+
+The `paths` config points Arkormˣ at your application's primary model, factory,
+seeder, and migration directories. Packages and plugins can add their own
+directories without replacing those configured paths:
+
+```ts
+import {
+  loadFactoriesFrom,
+  loadMigrationsFrom,
+  loadModelsFrom,
+  loadSeedersFrom,
+  registerPaths,
+} from 'arkormx';
+
+loadMigrationsFrom('./packages/audit/database/migrations');
+loadSeedersFrom('./packages/audit/database/seeders');
+loadModelsFrom('./packages/audit/src/models');
+loadFactoriesFrom('./packages/audit/database/factories');
+
+registerPaths({
+  migrations: ['./packages/billing/database/migrations'],
+  seeders: './packages/billing/database/seeders',
+});
+```
+
+These helpers augment runtime discovery only. They do not mutate
+`defineConfig({ paths: ... })`, and generated files still use the configured
+primary paths.
+
+## Explicit runtime registration
+
+You can also register concrete classes directly. This is useful for plugins,
+test harnesses, or bundled packages where the files may not live in a normal
+discovery directory:
+
+```ts
+import {
+  registerFactories,
+  registerMigrations,
+  registerModels,
+  registerSeeders,
+} from 'arkormx';
+import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration';
+import { AuditSeeder } from './database/seeders/AuditSeeder';
+import { AuditLog } from './src/models/AuditLog';
+import { AuditLogFactory } from './database/factories/AuditLogFactory';
+
+registerMigrations(CreateAuditTablesMigration);
+registerSeeders(AuditSeeder);
+registerModels(AuditLog);
+registerFactories(AuditLogFactory);
+```
+
+The migration and seeder CLI commands include explicitly registered classes
+alongside discovered files. Explicit registrations can run even when no
+migration or seeder directory exists.
+
 ## Runtime configuration
 
 For frameworks that bootstrap Prisma elsewhere, use runtime configuration:

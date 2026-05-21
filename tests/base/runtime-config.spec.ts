@@ -7,8 +7,24 @@ import {
     loadArkormConfig,
     resetArkormRuntimeForTests,
 } from '../../src/helpers/runtime-config'
+import {
+    getRegisteredFactories,
+    getRegisteredMigrations,
+    getRegisteredModels,
+    getRegisteredPaths,
+    getRegisteredSeeders,
+    loadFactoriesFrom,
+    loadMigrationsFrom,
+    loadModelsFrom,
+    loadSeedersFrom,
+    registerFactories,
+    registerMigrations,
+    registerModels,
+    registerPaths,
+    registerSeeders,
+} from '../../src/helpers/runtime-registry'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { Model } from '../../src'
+import { Migration, Model, Seeder } from '../../src'
 import type { DatabaseAdapter } from '../../src'
 import { DB } from '../../src'
 import { RuntimeModuleLoader } from '../../src/helpers/runtime-module-loader'
@@ -157,6 +173,56 @@ describe('runtime config defaults', () => {
         expect(paths.stubs).toBe(defaults.stubs)
         expect(paths.seeders).toBe(defaults.seeders)
         expect(paths.migrations).toBe(defaults.migrations)
+    })
+
+    it('registers additive runtime discovery paths without overwriting configured paths', () => {
+        const defaults = getUserConfig('paths') ?? {}
+
+        registerPaths({
+            migrations: ['database/plugin-migrations', 'database/plugin-migrations'],
+            seeders: 'database/plugin-seeders',
+        })
+        loadModelsFrom('src/plugin-models')
+        loadFactoriesFrom(['database/plugin-factories'])
+        loadMigrationsFrom('database/more-migrations')
+        loadSeedersFrom('database/more-seeders')
+
+        expect(getUserConfig('paths')).toEqual(defaults)
+        expect(getRegisteredPaths('migrations')).toEqual([
+            'database/plugin-migrations',
+            'database/more-migrations',
+        ])
+        expect(getRegisteredPaths('seeders')).toEqual([
+            'database/plugin-seeders',
+            'database/more-seeders',
+        ])
+        expect(getRegisteredPaths('models')).toEqual(['src/plugin-models'])
+        expect(getRegisteredPaths('factories')).toEqual(['database/plugin-factories'])
+    })
+
+    it('registers explicit runtime migration, seeder, model, and factory classes', () => {
+        class RuntimeMigration extends Migration {
+            public up (): void { }
+            public down (): void { }
+        }
+
+        class RuntimeSeeder extends Seeder {
+            public run (): void { }
+        }
+
+        class RuntimeModel { }
+        class RuntimeFactory { }
+        class AlternateFactory { }
+
+        registerMigrations(RuntimeMigration)
+        registerSeeders([RuntimeSeeder])
+        registerModels(RuntimeModel)
+        registerFactories([RuntimeFactory, AlternateFactory])
+
+        expect(getRegisteredMigrations()).toEqual([RuntimeMigration])
+        expect(getRegisteredSeeders()).toEqual([RuntimeSeeder])
+        expect(getRegisteredModels()).toEqual([RuntimeModel])
+        expect(getRegisteredFactories()).toEqual([RuntimeFactory, AlternateFactory])
     })
 
     it('keeps default stubs path when loaded user config only overrides other path keys', async () => {
