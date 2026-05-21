@@ -41,6 +41,9 @@ export const buildMigrationIdentity = (
 export const computeMigrationChecksum = (
     filePath: string
 ): string => {
+    if (!existsSync(filePath))
+        return createHash('sha256').update(filePath).digest('hex')
+
     const source = readFileSync(filePath, 'utf-8')
 
     return createHash('sha256').update(source).digest('hex')

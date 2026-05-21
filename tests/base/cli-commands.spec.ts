@@ -4,6 +4,10 @@ import {
     CliApp,
     configureArkormRuntime,
     createPrismaDatabaseAdapter,
+    loadMigrationsFrom,
+    Migration,
+    registerMigrations,
+    registerSeeders,
     resetArkormRuntimeForTests,
 } from '../../src'
 import { afterEach, describe, expect, it, vi } from 'vitest'
@@ -984,6 +988,133 @@ describe('CLI command classes', () => {
         const stateAfterFresh = readAppliedMigrationsState(join(workspace, '.arkormx', 'migrations.applied.json'))
         expect(stateAfterFresh.migrations).toHaveLength(1)
         expect(stateAfterFresh.runs).toHaveLength(1)
+    })
+
+    it('MigrateCommand loads migrations from registered extra paths', async () => {
+        const workspace = makeTempDir('arkormx-cmd-registered-migration-path-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const configuredMigrationsDir = join(workspace, 'database', 'migrations')
+        const packageMigrationsDir = join(workspace, 'packages', 'plugin', 'migrations')
+        mkdirSync(configuredMigrationsDir, { recursive: true })
+        mkdirSync(packageMigrationsDir, { recursive: true })
+
+        const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+        writeFileSync(join(packageMigrationsDir, 'CreatePluginUsersMigration.ts'), [
+            `import { Migration } from '${migrationBaseImport}'`,
+            '',
+            'export class CreatePluginUsersMigration extends Migration {',
+            '  async up (schema) {',
+            '    schema.createTable(\'plugin_users\', (table) => {',
+            '      table.id()',
+            '    })',
+            '  }',
+            '',
+            '  async down (schema) {',
+            '    schema.dropTable(\'plugin_users\')',
+            '  }',
+            '}',
+            '',
+        ].join('\n'))
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: configuredMigrationsDir,
+            },
+        })
+        loadMigrationsFrom(packageMigrationsDir)
+
+        const app = new CliApp()
+        const migrateCommand = new MigrateCommand(app, new Kernel(app))
+            ; (migrateCommand as unknown as { app: CliApp }).app = app
+        const migrateIo = attachCommandIo(migrateCommand as unknown as any, {
+            all: true,
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await migrateCommand.handle()
+
+        expect(migrateIo.errorLines).toHaveLength(0)
+        expect(readFileSync(schemaPath, 'utf-8')).toContain('model PluginUser')
+    })
+
+    it('MigrateCommand runs explicitly registered migrations without a migrations directory', async () => {
+        const workspace = makeTempDir('arkormx-cmd-registered-migration-')
+        process.chdir(workspace)
+
+        const schemaPath = writeBaseSchema(workspace)
+        const missingMigrationsDir = join(workspace, 'database', 'missing-migrations')
+
+        class RegisteredUsersMigration extends Migration {
+            public async up (schema: any): Promise<void> {
+                schema.createTable('registered_users', (table: any) => {
+                    table.id()
+                })
+            }
+
+            public async down (schema: any): Promise<void> {
+                schema.dropTable('registered_users')
+            }
+        }
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                migrations: missingMigrationsDir,
+            },
+        })
+        registerMigrations(RegisteredUsersMigration)
+
+        const app = new CliApp()
+        const migrateCommand = new MigrateCommand(app, new Kernel(app))
+            ; (migrateCommand as unknown as { app: CliApp }).app = app
+        const migrateIo = attachCommandIo(migrateCommand as unknown as any, {
+            all: true,
+            'skip-generate': true,
+            'skip-migrate': true,
+            schema: schemaPath,
+        })
+
+        await migrateCommand.handle()
+
+        expect(migrateIo.errorLines).toHaveLength(0)
+        expect(readFileSync(schemaPath, 'utf-8')).toContain('model RegisteredUser')
+    })
+
+    it('SeedCommand runs explicitly registered seeders by name', async () => {
+        const workspace = makeTempDir('arkormx-cmd-registered-seeder-')
+        process.chdir(workspace)
+
+        const seedersDir = join(workspace, 'database', 'seeders')
+
+        class RegisteredSeeder {
+            public async run (): Promise<void> {
+                const state = globalThis as { __seedRuns?: number }
+                state.__seedRuns = (state.__seedRuns ?? 0) + 1
+            }
+        }
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                seeders: seedersDir,
+            },
+        })
+        registerSeeders(RegisteredSeeder as never)
+
+        const app = new CliApp()
+        const seedCommand = new SeedCommand(app, new Kernel(app))
+            ; (seedCommand as unknown as { app: CliApp }).app = app
+        const seedIo = attachCommandIo(seedCommand as unknown as any, {}, {
+            name: 'RegisteredSeeder',
+        })
+
+        await seedCommand.handle()
+
+        expect(seedIo.errorLines).toHaveLength(0)
+        expect((globalThis as { __seedRuns?: number }).__seedRuns).toBe(1)
+        expect(seedIo.successLines.some(line => line.includes('Seeded'))).toBe(true)
     })
 
     it('MigrateFreshCommand runs prisma generate and db push when skip flags are not set', async () => {

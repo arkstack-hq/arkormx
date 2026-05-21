@@ -24,6 +24,7 @@ import { existsSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import { resetPersistedColumnMappingsCache } from './column-mappings'
+import { resetRuntimeRegistryForTests } from './runtime-registry'
 
 const resolveDefaultStubsPath = (): string => {
     let current = path.dirname(fileURLToPath(import.meta.url))
@@ -288,6 +289,7 @@ export const resetArkormRuntimeForTests = (): void => {
     runtimePaginationCurrentPageResolver = undefined
     runtimeDebugHandler = undefined
     resetPersistedColumnMappingsCache()
+    resetRuntimeRegistryForTests()
 }
 
 /**

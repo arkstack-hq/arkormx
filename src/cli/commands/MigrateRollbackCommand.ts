@@ -9,6 +9,7 @@ import { Command } from '@h3ravel/musket'
 import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
+import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 
 /**
  * Rollback migration classes from the Prisma schema and run Prisma workflow.
@@ -37,9 +38,9 @@ export class MigrateRollbackCommand extends Command<CliApp> {
         const configuredMigrationsDir =
             this.app.getConfig('paths')?.migrations ??
             join(process.cwd(), 'database', 'migrations')
-        const migrationsDir = this.app.resolveRuntimeDirectoryPath(configuredMigrationsDir)
+        const migrationDirs = this.resolveMigrationDirectories(configuredMigrationsDir)
 
-        if (!existsSync(migrationsDir))
+        if (migrationDirs.length === 0 && getRegisteredMigrations().length === 0)
             return void this.error(`Error: Migrations directory not found: ${this.app.formatPathForLog(configuredMigrationsDir)}`)
 
         const schemaPath = this.option('schema')
@@ -75,7 +76,7 @@ export class MigrateRollbackCommand extends Command<CliApp> {
         if (targets.length === 0)
             return void this.error('Error: No tracked migrations available to rollback.')
 
-        const available = await this.loadAllMigrations(migrationsDir)
+        const available = await this.loadAllMigrations(migrationDirs)
         const rollbackClasses = targets
             .map((target) => {
                 return available.find(([migrationClass, file]) => {
@@ -134,17 +135,28 @@ export class MigrateRollbackCommand extends Command<CliApp> {
         rollbackClasses.forEach(([_, file]) => this.success(this.app.splitLogger('RolledBack', file)))
     }
 
-    private async loadAllMigrations (migrationsDir: string): Promise<[MigrationClass, string][]> {
-        const files = readdirSync(migrationsDir)
+    private resolveMigrationDirectories (configuredMigrationsDir: string): string[] {
+        const configured = this.app.resolveRuntimeDirectoryPath(configuredMigrationsDir)
+        const registered = getRegisteredPaths('migrations') as string[]
+
+        return [configured, ...registered.map(directory => this.app.resolveRuntimeDirectoryPath(directory))]
+            .filter((directory, index, all) => existsSync(directory) && all.indexOf(directory) === index)
+    }
+
+    private async loadAllMigrations (migrationsDirs: string[]): Promise<[MigrationClass, string][]> {
+        const files = migrationsDirs.flatMap(migrationsDir => readdirSync(migrationsDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
             .sort((left, right) => left.localeCompare(right))
-            .map(file => this.app.resolveRuntimeScriptPath(join(migrationsDir, file)))
+            .map(file => this.app.resolveRuntimeScriptPath(join(migrationsDir, file))))
 
         const classes = await Promise.all(files.map(
             async file => (await this.loadMigrationClassesFromFile(file)).map(cls => [cls, file] as [MigrationClass, string])
         ))
 
-        return classes.flat()
+        return [
+            ...classes.flat(),
+            ...getRegisteredMigrations().map(cls => [cls, `registered:${cls.name}`] as [MigrationClass, string]),
+        ]
     }
 
     private async loadMigrationClassesFromFile (

@@ -51,3 +51,55 @@ npx arkorm seed
 npx arkorm seed DatabaseSeeder
 npx arkorm seed --all
 ```
+
+## Package and plugin discovery
+
+Packages can add their own discovery paths without replacing the application's
+configured `paths.*` values:
+
+```ts
+import {
+  loadFactoriesFrom,
+  loadModelsFrom,
+  loadSeedersFrom,
+  registerPaths,
+} from 'arkormx';
+
+loadSeedersFrom('./packages/audit/database/seeders');
+loadFactoriesFrom('./packages/audit/database/factories');
+loadModelsFrom('./packages/audit/src/models');
+
+registerPaths({
+  seeders: './packages/billing/database/seeders',
+  factories: './packages/billing/database/factories',
+});
+```
+
+The `seed` command includes seeders from the configured seeder directory plus
+any directories registered with `loadSeedersFrom(...)`.
+
+## Explicit registration
+
+If a package exposes concrete classes instead of files to scan, register them
+directly:
+
+```ts
+import {
+  registerFactories,
+  registerModels,
+  registerSeeders,
+} from 'arkormx';
+import { AuditLogFactory } from './database/factories/AuditLogFactory';
+import { AuditSeeder } from './database/seeders/AuditSeeder';
+import { AuditLog } from './src/models/AuditLog';
+
+registerSeeders(AuditSeeder);
+registerModels(AuditLog);
+registerFactories(AuditLogFactory);
+```
+
+Explicit seeders can be run by name:
+
+```sh
+npx arkorm seed AuditSeeder
+```

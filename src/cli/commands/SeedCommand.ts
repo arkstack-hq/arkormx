@@ -4,6 +4,7 @@ import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 import { SEEDER_BRAND } from '../../database/Seeder'
+import { getRegisteredPaths, getRegisteredSeeders } from '../../helpers/runtime-registry'
 import { join } from 'node:path'
 
 type SeederInstanceLike = {
@@ -36,13 +37,13 @@ export class SeedCommand extends Command<CliApp> {
     async handle () {
         this.app.command = this
         const configuredSeedersDir = this.app.getConfig('paths')?.seeders ?? join(process.cwd(), 'database', 'seeders')
-        const seedersDir = this.app.resolveRuntimeDirectoryPath(configuredSeedersDir)
-        if (!existsSync(seedersDir))
+        const seederDirs = this.resolveSeederDirectories(configuredSeedersDir)
+        if (seederDirs.length === 0 && getRegisteredSeeders().length === 0)
             return void this.error(`ERROR: Seeders directory not found: ${this.app.formatPathForLog(configuredSeedersDir)}`)
 
         const classes = this.option('all')
-            ? await this.loadAllSeeders(seedersDir)
-            : await this.loadNamedSeeder(seedersDir, this.argument('name') ?? 'DatabaseSeeder')
+            ? await this.loadAllSeeders(seederDirs)
+            : await this.loadNamedSeeder(seederDirs, this.argument('name') ?? 'DatabaseSeeder')
 
         if (classes.length === 0)
             return void this.error('ERROR: No seeder classes found to run.')
@@ -60,14 +61,25 @@ export class SeedCommand extends Command<CliApp> {
      * @param seedersDir 
      * @returns 
      */
-    private async loadAllSeeders (seedersDir: string): Promise<SeederClass[]> {
-        const files = readdirSync(seedersDir)
+    private resolveSeederDirectories (configuredSeedersDir: string): string[] {
+        const configured = this.app.resolveRuntimeDirectoryPath(configuredSeedersDir)
+        const registered = getRegisteredPaths('seeders') as string[]
+
+        return [configured, ...registered.map(directory => this.app.resolveRuntimeDirectoryPath(directory))]
+            .filter((directory, index, all) => existsSync(directory) && all.indexOf(directory) === index)
+    }
+
+    private async loadAllSeeders (seedersDirs: string[]): Promise<SeederClass[]> {
+        const files = seedersDirs.flatMap(seedersDir => readdirSync(seedersDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
-            .map(file => this.app.resolveRuntimeScriptPath(join(seedersDir, file)))
+            .map(file => this.app.resolveRuntimeScriptPath(join(seedersDir, file))))
 
         const classes = await Promise.all(files.map(async file => await this.loadSeederClassesFromFile(file)))
 
-        return classes.flat()
+        return [
+            ...classes.flat(),
+            ...getRegisteredSeeders() as SeederClass[],
+        ]
     }
 
     /**
@@ -78,14 +90,18 @@ export class SeedCommand extends Command<CliApp> {
      * @returns 
      */
     private async loadNamedSeeder (
-        seedersDir: string,
+        seedersDirs: string[],
         name: string
     ): Promise<SeederClass[]> {
         const base = name.replace(/Seeder$/, '')
-        const candidates = [
+        const registered = getRegisteredSeeders().find(cls => cls.name === name || cls.name === `${base}Seeder`)
+        if (registered)
+            return [registered as SeederClass]
+
+        const candidates = seedersDirs.flatMap(seedersDir => [
             `${name}.ts`, `${name}.js`, `${name}.mjs`, `${name}.cjs`,
             `${base}Seeder.ts`, `${base}Seeder.js`, `${base}Seeder.mjs`, `${base}Seeder.cjs`,
-        ].map(file => join(seedersDir, file))
+        ].map(file => join(seedersDir, file)))
 
         const target = candidates.find(file => existsSync(file))
         if (!target)

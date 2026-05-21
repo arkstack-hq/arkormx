@@ -9,6 +9,7 @@ import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
+import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 
 /**
  * The MigrateCommand class implements the CLI command for applying migration 
@@ -46,9 +47,9 @@ export class MigrateCommand extends Command<CliApp> {
         const configuredMigrationsDir =
             this.app.getConfig('paths')?.migrations ??
             join(process.cwd(), 'database', 'migrations')
-        const migrationsDir = this.app.resolveRuntimeDirectoryPath(configuredMigrationsDir)
+        const migrationDirs = this.resolveMigrationDirectories(configuredMigrationsDir)
 
-        if (!existsSync(migrationsDir))
+        if (migrationDirs.length === 0 && getRegisteredMigrations().length === 0)
             return void this.error(`Error: Migrations directory not found: ${this.app.formatPathForLog(configuredMigrationsDir)}`)
 
         const schemaPath = this.option('schema')
@@ -56,8 +57,8 @@ export class MigrateCommand extends Command<CliApp> {
             : join(process.cwd(), 'prisma', 'schema.prisma')
 
         const classes = this.option('all') || !this.argument('name')
-            ? await this.loadAllMigrations(migrationsDir)
-            : (await this.loadNamedMigration(migrationsDir, this.argument('name')))
+            ? await this.loadAllMigrations(migrationDirs)
+            : (await this.loadNamedMigration(migrationDirs, this.argument('name')))
                 .filter(([cls]) => cls !== undefined) as [MigrationClass, string][]
 
         if (classes.length === 0)
@@ -108,7 +109,7 @@ export class MigrateCommand extends Command<CliApp> {
         if (pending.length === 0) {
             if (appliedMigrationState) {
                 try {
-                    await syncPersistedColumnMappingsFromState(process.cwd(), appliedMigrationState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
+                    await syncPersistedColumnMappingsFromState(process.cwd(), appliedMigrationState, await this.loadAllMigrations(migrationDirs), persistedFeatures)
                 } catch (error) {
                     return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
                 }
@@ -165,7 +166,7 @@ export class MigrateCommand extends Command<CliApp> {
                 return
 
             try {
-                await syncPersistedColumnMappingsFromState(process.cwd(), appliedMigrationState, await this.loadAllMigrations(migrationsDir), persistedFeatures)
+                await syncPersistedColumnMappingsFromState(process.cwd(), appliedMigrationState, await this.loadAllMigrations(migrationDirs), persistedFeatures)
             } catch (error) {
                 return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
             }
@@ -194,17 +195,28 @@ export class MigrateCommand extends Command<CliApp> {
      *
      * @param migrationsDir The directory to load migration classes from.
      */
-    private async loadAllMigrations (migrationsDir: string): Promise<[MigrationClass, string][]> {
-        const files = readdirSync(migrationsDir)
+    private resolveMigrationDirectories (configuredMigrationsDir: string): string[] {
+        const configured = this.app.resolveRuntimeDirectoryPath(configuredMigrationsDir)
+        const registered = getRegisteredPaths('migrations') as string[]
+
+        return [configured, ...registered.map(directory => this.app.resolveRuntimeDirectoryPath(directory))]
+            .filter((directory, index, all) => existsSync(directory) && all.indexOf(directory) === index)
+    }
+
+    private async loadAllMigrations (migrationsDirs: string[]): Promise<[MigrationClass, string][]> {
+        const files = migrationsDirs.flatMap(migrationsDir => readdirSync(migrationsDir)
             .filter(file => /\.(ts|js|mjs|cjs)$/i.test(file))
             .sort((left, right) => left.localeCompare(right))
-            .map(file => this.app.resolveRuntimeScriptPath(join(migrationsDir, file)))
+            .map(file => this.app.resolveRuntimeScriptPath(join(migrationsDir, file))))
 
         const classes = await Promise.all(files.map(
             async file => (await this.loadMigrationClassesFromFile(file)).map(cls => [cls, file] as [MigrationClass, string])
         ))
 
-        return classes.flat()
+        return [
+            ...classes.flat(),
+            ...getRegisteredMigrations().map(cls => [cls, `registered:${cls.name}`] as [MigrationClass, string]),
+        ]
     }
 
     /**
@@ -215,17 +227,21 @@ export class MigrateCommand extends Command<CliApp> {
      * @returns 
      */
     private async loadNamedMigration (
-        migrationsDir: string,
+        migrationsDirs: string[],
         name?: string
     ): Promise<[MigrationClass | undefined, string][]> {
         if (!name)
             return [[undefined, '']]
 
         const base = name.replace(/Migration$/, '')
-        const candidates = [
+        const registered = getRegisteredMigrations().find(cls => cls.name === name || cls.name === `${base}Migration`)
+        if (registered)
+            return [[registered, `registered:${registered.name}`]]
+
+        const candidates = migrationsDirs.flatMap(migrationsDir => [
             `${name}.ts`, `${name}.js`, `${name}.mjs`, `${name}.cjs`,
             `${base}Migration.ts`, `${base}Migration.js`, `${base}Migration.mjs`, `${base}Migration.cjs`,
-        ].map(file => join(migrationsDir, file))
+        ].map(file => join(migrationsDir, file)))
 
         const target = candidates.find(file => existsSync(file))
         if (!target)
