@@ -726,6 +726,19 @@ describe('Model relationships', () => {
         expect(posts.all().length).toBe(2)
     })
 
+    it('loads relationship counts onto an existing model instance', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        await user.loadCount(['posts', 'roles', 'comments'])
+
+        expect(user.getAttribute('postsCount')).toBe(2)
+        expect(user.getAttribute('rolesCount')).toBe(2)
+        expect(user.getAttribute('commentsCount')).toBe(1)
+    })
+
     it('supports nested eager loading through with() and load()', async () => {
         const user = await User.query()
             .with(['profile.image', 'posts.comments'])
