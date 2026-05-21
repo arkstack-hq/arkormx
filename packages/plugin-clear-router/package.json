@@ -1,6 +1,6 @@
 {
     "name": "@arkormx/plugin-clear-router",
-    "version": "0.1.15",
+    "version": "0.1.16",
     "description": "Clear Router plugin for resolving Arkormx models from route parameters.",
     "publishConfig": {
         "access": "public"
@@ -48,7 +48,7 @@
     },
     "dependencies": {
         "reflect-metadata": "^0.2.2",
-        "arkormx": "workspace:*"
+        "arkormx": "workspace:^"
     },
     "peerDependencies": {
         "clear-router": "^2.6.5"
