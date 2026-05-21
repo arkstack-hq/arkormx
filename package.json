@@ -1,6 +1,6 @@
 {
   "name": "arkormx",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",
@@ -65,7 +65,7 @@
     "build": "tsdown",
     "barrel": "barrelize",
     "release": "pnpm publish --access public --tag latest --no-git-checks",
-    "prepublishOnly": "pnpm barrel && pnpm build && pnpm test:coverage",
+    "prepublishOnly": "pnpm barrel && pnpm build && pnpm test:all",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
     "docs:preview": "vitepress preview docs"
