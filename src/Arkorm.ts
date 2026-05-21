@@ -1,10 +1,42 @@
+import type { ArkormConfig, ClientResolver, DatabaseAdapter, GetUserConfig, MigrationClass } from './types'
 import type { RegisteredFactory, RegisteredModel, RuntimePathInput, RuntimePathKey } from './helpers/runtime-registry'
+import { configureArkormRuntime, getRuntimeAdapter, getUserConfig } from './helpers'
 import { getRegisteredFactories, getRegisteredMigrations, getRegisteredModels, getRegisteredPaths, getRegisteredSeeders, loadFactoriesFrom, loadMigrationsFrom, loadModelsFrom, loadSeedersFrom, registerFactories, registerMigrations, registerModels, registerSeeders } from './helpers/runtime-registry'
 
-import type { MigrationClass } from './types'
 import type { SeederConstructor } from './database/Seeder'
 
 export class Arkorm {
+    /**
+     * Configure the ArkORM runtime with the provided runtime client resolver and adapter-first options.
+     * 
+     * @param client 
+     * @param options 
+     * @returns 
+     */
+    static configure (client?: ClientResolver, options?: Omit<ArkormConfig, 'prisma'>) {
+        return configureArkormRuntime(client, options)
+    }
+    configure = Arkorm.configure
+
+    /**
+     * Get the user-provided ArkORM configuration
+     * 
+     * @returns 
+     */
+    static getUserConfig: GetUserConfig = () => {
+        return getUserConfig()
+    }
+    getUserConfig = Arkorm.getUserConfig
+
+    /**
+     * Get the currently configured runtime adapter, if any.
+     * 
+     * @returns 
+     */
+    static getRuntimeAdapter = (): DatabaseAdapter | undefined => {
+        return getRuntimeAdapter()
+    }
+    getRuntimeAdapter = Arkorm.getRuntimeAdapter
 
     /**
      * Register migration constructors directly without relying on runtime discovery.

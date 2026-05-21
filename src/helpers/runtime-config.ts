@@ -460,6 +460,11 @@ export const getRuntimeClient = (): RuntimeClientLike | undefined => {
  */
 export const getRuntimePrismaClient = getRuntimeClient
 
+/**
+ * Get the currently configured runtime adapter, if any.
+ * 
+ * @returns 
+ */
 export const getRuntimeAdapter = (): DatabaseAdapter | undefined => {
     const activeTransactionAdapter = transactionAdapterStorage.getStore()
     if (activeTransactionAdapter)
