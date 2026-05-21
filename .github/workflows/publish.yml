@@ -103,7 +103,7 @@ jobs:
         run: pnpm lint
 
       - name: Run tests
-        run: pnpm test
+        run: pnpm test:all
 
       - name: Generate Prisma client
         run: pnpm prisma:generate
