@@ -106,7 +106,7 @@ importers:
   packages/plugin-clear-router:
     dependencies:
       arkormx:
-        specifier: workspace:*
+        specifier: workspace:^
         version: link:../..
       reflect-metadata:
         specifier: ^0.2.2
