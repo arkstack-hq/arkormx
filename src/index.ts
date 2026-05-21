@@ -2,6 +2,7 @@ export * from './adapters'
 export * from './types'
 
 // barrelize-start
+export * from './Arkorm'
 export * from './Attribute'
 export * from './casts'
 export * from './cli/CliApp'

@@ -1,10 +1,10 @@
 import type { MigrationClass } from '../types/migrations'
 import type { SeederConstructor } from '../database/Seeder'
 
-type RuntimePathKey = 'models' | 'seeders' | 'migrations' | 'factories'
-type RuntimePathInput = string | string[]
-type RuntimePathMap = Partial<Record<RuntimePathKey, RuntimePathInput>>
-type RuntimeConstructor = new (...args: any[]) => any
+export type RuntimePathKey = 'models' | 'seeders' | 'migrations' | 'factories'
+export type RuntimePathInput = string | string[]
+export type RuntimePathMap = Partial<Record<RuntimePathKey, RuntimePathInput>>
+export type RuntimeConstructor = new (...args: any[]) => any
 
 export type RegisteredModel = RuntimeConstructor
 export type RegisteredFactory = RuntimeConstructor | object
