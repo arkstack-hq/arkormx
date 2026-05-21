@@ -1090,7 +1090,7 @@ export abstract class Model<
                 ? value
                 : value ? [value] : []
 
-        await Promise.all(related.map(async (model) => {
+        await Promise.all(related.map(async (model: any) => {
             if (!(model instanceof Model))
                 return
 
