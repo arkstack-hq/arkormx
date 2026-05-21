@@ -595,6 +595,23 @@ describe('QueryBuilder', () => {
         expect(withAggregates.getAttribute('postsMaxId')).toBe(101)
     })
 
+    it('supports object and alias syntax for relationship aggregates', async () => {
+        const users = await User.query()
+            .withCount({
+                posts: true,
+                'comments as total_comments': true,
+            })
+            .withSum({
+                'posts as total_post_ids': query => query.where({ title: 'A' }),
+            }, 'id')
+            .orderBy({ id: 'asc' })
+            .get()
+
+        expect(users.all()[0]?.getAttribute('postsCount')).toBe(2)
+        expect(users.all()[0]?.getAttribute('total_comments')).toBe(1)
+        expect(users.all()[0]?.getAttribute('total_post_ids')).toBe(100)
+    })
+
     it('does not silently fall back for un-compilable relation filters on SQL-capable adapters', async () => {
         const adapter = createPrismaDatabaseAdapter(createCoreClient())
 

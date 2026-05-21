@@ -25,9 +25,14 @@ import type {
     QuerySchemaWhere,
     QuerySelectColumn,
     QueryTarget,
+    RelationAggregateConstraint,
+    RelationAggregateInput,
     RelationAggregateSpec,
+    RelationAggregateType,
     RelationFilterSpec,
     RelationLoadPlan,
+    RelationResult,
+    RelationResultCache,
     SelectSpec,
     SoftDeleteQueryMode,
     UpdateManySpec,
@@ -50,9 +55,6 @@ import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
 import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
 import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
 import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
-
-type RelationResult = unknown[] | unknown | null
-type RelationResultCache = WeakMap<object, Map<string, Map<unknown, Promise<RelationResult>>>>
 
 /**
  * The QueryBuilder class provides a fluent interface for building and 
@@ -82,9 +84,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         boolean: 'AND' | 'OR'
     }> = []
     private readonly relationAggregates: Array<{
-        type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max'
+        type: RelationAggregateType
         relation: string
         column?: string
+        alias?: string
+        callback?: RelationAggregateConstraint
     }> = []
 
     /**
@@ -574,7 +578,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param relations 
      * @returns 
      */
-    public with (relations: string | string[] | Record<string, EagerLoadConstraint | undefined>): this {
+    public with (relations: string | string[] | Record<string, true | EagerLoadConstraint | undefined>): this {
         const relationMap = this.normalizeWith(relations)
 
         Object.entries(relationMap).forEach(([name, constraint]) => {
@@ -699,6 +703,50 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Add a constrained polymorphic relationship has clause.
+     *
+     * The current relationship metadata does not expose morph-to targets yet, so
+     * this method delegates to whereHas while preserving the forward-compatible
+     * API shape.
+     *
+     * @param relation
+     * @param types
+     * @param callback
+     * @param operator
+     * @param count
+     * @returns
+     */
+    public whereHasMorph (
+        relation: string,
+        types: unknown | unknown[],
+        callback?: (query: QueryBuilder<any, any>) => unknown,
+        operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+        count = 1
+    ): this {
+        void types
+
+        return this.whereHas(relation, callback, operator, count)
+    }
+
+    /**
+     * Add a constrained polymorphic relationship does-not-have clause.
+     *
+     * @param relation
+     * @param types
+     * @param callback
+     * @returns
+     */
+    public whereDoesntHaveMorph (
+        relation: string,
+        types: unknown | unknown[],
+        callback?: (query: QueryBuilder<any, any>) => unknown
+    ): this {
+        void types
+
+        return this.whereDoesntHave(relation, callback)
+    }
+
+    /**
      * Add an OR constrained relationship does-not-have clause.
      *
      * @param relation
@@ -718,13 +766,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param relations
      * @returns
      */
-    public withCount (relations: string | string[]): this {
-        const names = Array.isArray(relations) ? relations : [relations]
-        names.forEach(relation => {
-            this.relationAggregates.push({ type: 'count', relation })
-        })
-
-        return this
+    public withCount (relations: RelationAggregateInput): this {
+        return this.withRelationAggregate('count', relations)
     }
 
     /**
@@ -733,13 +776,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param relations
      * @returns
      */
-    public withExists (relations: string | string[]): this {
-        const names = Array.isArray(relations) ? relations : [relations]
-        names.forEach(relation => {
-            this.relationAggregates.push({ type: 'exists', relation })
-        })
-
-        return this
+    public withExists (relations: RelationAggregateInput): this {
+        return this.withRelationAggregate('exists', relations)
     }
 
     /**
@@ -749,10 +787,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param column
      * @returns
      */
-    public withSum (relation: string, column: string): this {
-        this.relationAggregates.push({ type: 'sum', relation, column })
-
-        return this
+    public withSum (relation: RelationAggregateInput, column: string): this {
+        return this.withRelationAggregate('sum', relation, column)
     }
 
     /**
@@ -762,10 +798,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param column
      * @returns
      */
-    public withAvg (relation: string, column: string): this {
-        this.relationAggregates.push({ type: 'avg', relation, column })
-
-        return this
+    public withAvg (relation: RelationAggregateInput, column: string): this {
+        return this.withRelationAggregate('avg', relation, column)
     }
 
     /**
@@ -775,10 +809,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param column
      * @returns
      */
-    public withMin (relation: string, column: string): this {
-        this.relationAggregates.push({ type: 'min', relation, column })
-
-        return this
+    public withMin (relation: RelationAggregateInput, column: string): this {
+        return this.withRelationAggregate('min', relation, column)
     }
 
     /**
@@ -788,10 +820,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param column
      * @returns
      */
-    public withMax (relation: string, column: string): this {
-        this.relationAggregates.push({ type: 'max', relation, column })
-
-        return this
+    public withMax (relation: RelationAggregateInput, column: string): this {
+        return this.withRelationAggregate('max', relation, column)
     }
 
     /**
@@ -2096,7 +2126,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns 
      */
     private normalizeWith (
-        relations: string | string[] | Record<string, EagerLoadConstraint | undefined>
+        relations: string | string[] | Record<string, true | EagerLoadConstraint | undefined>
     ): EagerLoadMap {
         if (typeof relations === 'string')
             return { [relations]: undefined }
@@ -2109,7 +2139,61 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             }, {})
         }
 
-        return relations
+        return Object.entries(relations).reduce<EagerLoadMap>((normalized, [relation, constraint]) => {
+            normalized[relation] = constraint === true ? undefined : constraint
+
+            return normalized
+        }, {})
+    }
+
+    private withRelationAggregate (
+        type: RelationAggregateType,
+        relations: RelationAggregateInput,
+        column?: string,
+    ): this {
+        this.normalizeRelationAggregateInput(relations).forEach(aggregate => {
+            this.relationAggregates.push({ type, column, ...aggregate })
+        })
+
+        return this
+    }
+
+    private normalizeRelationAggregateInput (
+        relations: RelationAggregateInput
+    ): Array<{ relation: string, alias?: string, callback?: RelationAggregateConstraint }> {
+        if (typeof relations === 'string')
+            return [this.parseRelationAggregateName(relations)]
+
+        if (Array.isArray(relations))
+            return relations.map(relation => this.parseRelationAggregateName(relation))
+
+        return Object.entries(relations).reduce<Array<{ relation: string, alias?: string, callback?: RelationAggregateConstraint }>>((normalized, [name, value]) => {
+            if (value === false || value === undefined)
+                return normalized
+
+            const aggregate = this.parseRelationAggregateName(name)
+            if (typeof value === 'function')
+                aggregate.callback = value
+
+            normalized.push(aggregate)
+
+            return normalized
+        }, [])
+    }
+
+    private parseRelationAggregateName (name: string): {
+        relation: string,
+        alias?: string,
+        callback?: RelationAggregateConstraint,
+    } {
+        const match = name.match(/^(.+?)\s+as\s+(.+)$/i)
+        if (!match)
+            return { relation: name }
+
+        return {
+            relation: match[1].trim(),
+            alias: match[2].trim(),
+        }
     }
 
     private buildQueryTarget (): QueryTarget<TModel> {
@@ -3234,7 +3318,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             if (!this.isSqlRelationFeatureMetadata(metadata))
                 return false
 
-            return this.tryBuildRelationConstraintWhere(aggregate.relation) === null
+            return this.tryBuildRelationConstraintWhere(aggregate.relation, aggregate.callback) === null
         })
     }
 
@@ -3272,7 +3356,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             if (!this.isSqlRelationFeatureMetadata(metadata))
                 return null
 
-            const where = this.tryBuildRelationConstraintWhere(aggregate.relation)
+            const where = this.tryBuildRelationConstraintWhere(aggregate.relation, aggregate.callback)
             if (where === null)
                 return null
 
@@ -3400,7 +3484,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         const cache = relationCache ?? new WeakMap<object, Map<string, Map<unknown, Promise<RelationResult>>>>()
         await Promise.all(models.map(async (model) => {
             for (const aggregate of this.relationAggregates) {
-                const results = await this.resolveRelatedResults(model, aggregate.relation, cache)
+                const results = await this.resolveRelatedResults(model, aggregate.relation, cache, aggregate.callback)
                 const list = Array.isArray(results)
                     ? results
                     : results ? [results] : []
@@ -3573,10 +3657,14 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private buildAggregateAttributeKey (aggregate: {
-        type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max'
+        type: RelationAggregateType
         relation: string
         column?: string
+        alias?: string
     }): string {
+        if (aggregate.alias)
+            return aggregate.alias
+
         const relationName = aggregate.relation
         if (aggregate.type === 'count')
             return `${relationName}Count`

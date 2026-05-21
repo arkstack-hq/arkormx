@@ -386,6 +386,7 @@ await User.query().with(['requester', 'pocket', 'consents', 'consents.user']).ge
 
 await User.query()
   .with({
+    profile: true,
     posts: (query) => query.latest().limit(5),
   })
   .get();
@@ -394,6 +395,11 @@ const user = await User.query().firstOrFail();
 
 await user.load(['posts.comments']);
 await user.loadCount(['posts', 'comments']);
+await user.loadMissing({ profile: true, posts: (query) => query.latest() });
+await user.loadMorph('parentable', {
+  Photo: ['tags'],
+  Post: ['comments'],
+});
 ```
 
 Use dotted relation paths when a child relationship should be eager loaded from
@@ -423,12 +429,22 @@ await User.query()
 await User.query().withCount('posts').get();
 await User.query().withExists('posts').get();
 await User.query().withSum('posts', 'views').get();
+await User.query().withCount({ posts: true, comments: (query) => query.whereKey('approved', true) }).get();
+await User.query().withSum('comments as total_votes', 'votes').get();
 ```
 
 Use `loadCount(...)` when you already have a model instance and want to attach
 relationship counts without reloading the related records. Count attributes use
-the same names as `withCount(...)`, such as `postsCount` or
-`postsCommentsCount` for dotted relation paths.
+the same names as `withCount(...)`, such as `postsCount`.
+
+Use `loadSum(...)` the same way when you need sum aggregates on an existing
+model instance. Aggregate helpers accept Laravel-style aliases with
+`relation as alias`, and object syntax accepts `true` for an unconstrained
+relation or a callback for a constrained relation.
+
+Use `loadMorph(...)` when a polymorphic relation is already available and each
+resolved model type needs a different nested eager load map. The keys are model
+class names, such as `Photo` or `Post`.
 
 On SQL-backed adapters, keep relation filter callbacks predicate-focused. Query
 shapes such as nested eager loading, pagination, or other non-filter

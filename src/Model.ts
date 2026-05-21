@@ -39,6 +39,7 @@ import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, Relati
 import { Attribute } from './Attribute'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
+import { ArkormCollection } from './Collection'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -1013,7 +1014,7 @@ export abstract class Model<
      * @param relations 
      * @returns 
      */
-    public async load (relations: string | string[] | EagerLoadMap): Promise<this> {
+    public async load (relations: string | string[] | EagerLoadMap | Record<string, true | ((query: unknown) => unknown) | undefined>): Promise<this> {
         const relationMap = this.normalizeRelationMap(relations)
         const constructor = this.constructor as typeof Model
         const query = constructor.query().with(relationMap) as unknown as QueryBuilder<this, QuerySchemaForModel<TSchema, TAttributes>>
@@ -1029,31 +1030,74 @@ export abstract class Model<
      * @param relations
      * @returns
      */
-    public async loadCount (relations: string | string[]): Promise<this> {
-        const normalized = Array.isArray(relations) ? relations : [relations]
-        if (normalized.length === 0)
+    public async loadCount (relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>): Promise<this> {
+        return this.loadAggregate('count', relations)
+    }
+
+    /**
+     * Load relationship sum aggregates onto the current model instance.
+     *
+     * @param relations
+     * @param column
+     * @returns
+     */
+    public async loadSum (
+        relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
+        column: string
+    ): Promise<this> {
+        return this.loadAggregate('sum', relations, column)
+    }
+
+    /**
+     * Load relations only when they are not already present on the model.
+     *
+     * @param relations
+     * @returns
+     */
+    public async loadMissing (relations: string | string[] | Record<string, true | ((query: unknown) => unknown) | undefined>): Promise<this> {
+        const relationMap = this.normalizeRelationMap(relations)
+        const missing = Object.entries(relationMap).reduce<EagerLoadMap>((all, [relation, constraint]) => {
+            const root = relation.split('.')[0]
+            if (!Object.prototype.hasOwnProperty.call(this.attributes, root))
+                all[relation] = constraint
+
+            return all
+        }, {})
+
+        if (Object.keys(missing).length === 0)
             return this
 
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot load counts for a model without an id.'
-                : `Cannot load counts for a model without a [${primaryKey}] value.`)
+        return this.load(missing)
+    }
 
-        const counted = await constructor.query()
-            .where({ [primaryKey]: identifier })
-            .withCount(normalized)
-            .first()
+    /**
+     * Load nested relations on a polymorphic relation result by model class name.
+     *
+     * @param relation
+     * @param relationsByType
+     * @returns
+     */
+    public async loadMorph (
+        relation: string,
+        relationsByType: Record<string, string | string[] | EagerLoadMap>
+    ): Promise<this> {
+        await this.loadMissing(relation)
 
-        if (!counted)
-            return this
+        const value = this.getAttribute(relation)
+        const related = value instanceof ArkormCollection
+            ? value.all()
+            : Array.isArray(value)
+                ? value
+                : value ? [value] : []
 
-        normalized.forEach((relation) => {
-            const attribute = Model.buildRelationCountAttributeKey(relation)
-            this.setAttribute(attribute, counted.getAttribute(attribute) ?? 0)
-        })
+        await Promise.all(related.map(async (model) => {
+            if (!(model instanceof Model))
+                return
+
+            const relations = relationsByType[model.constructor.name]
+            if (relations)
+                await model.load(relations)
+        }))
 
         return this
     }
@@ -1595,15 +1639,91 @@ export abstract class Model<
         return false
     }
 
-    private static buildRelationCountAttributeKey (relation: string): string {
-        const base = relation.split('.').map((segment, index) => {
-            if (index === 0)
-                return segment
+    private static buildRelationAggregateAttributeKey (
+        type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max',
+        relation: string,
+        column?: string,
+    ): string {
+        const { relation: relationName, alias } = Model.parseRelationAggregateName(relation)
+        if (alias)
+            return alias
 
-            return str(segment).pascal()
-        }).join('')
+        if (type === 'count')
+            return `${relationName}Count`
+        if (type === 'exists')
+            return `${relationName}Exists`
 
-        return `${base}Count`
+        const columnName = column
+            ? `${column.charAt(0).toUpperCase()}${column.slice(1)}`
+            : ''
+        const aggregateType = `${type.charAt(0).toUpperCase()}${type.slice(1)}`
+
+        return `${relationName}${aggregateType}${columnName}`
+    }
+
+    private static parseRelationAggregateName (name: string): { relation: string, alias?: string } {
+        const match = name.match(/^(.+?)\s+as\s+(.+)$/i)
+        if (!match)
+            return { relation: name }
+
+        return {
+            relation: match[1].trim(),
+            alias: match[2].trim(),
+        }
+    }
+
+    private async loadAggregate (
+        type: 'count' | 'sum',
+        relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
+        column?: string,
+    ): Promise<this> {
+        const normalized = this.normalizeRelationAggregateInput(relations)
+        if (normalized.length === 0)
+            return this
+
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
+        if (identifier == null)
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot load aggregates for a model without an id.'
+                : `Cannot load aggregates for a model without a [${primaryKey}] value.`)
+
+        const query = constructor.query().where({ [primaryKey]: identifier })
+        if (type === 'count')
+            query.withCount(relations)
+        else
+            query.withSum(relations, column as string)
+
+        const aggregated = await query.first()
+        if (!aggregated)
+            return this
+
+        normalized.forEach((relation) => {
+            const attribute = Model.buildRelationAggregateAttributeKey(type, relation, column)
+            this.setAttribute(attribute, aggregated.getAttribute(attribute) ?? (type === 'count' ? 0 : null))
+        })
+
+        return this
+    }
+
+    private normalizeRelationAggregateInput (
+        relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>
+    ): string[] {
+        if (typeof relations === 'string')
+            return [relations]
+
+        if (Array.isArray(relations))
+            return relations
+
+        return Object.entries(relations).reduce<string[]>((all, [relation, enabled]) => {
+            if (enabled === false || enabled === undefined)
+                return all
+
+            all.push(relation)
+
+            return all
+        }, [])
     }
 
     /**
@@ -1786,7 +1906,7 @@ export abstract class Model<
      * @returns 
      */
     private normalizeRelationMap (
-        relations: string | string[] | EagerLoadMap
+        relations: string | string[] | EagerLoadMap | Record<string, true | ((query: unknown) => unknown) | undefined>
     ): EagerLoadMap {
         if (typeof relations === 'string')
             return { [relations]: undefined }
@@ -1799,6 +1919,10 @@ export abstract class Model<
             }, {})
         }
 
-        return relations
+        return Object.entries(relations).reduce<EagerLoadMap>((all, [relation, constraint]) => {
+            all[relation] = constraint === true ? undefined : constraint
+
+            return all
+        }, {})
     }
 }

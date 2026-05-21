@@ -739,6 +739,30 @@ describe('Model relationships', () => {
         expect(user.getAttribute('commentsCount')).toBe(1)
     })
 
+    it('loads missing relations and sum aggregates onto an existing model instance', async () => {
+        const user = await User.query().find(1)
+        expect(user).not.toBeNull()
+        if (!user)
+            throw new Error('Expected user to exist.')
+
+        await user.load({
+            posts: true,
+        })
+        const loadedPosts = user.getAttribute('posts')
+
+        await user.loadMissing({
+            posts: true,
+            roles: true,
+        })
+        await user.loadSum({
+            'posts as published_post_ids': query => query.where({ title: 'A' }),
+        }, 'id')
+
+        expect(user.getAttribute('posts')).toBe(loadedPosts)
+        expect(user.getAttribute('roles')).toBeInstanceOf(ArkormCollection)
+        expect(user.getAttribute('published_post_ids')).toBe(100)
+    })
+
     it('supports nested eager loading through with() and load()', async () => {
         const user = await User.query()
             .with(['profile.image', 'posts.comments'])
