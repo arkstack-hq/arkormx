@@ -113,14 +113,14 @@ importers:
         version: 0.2.2
     devDependencies:
       clear-router:
-        specifier: ^2.6.5
-        version: 2.6.6(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
+        specifier: ^2.7.1
+        version: 2.7.1(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
       express:
         specifier: ^5.2.1
         version: 5.2.1
       parasito:
-        specifier: ^0.1.6
-        version: 0.1.6
+        specifier: ^0.1.8
+        version: 0.1.8
 
 packages:
 
@@ -1620,8 +1620,8 @@ packages:
   citty@0.2.1:
     resolution: {integrity: sha512-kEV95lFBhQgtogAPlQfJJ0WGVSokvLr/UEoFPiKKOXF7pl98HfUVUD0ejsuTCld/9xH9vogSywZ5KqHzXrZpqg==}
 
-  clear-router@2.6.6:
-    resolution: {integrity: sha512-budp+7o0+StwHoV0UVM0t/25cQf6krLVjs905HIXUm1/sQD9+bGG3KPA0+iG2kwelGSDINtBrhpLNViJbQFoew==}
+  clear-router@2.7.1:
+    resolution: {integrity: sha512-d1FtFom2QYYlcw0sdhiq7w6KtpKo11ech1NLtcX4Zqxyd1OPbAKip4UFasZscYxJkDj3AjI7ofsBVtHqDROTxQ==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@h3ravel/support': ^0.15.11
@@ -2753,8 +2753,8 @@ packages:
   package-json-from-dist@1.0.1:
     resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
 
-  parasito@0.1.6:
-    resolution: {integrity: sha512-0k6xvYDXXn17I8gosAPa2GyaYN57A2ArH8WkTqCNXimY93El2JvHL0SK+ZUiOmaROGxwd/or2c7vsuMI4o5CuA==}
+  parasito@0.1.8:
+    resolution: {integrity: sha512-j5WGH/7hz1URpRzi9lYffL/dX5ud91c+U59sS2Je4yHL1NnoZUrlUArGbLxpZuCwNd/Z/kRXdU9eWCa3hFyUdA==}
 
   parse-ms@4.0.0:
     resolution: {integrity: sha512-TXfryirbmq34y8QBwgqCVLi+8oA3oWx2eAnSn62ITyEhEYaWRlVZ2DvMM9eZbMs/RfxPu/PK/aBLyGj4IrqMHw==}
@@ -4936,7 +4936,7 @@ snapshots:
 
   citty@0.2.1: {}
 
-  clear-router@2.6.6(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
+  clear-router@2.7.1(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
     optionalDependencies:
       '@h3ravel/support': 0.15.11
       express: 5.2.1
@@ -6215,7 +6215,7 @@ snapshots:
 
   package-json-from-dist@1.0.1: {}
 
-  parasito@0.1.6:
+  parasito@0.1.8:
     dependencies:
       superagent: 10.3.0
     transitivePeerDependencies:
