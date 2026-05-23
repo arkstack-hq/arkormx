@@ -113,7 +113,7 @@ importers:
         version: 0.2.2
     devDependencies:
       clear-router:
-        specifier: ^2.7.2
+        specifier: ^2.7.1
         version: 2.7.2(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
       express:
         specifier: ^5.2.1
