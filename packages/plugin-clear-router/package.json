@@ -51,7 +51,7 @@
         "arkormx": "workspace:^"
     },
     "peerDependencies": {
-        "clear-router": "^2.7.7"
+        "clear-router": "^2.8.0"
     },
     "peerDependenciesMeta": {
         "clear-router": {
@@ -59,7 +59,7 @@
         }
     },
     "devDependencies": {
-        "clear-router": "^2.7.7",
+        "clear-router": "^2.8.0",
         "express": "^5.2.1",
         "parasito": "^0.1.8"
     },
