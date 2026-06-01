@@ -31,6 +31,35 @@ await User.factory().create();
 await User.factory(10).createMany();
 ```
 
+### Async definitions
+
+Factory definitions can perform async work, use `makeAsync()` when a definition
+or state returns a promise.
+
+```ts
+export class PostFactory extends ModelFactory<Post> {
+  protected model = Post;
+
+  protected async definition(sequence: number) {
+    const user = await User.factory().create();
+
+    return {
+      title: `Post ${sequence}`,
+      userId: user.getAttribute('id'),
+    };
+  }
+}
+
+await Post.factory().makeAsync();
+await Post.factory().create();
+await Post.factory(10).makeManyAsync();
+await Post.factory(10).createMany();
+```
+
+Calling `make()` on a factory with an async definition or async state throws and
+points callers to `makeAsync()`, `makeManyAsync()`, `create()`, or
+`createMany()`.
+
 ## Seeders
 
 ```ts
