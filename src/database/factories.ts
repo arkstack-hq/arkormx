@@ -1,4 +1,4 @@
-import type { FactoryAttributes, FactoryDefinition, FactoryModelConstructor, FactoryState, ModelAttributes } from 'src/types'
+import type { FactoryAttributes, FactoryDefinition, FactoryModelConstructor, FactoryState, MaybePromise, ModelAttributes } from 'src/types'
 
 /**
  * Base class for defining model factories. 
@@ -18,7 +18,7 @@ export abstract class ModelFactory<
     private states: FactoryState<TAttributes>[] = []
 
     protected abstract model: FactoryModelConstructor<TModel>
-    protected abstract definition (sequence: number): TAttributes
+    protected abstract definition (sequence: number): MaybePromise<TAttributes>
 
     /**
      * Set the number of models to create.
@@ -58,6 +58,19 @@ export abstract class ModelFactory<
     }
 
     /**
+     * Create a new model instance from an async factory definition without
+     * saving it to the database.
+     *
+     * @param overrides
+     * @returns
+     */
+    public async makeAsync (overrides: Partial<TAttributes> = {}): Promise<TModel> {
+        const attributes = await this.buildAttributesAsync(overrides)
+
+        return new this.model(attributes as Record<string, unknown>)
+    }
+
+    /**
      * Create multiple model instances without saving them to the database.
      * 
      * @param amount 
@@ -71,13 +84,31 @@ export abstract class ModelFactory<
     }
 
     /**
+     * Create multiple model instances from async factory definitions without
+     * saving them to the database.
+     *
+     * @param amount
+     * @param overrides
+     * @returns
+     */
+    public async makeManyAsync (amount = this.amount, overrides: Partial<TAttributes> = {}): Promise<TModel[]> {
+        const total = Math.max(1, Math.floor(amount))
+        const models: TModel[] = []
+
+        for (let index = 0; index < total; index++)
+            models.push(await this.makeAsync(overrides))
+
+        return models
+    }
+
+    /**
      * Create a new model instance and save it to the database.
      * 
      * @param overrides 
      * @returns 
      */
     public async create (overrides: Partial<TAttributes> = {}): Promise<TModel> {
-        const model = this.make(overrides) as TModel & { save?: () => Promise<TModel> }
+        const model = await this.makeAsync(overrides) as TModel & { save?: () => Promise<TModel> }
         if (typeof model.save !== 'function')
             throw new Error('Factory model does not support save().')
 
@@ -92,7 +123,7 @@ export abstract class ModelFactory<
      * @returns 
      */
     public async createMany (amount = this.amount, overrides: Partial<TAttributes> = {}): Promise<TModel[]> {
-        const models = this.makeMany(amount, overrides) as (TModel & { save?: () => Promise<TModel> })[]
+        const models = await this.makeManyAsync(amount, overrides) as (TModel & { save?: () => Promise<TModel> })[]
 
         return await Promise.all(models.map(async (model) => {
             if (typeof model.save !== 'function')
@@ -114,13 +145,47 @@ export abstract class ModelFactory<
         this.sequence += 1
 
         let resolved = this.definition(sequence)
-        for (const state of this.states)
+        if (ModelFactory.isPromiseLike(resolved)) {
+            this.sequence = sequence
+            throw new Error('This factory has an async definition. Use makeAsync(), makeManyAsync(), create(), or createMany() instead.')
+        }
+
+        for (const state of this.states) {
             resolved = state(resolved, sequence)
+            if (ModelFactory.isPromiseLike(resolved)) {
+                this.sequence = sequence
+                throw new Error('This factory has an async state. Use makeAsync(), makeManyAsync(), create(), or createMany() instead.')
+            }
+        }
 
         return {
             ...resolved,
             ...overrides,
         }
+    }
+
+    /**
+     * Build attributes for async and sync factory definitions.
+     *
+     * @param overrides
+     * @returns
+     */
+    private async buildAttributesAsync (overrides: Partial<TAttributes>): Promise<TAttributes> {
+        const sequence = this.sequence
+        this.sequence += 1
+
+        let resolved = await this.definition(sequence)
+        for (const state of this.states)
+            resolved = await state(resolved, sequence)
+
+        return {
+            ...resolved,
+            ...overrides,
+        }
+    }
+
+    private static isPromiseLike<T> (value: MaybePromise<T>): value is Promise<T> {
+        return typeof (value as { then?: unknown })?.then === 'function'
     }
 }
 
@@ -147,7 +212,7 @@ export class InlineFactory<
         this.model = model
     }
 
-    protected definition (sequence: number): TAttributes {
+    protected definition (sequence: number): MaybePromise<TAttributes> {
         return this.resolver(sequence)
     }
 }

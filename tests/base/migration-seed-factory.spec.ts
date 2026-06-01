@@ -58,6 +58,40 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(directModel.getAttribute('name')).toBe('User 0')
     })
 
+    it('supports async factory definitions through explicit async factory methods', async () => {
+        class AsyncUserFactory extends ModelFactory<User> {
+            protected model = User
+
+            protected async definition (sequence: number) {
+                return {
+                    name: `Async User ${sequence}`,
+                    email: `async-user${sequence}@example.com`,
+                    password: 'secret',
+                    isActive: 1,
+                }
+            }
+        }
+
+        const factory = new AsyncUserFactory().state(async attributes => ({
+            ...attributes,
+            name: String(attributes.name).toUpperCase(),
+        }))
+
+        expect(() => factory.make()).toThrow('This factory has an async definition. Use makeAsync(), makeManyAsync(), create(), or createMany() instead.')
+
+        const model = await factory.makeAsync()
+        expect(model.getAttribute('name')).toBe('ASYNC USER 0')
+
+        const many = await factory.count(2).makeManyAsync()
+        expect(many).toHaveLength(2)
+        expect(many[0]?.getAttribute('name')).toBe('ASYNC USER 1')
+        expect(many[1]?.getAttribute('name')).toBe('ASYNC USER 2')
+
+        const created = await factory.create({ email: 'async-created@example.com' })
+        expect(created.getAttribute('name')).toBe('ASYNC USER 3')
+        expect(created.getAttribute('email')).toBe('async-created@example.com')
+    })
+
     it('supports seeder execution helpers', async () => {
         class SeedOne extends Seeder {
             public async run (): Promise<void> {
