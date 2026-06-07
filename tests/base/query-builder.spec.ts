@@ -100,6 +100,69 @@ describe('QueryBuilder', () => {
         }
     })
 
+    it('normalizes raw and aliased select expressions for capable adapters', async () => {
+        const select = vi.fn(async () => ([
+            {
+                id: 1,
+                isActive: 1,
+            },
+        ]))
+        const transaction: DatabaseAdapter['transaction'] = async <TResult> (
+            callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>
+        ): Promise<TResult> => await callback(adapter)
+        const adapter: DatabaseAdapter = {
+            capabilities: { rawSelect: true },
+            select,
+            selectOne: async () => null,
+            insert: async () => ({ id: 0 }),
+            update: async () => null,
+            delete: async () => null,
+            count: async () => 0,
+            transaction,
+        }
+
+        User.setAdapter(adapter)
+
+        try {
+            const users = await User.query()
+                .select({
+                    id: true,
+                    '1': 'isActive',
+                })
+                .get()
+
+            expect(select).toHaveBeenCalledWith(expect.objectContaining({
+                columns: expect.arrayContaining([
+                    { column: '1', alias: 'isActive', raw: true },
+                    { column: 'id' },
+                ]),
+            }))
+            expect(users.all()[0]?.getAttribute('isActive')).toBe(true)
+
+            await User.query().select(['id', '1 as "isActive"']).get()
+            expect(select).toHaveBeenLastCalledWith(expect.objectContaining({
+                columns: [
+                    { column: 'id', raw: true },
+                    { column: '1 as "isActive"', raw: true },
+                ],
+            }))
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
+    it('rejects raw select expressions on Prisma compatibility', async () => {
+        await expect(
+            User.query().select({ '1': 'isActive' }).get()
+        ).rejects.toMatchObject({
+            constructor: UnsupportedAdapterFeatureException,
+            code: 'UNSUPPORTED_ADAPTER_FEATURE',
+            meta: expect.objectContaining({
+                feature: 'rawSelect',
+            }),
+        })
+    })
+
     it('routes core write execution through the configured adapter seam', async () => {
         const prisma = createCoreClient()
         const adapter = createPrismaDatabaseAdapter(prisma)

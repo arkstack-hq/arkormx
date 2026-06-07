@@ -80,6 +80,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             relationLoads: false,
             relationAggregates: false,
             relationFilters: false,
+            rawSelect: false,
             rawWhere: false,
             returning: false,
         }
@@ -163,6 +164,18 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     private toQuerySelect (columns?: QuerySelectColumn[]): PrismaLikeSelect | undefined {
         if (!columns || columns.length === 0)
             return undefined
+
+        const rawColumn = columns.find(column => column.raw)
+        if (rawColumn) {
+            throw new UnsupportedAdapterFeatureException('Raw select expressions are not supported by the Prisma compatibility adapter; use a SQL-backed adapter or DB.raw().', {
+                operation: 'adapter.select',
+                meta: {
+                    feature: 'rawSelect',
+                    expression: rawColumn.column,
+                    alias: rawColumn.alias,
+                },
+            })
+        }
 
         return columns.reduce<PrismaLikeSelect>((select, column) => {
             select[column.column] = true

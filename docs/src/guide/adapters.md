@@ -48,22 +48,23 @@ narrower feature surface.
 Capabilities let the query builder select optimized paths without assuming
 that every adapter supports the same operations.
 
-| Capability | Kysely/Postgres | Prisma compatibility |
-| --- | --- | --- |
-| Transactions | Yes | When the client exposes `$transaction` |
-| Returning rows | Yes | No |
-| Insert many | Yes | When a delegate exposes `createMany` |
-| Native upsert | Yes | No |
-| Update many | Yes | When a delegate exposes `updateMany` |
-| Delete many | Yes | No |
-| Optimized exists | Yes | Yes |
-| Adapter-owned relation loads | Yes | No |
-| Relation aggregates | Yes | No |
-| Relation filters | Yes | No |
-| Raw where clauses | Yes | No |
-| Raw full queries | Yes | No |
-| Schema introspection | Yes | Yes |
-| Schema operation execution | Yes | No |
+| Capability                   | Kysely/Postgres | Prisma compatibility                   |
+| ---------------------------- | --------------- | -------------------------------------- |
+| Transactions                 | Yes             | When the client exposes `$transaction` |
+| Returning rows               | Yes             | No                                     |
+| Insert many                  | Yes             | When a delegate exposes `createMany`   |
+| Native upsert                | Yes             | No                                     |
+| Update many                  | Yes             | When a delegate exposes `updateMany`   |
+| Delete many                  | Yes             | No                                     |
+| Optimized exists             | Yes             | Yes                                    |
+| Adapter-owned relation loads | Yes             | No                                     |
+| Relation aggregates          | Yes             | No                                     |
+| Relation filters             | Yes             | No                                     |
+| Raw select expressions       | Yes             | No                                     |
+| Raw where clauses            | Yes             | No                                     |
+| Raw full queries             | Yes             | No                                     |
+| Schema introspection         | Yes             | Yes                                    |
+| Schema operation execution   | Yes             | No                                     |
 
 When a capability is unavailable, Arkorm may use a generic fallback. If the
 requested behavior cannot be represented safely, it throws
@@ -171,13 +172,16 @@ readonly capabilities = {
   insertMany: true,
   updateMany: true,
   exists: true,
+  rawSelect: true,
   rawWhere: true,
 };
 ```
 
 Capability flags and optional methods should agree. For example, an adapter
-that advertises `rawWhere` must compile `QueryRawCondition`; an adapter that
-advertises `relationLoads` must implement `loadRelations()`.
+that advertises `rawSelect` must compile `QuerySelectColumn` entries with
+`raw: true`, an adapter that advertises `rawWhere` must compile
+`QueryRawCondition`, and an adapter that advertises `relationLoads` must
+implement `loadRelations()`.
 
 ## Inspection and errors
 

@@ -2216,16 +2216,31 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     private normalizeQuerySelect (select: QuerySchemaSelect<TDelegate>): QuerySelectColumn[] | null {
-        if (Array.isArray(select) || typeof select !== 'object' || !select)
+        if (typeof select === 'string')
+            return [{ column: select, raw: true }]
+
+        if (Array.isArray(select)) {
+            if (select.some(expression => typeof expression !== 'string'))
+                return null
+
+            return select.map(expression => ({ column: expression, raw: true }))
+        }
+
+        if (typeof select !== 'object' || !select)
             return null
 
         const entries = Object.entries(select as Record<string, unknown>)
-        if (entries.some(([, value]) => value !== true && value !== false && value !== undefined))
+        if (entries.some(([, value]) => value !== true
+            && value !== false
+            && value !== undefined
+            && typeof value !== 'string'))
             return null
 
         const columns = entries
-            .filter(([, value]) => value === true)
-            .map(([column]) => ({ column }))
+            .filter(([, value]) => value === true || typeof value === 'string')
+            .map(([column, value]) => typeof value === 'string'
+                ? { column, alias: value, raw: true }
+                : { column })
 
         return columns.length > 0 ? columns : []
     }

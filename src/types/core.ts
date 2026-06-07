@@ -282,6 +282,11 @@ export interface PrismaLikeSelect {
     }
 }
 
+export type RawSelectInput =
+    | string
+    | string[]
+    | Record<string, boolean | string | undefined>
+
 export interface PrismaLikeInclude {
     [key: string]: boolean | {
         where?: PrismaLikeWhereInput
@@ -342,9 +347,10 @@ export type QuerySchemaOrderBy<TSchema extends ModelQuerySchemaLike> =
     : PrismaLikeOrderBy
 
 export type QuerySchemaSelect<TSchema extends ModelQuerySchemaLike> =
-    QuerySchemaFindManyArgs<TSchema> extends { select?: infer TSelect }
+    (QuerySchemaFindManyArgs<TSchema> extends { select?: infer TSelect }
     ? FallbackIfUnknownOrNever<TSelect, PrismaLikeSelect>
-    : PrismaLikeSelect
+    : PrismaLikeSelect)
+    | RawSelectInput
 
 export type QuerySchemaCreateData<TSchema extends ModelQuerySchemaLike> =
     Parameters<TSchema['create']>[0] extends { data: infer TData }

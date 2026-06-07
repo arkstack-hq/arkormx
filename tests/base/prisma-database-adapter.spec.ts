@@ -271,6 +271,7 @@ describe('Prisma database adapter', () => {
         const adapter = createPrismaDatabaseAdapter(prisma)
 
         expect(adapter.capabilities.relationLoads).toBe(false)
+        expect(adapter.capabilities.rawSelect).toBe(false)
         expect(adapter.capabilities.rawWhere).toBe(false)
 
         await expect(adapter.loadRelations({
