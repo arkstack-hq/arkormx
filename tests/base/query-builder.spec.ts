@@ -139,6 +139,31 @@ describe('QueryBuilder', () => {
             }))
             expect(users.all()[0]?.getAttribute('isActive')).toBe(true)
 
+            await User.query()
+                .select({ id: true })
+                .addSelect({ '1': 'isActive' })
+                .addSelect('2 as "priority"')
+                .get()
+            expect(select).toHaveBeenLastCalledWith(expect.objectContaining({
+                columns: [
+                    { column: 'id' },
+                    { column: '1', alias: 'isActive', raw: true },
+                    { column: '2 as "priority"', raw: true },
+                ],
+            }))
+
+            await User.query()
+                .addSelect({ id: true })
+                .addSelect({ '1': 'isActive' })
+                .get()
+            expect(select).toHaveBeenLastCalledWith(expect.objectContaining({
+                columns: [
+                    { column: '*', wildcard: true },
+                    { column: 'id' },
+                    { column: '1', alias: 'isActive', raw: true },
+                ],
+            }))
+
             await User.query().select(['id', '1 as "isActive"']).get()
             expect(select).toHaveBeenLastCalledWith(expect.objectContaining({
                 columns: [
@@ -154,6 +179,19 @@ describe('QueryBuilder', () => {
     it('rejects raw select expressions on Prisma compatibility', async () => {
         await expect(
             User.query().select({ '1': 'isActive' }).get()
+        ).rejects.toMatchObject({
+            constructor: UnsupportedAdapterFeatureException,
+            code: 'UNSUPPORTED_ADAPTER_FEATURE',
+            meta: expect.objectContaining({
+                feature: 'rawSelect',
+            }),
+        })
+
+        await expect(
+            User.query()
+                .select({ id: true })
+                .addSelect({ '1': 'isActive' })
+                .get()
         ).rejects.toMatchObject({
             constructor: UnsupportedAdapterFeatureException,
             code: 'UNSUPPORTED_ADAPTER_FEATURE',
@@ -590,6 +628,12 @@ describe('QueryBuilder', () => {
 
     it('rejects non-normalizable top-level select and order clauses', () => {
         expect(() => User.query().select({
+            posts: {
+                select: { id: true },
+            },
+        } as never)).toThrow(UnsupportedAdapterFeatureException)
+
+        expect(() => User.query().addSelect({
             posts: {
                 select: { id: true },
             },

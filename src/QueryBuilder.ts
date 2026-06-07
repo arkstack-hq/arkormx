@@ -987,6 +987,28 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Appends columns or expressions to the existing select clause.
+     *
+     * @param select
+     * @returns
+     */
+    public addSelect (select: QuerySchemaSelect<TDelegate>): this {
+        const normalized = this.normalizeQuerySelect(select)
+        if (normalized === null)
+            throw new UnsupportedAdapterFeatureException('Select clauses must use Arkorm-normalizable column projections.', {
+                operation: 'addSelect',
+                model: this.model.name,
+            })
+
+        this.querySelect = [
+            ...(this.querySelect ?? [{ column: '*', wildcard: true }]),
+            ...normalized,
+        ]
+
+        return this
+    }
+
+    /**
      * Adds a skip clause to the query for pagination. 
      * This will overwrite any existing skip clause.
      * 

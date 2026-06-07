@@ -234,6 +234,29 @@ describe('PostgreSQL Kysely adapter', () => {
             .firstOrFail()
 
         expect(rawExpression.getAttribute('isActive')).toBe(1)
+
+        const appended = await DbUser.query()
+            .select({ id: true })
+            .addSelect({ '1': 'isActive' })
+            .addSelect('2 as "priority"')
+            .orderBy({ id: 'asc' })
+            .firstOrFail()
+
+        expect(appended.getAttribute('id')).toBe(1)
+        expect(appended.getAttribute('isActive')).toBe(1)
+        expect(appended.getAttribute('priority')).toBe(2)
+
+        const appendedToWildcard = await DbUser.query()
+            .addSelect({ '1': 'computedActive' })
+            .orderBy({ id: 'asc' })
+            .firstOrFail()
+
+        expect(appendedToWildcard.getAttribute('id')).toBe(1)
+        expect(appendedToWildcard.getAttribute('email')).toBe('jane@example.com')
+        expect(appendedToWildcard.getAttribute('computedActive')).toBe(1)
+
+        const normalizedSql = executedQueries.at(-1)?.replace(/\s+/g, ' ')
+        expect(normalizedSql).toContain('select *, 1 as "computedActive" from "users"')
     })
 
     it('supports raw where clauses through the Kysely adapter', async () => {

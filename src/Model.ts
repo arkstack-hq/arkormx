@@ -523,8 +523,8 @@ export abstract class Model<
      * @returns 
      */
     public static query<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
-        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
         TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -573,8 +573,8 @@ export abstract class Model<
      * @returns 
      */
     public static withTrashed<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
-        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
         TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -592,8 +592,8 @@ export abstract class Model<
      * @returns 
      */
     public static onlyTrashed<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
-        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
         TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
@@ -615,8 +615,8 @@ export abstract class Model<
      * @returns 
      */
     public static scope<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => unknown,
-        TModel extends Model<any, any> = InstanceType<TThis> & Model<any, any>,
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
         TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
             TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
             TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>

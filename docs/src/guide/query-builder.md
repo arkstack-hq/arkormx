@@ -86,6 +86,35 @@ await User.query()
   .get();
 ```
 
+Use `addSelect()` to append projections without replacing the existing
+selection:
+
+```ts
+const users = await User.query()
+  .select({ id: true, name: true })
+  .addSelect({ '1': 'isActive' })
+  .addSelect('COUNT(*) OVER () as "totalRows"')
+  .get();
+```
+
+`addSelect()` accepts the same object, string, and string-array forms as
+`select()`.
+
+When no `select()` call precedes it, `addSelect()` preserves the implicit
+wildcard selection:
+
+```ts
+await User.query()
+  .addSelect({ '1': 'isActive' })
+  .get();
+```
+
+This produces a projection equivalent to:
+
+```sql
+SELECT *, 1 AS "isActive" FROM "users"
+```
+
 Computed projections retain the value type returned by the database. For
 example, `1 AS isActive` returns `1` unless the model defines a cast for
 `isActive`.
