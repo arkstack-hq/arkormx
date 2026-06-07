@@ -1,6 +1,6 @@
 # Relationships
 
-Arkormˣ supports relationships with eager loading and constrained relationship querying.
+Arkorm supports relationships with eager loading and constrained relationship querying.
 
 ## Define relationships
 
@@ -382,7 +382,9 @@ user.avatar().withDefault((parent) => ({
 ```ts
 await User.query().with('posts').get();
 
-await User.query().with(['requester', 'pocket', 'consents', 'consents.user']).get();
+await User.query()
+  .with(['requester', 'pocket', 'consents', 'consents.user'])
+  .get();
 
 await User.query()
   .with({
@@ -429,7 +431,12 @@ await User.query()
 await User.query().withCount('posts').get();
 await User.query().withExists('posts').get();
 await User.query().withSum('posts', 'views').get();
-await User.query().withCount({ posts: true, comments: (query) => query.whereKey('approved', true) }).get();
+await User.query()
+  .withCount({
+    posts: true,
+    comments: (query) => query.whereKey('approved', true),
+  })
+  .get();
 await User.query().withSum('comments as total_votes', 'votes').get();
 ```
 
@@ -467,3 +474,89 @@ await user.posts().get();
 await user.posts().first();
 await user.posts().where({ published: true }).getResults();
 ```
+
+Relation objects expose the query operations most commonly needed for related
+records:
+
+```ts
+await user.posts().count();
+await user.posts().exists();
+await user.posts().firstOrFail();
+await user.posts().find(100);
+await user.posts().findMany([100, 101]);
+await user.posts().paginate(15);
+```
+
+## Creating related records
+
+`make()` and `makeMany()` apply the relationship's foreign-key attributes
+without saving:
+
+```ts
+const draft = user.posts().make({
+  title: 'Draft',
+});
+
+const drafts = user
+  .posts()
+  .makeMany([{ title: 'First draft' }, { title: 'Second draft' }]);
+```
+
+Use `create()` and `createMany()` to persist immediately:
+
+```ts
+const post = await user.posts().create({
+  title: 'Published',
+});
+
+const posts = await user
+  .posts()
+  .createMany([{ title: 'One' }, { title: 'Two' }]);
+```
+
+Existing model instances can be persisted through the relation:
+
+```ts
+await user.posts().save(post);
+await user.posts().saveMany(posts);
+```
+
+Quiet variants, `saveQuietly()` and `saveManyQuietly()`, suppress model
+lifecycle events.
+
+## Find or create
+
+```ts
+const unsaved = await user
+  .posts()
+  .firstOrNew({ slug: 'welcome' }, { title: 'Welcome' });
+
+const persisted = await user
+  .posts()
+  .firstOrCreate({ slug: 'welcome' }, { title: 'Welcome' });
+
+const updated = await user
+  .posts()
+  .updateOrCreate({ slug: 'welcome' }, { title: 'Updated welcome' });
+```
+
+Relation `upsert()` accepts the same unique-key and update-column arguments as
+the query builder while automatically adding relationship creation attributes.
+
+## Many-to-many writes
+
+`belongsToMany()` relations support pivot writes:
+
+```ts
+await user.roles().attach(role, {
+  approved: true,
+});
+
+await user.roles().detach(role);
+
+await user.roles().sync([role, anotherRole]);
+```
+
+`attach()` accepts a related model or key plus optional pivot attributes.
+`detach()` removes selected related keys, or all pivot rows when called without
+an argument. `sync()` makes the pivot rows match the supplied models or keys.

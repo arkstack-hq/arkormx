@@ -19,7 +19,7 @@
 ## Generated files are JS unexpectedly
 
 - `outputExt: 'ts'` requires TypeScript to be installed in the project.
-- If TypeScript is not resolvable, Arkormˣ safely falls back to JS generation.
+- If TypeScript is not resolvable, Arkorm safely falls back to JS generation.
 
 ## Model fields not typed (`user.id`)
 

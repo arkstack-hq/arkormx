@@ -1,33 +1,33 @@
 # Pagination
 
-Arkormˣ provides both length-aware and simple pagination.
+Arkorm provides both length-aware and simple pagination.
 
 ## Length-aware pagination
 
 ```ts
-const page = await User.query().paginate(2, 15, {
+const page = await User.query().paginate(15, 2, {
   path: '/users',
   query: { role: 'admin' },
   fragment: 'list',
 });
 
-page.data();
-page.total();
-page.currentPage();
-page.lastPage();
+page.data.all();
+page.meta.total;
+page.meta.currentPage;
+page.meta.lastPage;
 page.nextPageUrl();
 ```
 
 ## Simple pagination
 
 ```ts
-const page = await User.query().simplePaginate(2, 15, {
+const page = await User.query().simplePaginate(15, 2, {
   path: '/users',
   pageName: 'p',
 });
 
-page.data();
-page.hasMorePages();
+page.data.all();
+page.meta.hasMorePages;
 page.nextPageUrl();
 ```
 
@@ -43,7 +43,7 @@ class AppURLDriver extends URLDriver {
 }
 
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  adapter,
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
@@ -57,9 +57,10 @@ let Arkorm derive the current page when `paginate()` or `simplePaginate()` is
 called without an explicit page argument.
 
 ```ts
-import { configureArkormRuntime } from 'arkormx';
+import { defineConfig } from 'arkormx';
 
-configureArkormRuntime(() => prisma, {
+export default defineConfig({
+  adapter,
   pagination: {
     resolveCurrentPage: (pageName) => {
       const value = getCurrentRequestQueryValue(pageName);

@@ -1,6 +1,6 @@
 # Getting Started
 
-Arkormˣ is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility preserved during the current migration window.
+Arkorm is a framework-agnostic ORM designed to run anywhere Node.js runs. It brings a familiar model layer and fluent query builder on top of adapter-backed execution, with Prisma compatibility preserved during the current migration window.
 
 If you are upgrading an existing 1.x app, start with
 [Upgrade Guide](./upgrade-guide.md) before following the new
@@ -27,7 +27,7 @@ yarn add arkormx@next kysely pg
 
 :::
 
-## 2. Configure Arkormˣ
+## 2. Configure Arkorm
 
 Initialize Arkorm centrally in `arkormx.config.ts`:
 
@@ -54,7 +54,7 @@ If you still need Prisma for compatibility mode, CLI flows, or Prisma-backed
 examples are in [Setup](./setup.md) and
 [Prisma Compatibility](./prisma-compatibility.md).
 
-Or run the Arkormˣ CLI command `npx arkormx init` to initialize your project along with the configuration.
+Or run the Arkorm CLI command `npx arkormx init` to initialize your project along with the configuration.
 
 ## 3. Define a model
 
@@ -94,9 +94,11 @@ pnpm add -D prisma
 - [Upgrade Guide](./upgrade-guide.md)
 - [Setup](./setup.md)
 - [Configuration](./configuration.md)
+- [Database Adapters](./adapters.md)
 - [Prisma Compatibility](./prisma-compatibility.md)
 - [Typing](./typing.md)
 - [Models](./models.md)
 - [Query Builder](./query-builder.md)
 - [Transactions](./transactions.md)
 - [Relationships](./relationships.md)
+- [Observability and Errors](./observability-errors.md)

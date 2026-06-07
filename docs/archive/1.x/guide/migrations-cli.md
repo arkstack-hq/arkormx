@@ -1,6 +1,6 @@
 # Migrations and CLI
 
-Arkormˣ provides CLI helpers for generating models, factories, seeders, and migration classes, and for applying migration classes to `schema.prisma`.
+Arkorm provides CLI helpers for generating models, factories, seeders, and migration classes, and for applying migration classes to `schema.prisma`.
 
 ## Initialize config
 
@@ -135,7 +135,7 @@ Generated relation field:
 owner User @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)
 ```
 
-Arkormˣ also adds the inverse list relation on the referenced model automatically. For a `personal_access_tokens -> users` foreign key, it generates:
+Arkorm also adds the inverse list relation on the referenced model automatically. For a `personal_access_tokens -> users` foreign key, it generates:
 
 ```prisma
 personalAccessTokens PersonalAccessToken[] @relation("TokenUser")
@@ -255,6 +255,6 @@ When migrations/seeders are authored in TypeScript, production runtime should ex
 
 - Keep source structure mirrored in build output.
 - Configure `paths.buildOutput` to your build root.
-- Arkormˣ will try to resolve your `.ts` files with their equivalent `.js` / `.cjs` / `.mjs` in the build output.
+- Arkorm will try to resolve your `.ts` files with their equivalent `.js` / `.cjs` / `.mjs` in the build output.
 
 If you use a bundler like like `tsdown`, you can set the `unbundle` config to `true` to ensure that your build output mirrors your source structure, if you use other bundlers, check their documentation for similar options.

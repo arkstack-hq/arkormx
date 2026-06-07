@@ -1,6 +1,6 @@
 # Configuration
 
-Arkormˣ loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
+Arkorm loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
 
 ## defineConfig
 

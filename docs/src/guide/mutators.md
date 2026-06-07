@@ -1,6 +1,6 @@
 # Mutators & Accessors
 
-Arkormˣ provides flexible mutators and accessors for transforming attribute values on read and write. You can define these using either:
+Arkorm provides flexible mutators and accessors for transforming attribute values on read and write. You can define these using either:
 
 - Legacy method naming: `getXxxAttribute` / `setXxxAttribute`
 - Eloquent-style Attribute objects: a method named after the attribute returning `Attribute.make({ get, set })`

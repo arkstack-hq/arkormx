@@ -7,6 +7,7 @@ const sidebar: SidebarType = [
             { text: 'Get Started', link: '/guide/getting-started' },
             { text: 'Setup', link: '/guide/setup' },
             { text: 'Configuration', link: '/guide/configuration' },
+            { text: 'Database Adapters', link: '/guide/adapters' },
             { text: 'Prisma Compatibility', link: '/guide/prisma-compatibility' },
             { text: 'Troubleshooting', link: '/guide/troubleshooting' },
         ],
@@ -21,6 +22,7 @@ const sidebar: SidebarType = [
             { text: 'Query Builder', link: '/guide/query-builder' },
             { text: 'Transactions', link: '/guide/transactions' },
             { text: 'Pagination', link: '/guide/pagination' },
+            { text: 'Observability & Errors', link: '/guide/observability-errors' },
         ],
     },
     {

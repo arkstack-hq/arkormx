@@ -1,6 +1,6 @@
 # Casting
 
-Arkormˣ supports attribute casting to automatically transform values as they are read from or written to the model. This is useful for normalizing data formats, such as converting database values to JavaScript types.
+Arkorm supports attribute casting to automatically transform values as they are read from or written to the model. This is useful for normalizing data formats, such as converting database values to JavaScript types.
 
 Use the `casts` map on models to normalize values as they are read/written.
 
@@ -49,7 +49,7 @@ export class Product extends Model {
 
 ## Cast + mutator interaction
 
-Arkormˣ applies casts and mutators in this order:
+Arkorm applies casts and mutators in this order:
 
 - Read (`getAttribute`): cast `get` first, then mutator/accessor `get`
 - Write (`setAttribute`): mutator/accessor `set` first, then cast `set`

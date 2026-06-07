@@ -1,6 +1,6 @@
 # Transactions
 
-Arkormˣ exposes transactions through `Model.transaction(...)`.
+Arkorm exposes transactions through `Model.transaction(...)`.
 The callback runs inside a transaction scope, and every Arkorm query executed
 inside that callback automatically resolves delegates from the active
 transaction client.
