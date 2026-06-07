@@ -1,6 +1,6 @@
 # Relationships
 
-Arkormˣ supports relationships with eager loading and constrained relationship querying.
+Arkorm supports relationships with eager loading and constrained relationship querying.
 
 ## Define relationships
 

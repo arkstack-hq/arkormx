@@ -1,6 +1,6 @@
 # Clear Router Plugin
 
-Arkormˣ provides first class support for [Clear Router](https://arkstack-tmp.github.io/clear-router) through the [Clear Router plugin](https://www.npmjs.com/package/@arkormx/plugin-clear-router) which connects Arkormˣ models to Clear Router route model binding, allowing controller method parameters to be resolved automatically from route parameters.
+Arkorm provides first class support for [Clear Router](https://arkstack-tmp.github.io/clear-router) through the [Clear Router plugin](https://www.npmjs.com/package/@arkormx/plugin-clear-router) which connects Arkorm models to Clear Router route model binding, allowing controller method parameters to be resolved automatically from route parameters.
 
 ## Installation
 
@@ -48,7 +48,7 @@ ClearRouter.use(clearRouterPlugin);
 
 ## Route Model Binding
 
-Once the plugin is registered, Clear Router can resolve Arkormˣ models directly inside controller methods.
+Once the plugin is registered, Clear Router can resolve Arkorm models directly inside controller methods.
 
 ```ts
 import Profile from './models/Profile';
@@ -84,7 +84,7 @@ Clear Router will resolve the `:profile` route parameter into a `Profile` model 
 
 ## Custom Model Path
 
-Use `modelsPath` when your models live outside Arkormˣ’s configured model directory:
+Use `modelsPath` when your models live outside Arkorm’s configured model directory:
 
 ```ts
 ClearRouter.use(clearRouterPlugin, {

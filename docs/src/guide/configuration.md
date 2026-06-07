@@ -1,6 +1,6 @@
 # Configuration
 
-Arkormˣ loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
+Arkorm loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.config.ts` in your project root.
 
 Adapter configuration is the primary runtime path. Prisma is optional and only
 needed when you want compatibility mode, CLI flows, or Prisma-backed
@@ -53,6 +53,9 @@ export default defineConfig({
     persistedColumnMappings: true,
     persistedEnums: true,
   },
+  debug: (event) => {
+    console.debug(event);
+  },
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
@@ -93,6 +96,7 @@ export default defineConfig({
 | `features.persistedColumnMappings`    | Enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`. |
 | `features.persistedEnums`             | Enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.                                                  |
 | `boot`                                | Optional low-level synchronous hook for advanced runtime binding work.                                                                                          |
+| `debug`                               | Set to `true` for default query logging or provide a callback that receives structured query events.                                                            |
 | `pagination.urlDriver`                | Custom URL driver factory for paginator links.                                                                                                                  |
 | `pagination.resolveCurrentPage`       | Runtime hook used when `paginate()` or `simplePaginate()` is called without an explicit page argument.                                                          |
 | `paths.models`                        | Generated model directory.                                                                                                                                      |
@@ -102,9 +106,12 @@ export default defineConfig({
 | `paths.buildOutput`                   | Build output root used to map runtime files in production.                                                                                                      |
 | `outputExt`                           | Preferred generated extension (`'ts'` by default, falls back to `'js'` when TypeScript is unavailable).                                                         |
 
+For event phases, query inspection, and structured exceptions, see
+[Observability and Errors](./observability-errors.md).
+
 ## Additive runtime paths
 
-The `paths` config points Arkormˣ at your application's primary model, factory,
+The `paths` config points Arkorm at your application's primary model, factory,
 seeder, and migration directories. Packages and plugins can add their own
 directories without replacing those configured paths:
 

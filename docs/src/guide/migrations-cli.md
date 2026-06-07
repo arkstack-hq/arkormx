@@ -1,6 +1,8 @@
 # Migrations and CLI
 
-Arkormˣ provides CLI helpers for generating models, factories, seeders, and migration classes, and for applying migration classes to `schema.prisma`.
+Arkorm provides CLI helpers for generating models, factories, seeders, and
+migration classes. Migrations can execute through an adapter-backed database
+or update `schema.prisma` on the Prisma compatibility path.
 
 ## Initialize config
 
@@ -26,6 +28,103 @@ npx arkorm make:factory User
 npx arkorm make:seeder Database
 npx arkorm make:migration "create users table"
 ```
+
+## Author migrations
+
+Migration classes implement `up()` and `down()`. Keep the two methods
+symmetrical so `migrate:rollback` can reverse the change.
+
+```ts
+import { Migration, SchemaBuilder } from 'arkormx';
+
+export class CreateUsersTableMigration extends Migration {
+  public up(schema: SchemaBuilder): void {
+    schema.createTable('users', (table) => {
+      table.id();
+      table.string('name');
+      table.string('email').unique();
+      table.boolean('isActive').default(true).map('is_active');
+      table.timestamps();
+      table.softDeletes();
+
+      table.index('email', 'users_email_index');
+    });
+  }
+
+  public down(schema: SchemaBuilder): void {
+    schema.dropTable('users');
+  }
+}
+```
+
+Alter an existing table with `alterTable()`:
+
+```ts
+export class AddBioToUsersMigration extends Migration {
+  public up(schema: SchemaBuilder): void {
+    schema.alterTable('users', (table) => {
+      table.text('bio').nullable();
+    });
+  }
+
+  public down(schema: SchemaBuilder): void {
+    schema.alterTable('users', (table) => {
+      table.dropColumn('bio');
+    });
+  }
+}
+```
+
+`up()` and `down()` may be synchronous or asynchronous. The schema builder
+records operations; the active migration backend decides whether to execute
+them against the database or apply them to Prisma schema text.
+
+## Schema builder reference
+
+`SchemaBuilder` supports:
+
+- `createTable(name, callback)`
+- `alterTable(name, callback)`
+- `dropTable(name)`
+
+`TableBuilder` column methods:
+
+| Method                                               | Purpose                                                |
+| ---------------------------------------------------- | ------------------------------------------------------ |
+| `id(name?, type?)`                                   | Primary key column, defaulting to `id`.                |
+| `uuid(name)`                                         | UUID column. Chain `primary()` for a UUID primary key. |
+| `string(name)` / `text(name)`                        | Short or long text columns.                            |
+| `integer(name)` / `bigInteger(name)` / `float(name)` | Numeric columns.                                       |
+| `boolean(name)`                                      | Boolean column.                                        |
+| `json(name)`                                         | JSON column.                                           |
+| `date(name)` / `timestamp(name)`                     | Date and timestamp columns.                            |
+| `enum(name, valuesOrEnumName)`                       | Define or reuse an enum.                               |
+| `timestamps()`                                       | Add `createdAt` and `updatedAt`.                       |
+| `softDeletes(column?)`                               | Add a nullable soft-delete timestamp.                  |
+| `morphs(name)` / `nullableMorphs(name)`              | Add polymorphic type and id columns.                   |
+
+Column modifiers can be chained from a column definition:
+
+```ts
+table.uuid('publicId').primary({ default: 'uuid()' }).map('public_id');
+
+table
+  .string('emailVerificationCode')
+  .nullable()
+  .unique()
+  .map('email_verification_code');
+```
+
+Available modifiers include `primary()`, `nullable()`, `unique()`, `default()`,
+`after()`, and `map()`. Table-level `index()` accepts one column or an array:
+
+```ts
+table.index(['accountId', 'createdAt'], 'events_account_created_index');
+```
+
+Use logical model attribute names in migrations. `.map()` records the physical
+database name while preserving logical names for queries and generated model
+declarations.
 
 ## Sync model declarations
 
@@ -182,7 +281,7 @@ Generated relation field:
 owner User @relation("TokenOwner", fields: [userId], references: [id], onDelete: Cascade)
 ```
 
-Arkormˣ also adds the inverse list relation on the referenced model automatically. For a `personal_access_tokens -> users` foreign key, it generates:
+Arkorm also adds the inverse list relation on the referenced model automatically. For a `personal_access_tokens -> users` foreign key, it generates:
 
 ```prisma
 personalAccessTokens PersonalAccessToken[] @relation("TokenUser")
@@ -298,10 +397,12 @@ Configured defaults are validated against the reused enum's existing members.
 
 ## Production runtime notes
 
-When migrations/seeders are authored in TypeScript, production runtime should execute compiled JavaScript, to ensure that everything works as expected, consider the following:
+When migrations and seeders are authored in TypeScript, production should
+execute compiled JavaScript:
 
 - Keep source structure mirrored in build output.
 - Configure `paths.buildOutput` to your build root.
-- Arkormˣ will try to resolve your `.ts` files with their equivalent `.js` / `.cjs` / `.mjs` in the build output.
+- Arkorm will try to resolve your `.ts` files with their equivalent `.js` / `.cjs` / `.mjs` in the build output.
 
-If you use a bundler like like `tsdown`, you can set the `unbundle` config to `true` to ensure that your build output mirrors your source structure, if you use other bundlers, check their documentation for similar options.
+If you use a bundler such as `tsdown`, set `unbundle` to `true` so build output
+mirrors source structure. For other bundlers, use the equivalent option.

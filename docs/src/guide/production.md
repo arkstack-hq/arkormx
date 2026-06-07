@@ -1,52 +1,116 @@
 # Production Deployment
 
-This guide covers running Arkormˣ safely in production environments.
+This guide covers production concerns for adapter-first Arkorm applications,
+including runtime config loading and compiled migrations or seeders.
 
-## 1. Build strategy
+## Runtime configuration
 
-Use a build process that preserves source folder structure in output, especially for:
-
-- `database/migrations`
-- `database/seeders`
-- `src/models` (if runtime imports rely on model files)
-
-Example with tsdown:
+Use the same adapter-first configuration in production that you use during
+development:
 
 ```ts
-// tsdown.config.js
-export default {
-  unbundle: true,
-};
-```
+import { createKyselyAdapter, defineConfig } from 'arkormx';
+import { Kysely, PostgresDialect } from 'kysely';
+import { Pool } from 'pg';
 
-## 2. Runtime config
+const db = new Kysely<Record<string, never>>({
+  dialect: new PostgresDialect({
+    pool: new Pool({
+      connectionString: process.env.DATABASE_URL,
+    }),
+  }),
+});
 
-```ts
 export default defineConfig({
-  prisma: () => prisma as unknown as Record<string, unknown>,
+  adapter: createKyselyAdapter(db),
   paths: {
+    models: './src/models',
     migrations: './database/migrations',
     seeders: './database/seeders',
+    factories: './database/factories',
     buildOutput: './dist',
   },
 });
 ```
 
-## 3. Generated extension policy
+Prisma is optional. Add `client` only when the application still needs Prisma
+compatibility delegates or client-backed transaction behavior:
 
-- `outputExt: 'ts'` (default): generate TS files when TypeScript is installed.
-- Automatic fallback: generate JS files when TypeScript is not installed.
+```ts
+export default defineConfig({
+  adapter,
+  client: () => prisma,
+});
+```
 
-## 4. Runtime resolution behavior
+## Build strategy
 
-For TS source references, Arkormˣ will try to resolve equivalent runtime scripts in your build output directory in this order:
+Runtime discovery needs access to migration, seeder, factory, and model modules.
+Preserve their source folder structure in build output:
 
-1. Same path with `.js`
-2. Same path with `.cjs`
-3. Same path with `.mjs`
-4. Equivalent path under `paths.buildOutput`
+```txt
+database/migrations/CreateUsersMigration.ts
+dist/database/migrations/CreateUsersMigration.js
+```
 
-## 5. Operational checks
+With tsdown, use unbundled output:
 
-- Ensure `prisma generate` and migration steps run in CI/CD.
-- Validate CLI commands against built artifacts in staging before production rollout.
+```ts
+export default {
+  unbundle: true,
+};
+```
+
+If you bundle application code into a single file, register classes explicitly
+instead of relying on directory discovery:
+
+```ts
+import {
+  registerMigrations,
+  registerModels,
+  registerSeeders,
+} from 'arkormx';
+
+registerModels(User, Post);
+registerMigrations(CreateUsersTableMigration);
+registerSeeders(DatabaseSeeder);
+```
+
+## Generated extension policy
+
+- `outputExt: 'ts'` generates TypeScript when TypeScript is installed.
+- Arkorm falls back to JavaScript generation when TypeScript is unavailable.
+- Production Node.js normally executes the compiled `.js`, `.cjs`, or `.mjs` output.
+
+For a configured TypeScript source path, Arkorm checks equivalent runtime
+scripts and paths under `paths.buildOutput`.
+
+## Migration deployment
+
+For adapter-backed migrations:
+
+```sh
+npx arkorm migrate --all
+```
+
+For the Prisma compatibility workflow, use deploy mode in production:
+
+```sh
+npx arkorm migrate --all --deploy
+```
+
+Do not run development-oriented Prisma migration commands against production
+unless that is an intentional part of your deployment process.
+
+## Operational checks
+
+- Validate that the production process can load `arkormx.config.*`.
+- Validate database connectivity before accepting traffic.
+- Run migrations as a distinct deployment step.
+- Verify compiled migration and seeder paths in staging.
+- Keep `.arkormx/column-mappings.json` with the deployment when persisted mappings or enums are enabled.
+- Use `debug` callbacks with sampling or redaction when forwarding query events to production logs.
+- Ensure shutdown hooks close the underlying pool or database client.
+
+See [Observability and Errors](./observability-errors.md) for query events and
+structured failures.

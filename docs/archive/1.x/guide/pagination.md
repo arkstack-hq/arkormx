@@ -1,6 +1,6 @@
 # Pagination
 
-Arkormˣ provides both length-aware and simple pagination.
+Arkorm provides both length-aware and simple pagination.
 
 ## Length-aware pagination
 

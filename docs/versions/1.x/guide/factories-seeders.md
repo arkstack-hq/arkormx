@@ -1,6 +1,6 @@
 # Factories and Seeders
 
-Arkormˣ includes class-based factories and seeders for test data and local bootstrap flows.
+Arkorm includes class-based factories and seeders for test data and local bootstrap flows.
 
 ## Factories
 

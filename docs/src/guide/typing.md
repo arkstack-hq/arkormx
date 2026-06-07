@@ -1,6 +1,6 @@
 # Typing
 
-Arkormˣ uses your model generic and underlying row shape to infer strongly
+Arkorm uses your model generic and underlying row shape to infer strongly
 typed query and attribute APIs.
 
 ## Recommended pattern
@@ -57,7 +57,7 @@ await User.query().find('jane@example.com', 'email');
 
 ## Direct property access
 
-Arkormˣ supports runtime property sugar (`user.email`) via proxy.
+Arkorm supports runtime property sugar (`user.email`) via proxy.
 For static TypeScript field completion on direct properties, sync declarations with:
 
 ```sh
@@ -86,7 +86,7 @@ Explicit model `columns` metadata still wins over the persisted artifact when bo
 
 ## Untyped fallback
 
-If you omit generics, Arkormˣ still works but values become loosely typed:
+If you omit generics, Arkorm still works but values become loosely typed:
 
 ```ts
 class AnyModel extends Model {}

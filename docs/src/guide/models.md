@@ -1,6 +1,6 @@
 # Models
 
-Models are the core abstraction in Arkormˣ. They represent an Arkorm model
+Models are the core abstraction in Arkorm. They represent an Arkorm model
 backed by your configured adapter and provide attribute APIs,
 casts, mutators/accessors, scopes, events, and relationship definitions.
 
@@ -15,7 +15,7 @@ export class User extends Model {}
 For conventional model names, this is enough. Arkorm falls back to the model
 name when you do not provide explicit metadata.
 
-## Metadata (Arkormˣ next)
+## Metadata (Arkorm next)
 
 Arkorm can now expose explicit model metadata for adapters and future SQL planning,
 while still preserving convention-based fallback behavior for existing models.
@@ -70,16 +70,67 @@ user.setAttribute('name', 'Jane');
 await user.save();
 ```
 
-Arkormˣ also supports runtime property sugar:
+Arkorm also supports runtime property sugar:
 
 ```ts
 user.name = 'Jane';
 console.log(user.email);
 ```
 
+## Fill and persist models
+
+`fill()` assigns several attributes through the normal mutator and cast path:
+
+```ts
+const user = new User();
+
+user.fill({
+  name: 'Jane',
+  email: 'jane@example.com',
+});
+
+await user.save();
+```
+
+`save()` inserts a model without a primary-key value and updates a model that
+already has one. It returns the same model instance with persisted values
+applied.
+
+Use `update()` for a fill-and-save shortcut:
+
+```ts
+const updated = await user.update({
+  name: 'Jane Updated',
+});
+```
+
+Instance `update()` returns `false` when the model has no identifier or the
+operation fails. Use query-builder `update()` when you need the underlying
+exception rather than this boolean convenience contract.
+
+## Delete and restore models
+
+```ts
+await user.delete();
+```
+
+For models with soft deletes enabled, `delete()` sets the configured deleted-at
+column. Otherwise it permanently deletes the record.
+
+```ts
+const article = await Article.query().withTrashed().find(1);
+
+await article?.restore();
+await article?.forceDelete();
+```
+
+- `restore()` clears the deleted-at column on a soft-deleted model.
+- `forceDelete()` permanently deletes a model even when soft deletes are enabled.
+- `deleteQuietly()`, `restoreQuietly()`, and `forceDeleteQuietly()` suppress lifecycle events.
+
 ## Model state
 
-Arkormˣ keeps track of a model's original persisted attributes and the changes
+Arkorm keeps track of a model's original persisted attributes and the changes
 made since it was loaded or last saved. This is useful when you need to decide
 whether a model actually changed before performing expensive work.
 
@@ -116,9 +167,44 @@ Relation loading does not mark a model dirty. Calling `load('posts')` attaches
 related results to the instance, but Arkorm keeps dirty tracking focused on the
 model's own persisted attributes.
 
+## Comparing models
+
+Use `is()` to compare model class and persisted primary key:
+
+```ts
+const first = new User({ id: 1 });
+const second = new User({ id: 1 });
+
+first.is(second); // true
+first.isSame(second); // false
+```
+
+- `is()` and `isNot()` compare persisted identity.
+- `isSame()` and `isNotSame()` compare JavaScript object identity.
+
 ## Visibility and appends
 
 Use `hidden`, `visible`, and `appends` in model classes to shape serialization via `toObject()`.
+
+`toObject()` applies casts, accessors, visibility, and appended attributes.
+`toJSON()` returns the same serializable object:
+
+```ts
+export class User extends Model {
+  protected hidden = ['password'];
+  protected appends = ['displayName'];
+}
+
+JSON.stringify(user); // invokes toJSON()
+```
+
+Use `getRawAttributes()` when you need the stored values before casts and
+accessors:
+
+```ts
+const raw = user.getRawAttributes();
+const serialized = user.toObject();
+```
 
 For focused guides, see:
 

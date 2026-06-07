@@ -1,6 +1,6 @@
 # Setup
 
-This page contains a complete starter setup for adapter-first Arkormˣ.
+This page contains a complete starter setup for adapter-first Arkorm.
 
 The primary 2.x path is to configure one global adapter in
 `arkormx.config.ts`. Prisma remains optional for compatibility mode, CLI flows,
@@ -39,7 +39,7 @@ This is the default 2.x setup. Arkorm applies the configured adapter
 automatically, so normal app bootstrap does not need `User.setAdapter(...)` or
 `bindAdapter(...)` calls.
 
-You can also use the Arkormˣ CLI to generate this config file by running the initialize command: `npx arkormx init`.
+You can also use the Arkorm CLI to generate this config file by running the initialize command: `npx arkormx init`.
 
 ## 2. Define models
 
@@ -176,7 +176,7 @@ const users = await User.query().orderBy({ id: 'asc' }).get();
 const article = await Article.query().onlyTrashed().first();
 ```
 
-Current Phase 6 scope:
+Current adapter scope:
 
 - Kysely-backed execution covers core reads, writes, count, exists, pagination, and adapter transactions.
 - Relation eager loading, relation filters, and relation aggregates now compile through Arkorm-owned relation specs; Kysely consumes those specs directly, while Prisma compatibility keeps the generic eager-loader path for unsupported adapter-owned relation loading.
@@ -211,13 +211,15 @@ and restores adapters for a known model list is the cleanest pattern. The
 
 ## 6. Production notes for TS seeders/migrations
 
-When you run the Arkormˣ CLI, Node executes JavaScript.
-If you source files are TypeScript, ensure that your build output structure is mirrors your source structure.
+When you run the Arkorm CLI, Node executes JavaScript.
+If your source files are TypeScript, ensure that your build output structure mirrors your source structure.
 
 - Source: `database/migrations/CreateUsersMigration.ts`
 - Build: `dist/database/migrations/CreateUsersMigration.js` (or `.cjs`/`.mjs`)
 
-Arkormˣ uses `paths.buildOutput` to map your source files to their runtime build equivalents in your build output directory.
+Arkorm uses `paths.buildOutput` to map your source files to their runtime build equivalents in your build output directory.
 With `tsdown`, use non-bundled output (for example `unbundle`) to preserve paths.
 
-If you use a bundler like like `tsdown`, you can set the `unbundle` config to `true` to ensure that your build output mirrors your source structure, if you use other bundlers, check their documentation for similar options.
+If you use a bundler such as `tsdown`, set `unbundle` to `true` so the build
+output mirrors your source structure. For other bundlers, use the equivalent
+option.
