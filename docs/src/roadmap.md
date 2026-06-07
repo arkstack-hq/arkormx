@@ -80,7 +80,7 @@ built-in adapters. Future work may include:
 - Better capability diagnostics at configuration time.
 - Published compatibility tables for adapter and database versions.
 
-See [Database Adapters](./adapters.md) for the current adapter contract and
+See [Database Adapters](./guide/adapters.md) for the current adapter contract and
 supported capability matrix.
 
 ## Suggesting features
