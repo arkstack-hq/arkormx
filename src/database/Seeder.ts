@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
+
 export type SeederConstructor = new () => Seeder
 export type SeederInput = Seeder | SeederConstructor
 export type SeederCallArgument = SeederInput | SeederInput[]
@@ -13,6 +15,7 @@ export const SEEDER_BRAND = Symbol.for('arkormx.seeder')
  */
 export abstract class Seeder {
     public static readonly [SEEDER_BRAND] = true
+    private static readonly executionReport = new AsyncLocalStorage<string[]>()
 
     /**
      * Defines the operations to be performed when running the seeder. 
@@ -26,6 +29,22 @@ export abstract class Seeder {
      */
     public async call (...seeders: SeederCallArgument[]): Promise<void> {
         await Seeder.runSeeders(...seeders)
+    }
+
+    /**
+     * Run seeders and return every seeder class executed, including nested calls.
+     * 
+     * @param seeders 
+     * @returns 
+     */
+    public static async runWithReport (...seeders: SeederCallArgument[]): Promise<string[]> {
+        const report: string[] = []
+
+        await this.executionReport.run(report, async () => {
+            await this.runSeeders(...seeders)
+        })
+
+        return report
     }
 
     /**
@@ -64,6 +83,7 @@ export abstract class Seeder {
 
         for (const seeder of queue) {
             const instance = this.toSeederInstance(seeder)
+            this.executionReport.getStore()?.push(instance.constructor.name)
             await instance.run()
         }
     }

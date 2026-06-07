@@ -2,10 +2,11 @@ import * as migrationHelpers from '../../src/helpers/migrations'
 
 import {
     CliApp,
+    Migration,
+    Seeder,
     configureArkormRuntime,
     createPrismaDatabaseAdapter,
     loadMigrationsFrom,
-    Migration,
     registerMigrations,
     registerSeeders,
     resetArkormRuntimeForTests,
@@ -1115,6 +1116,48 @@ describe('CLI command classes', () => {
         expect(seedIo.errorLines).toHaveLength(0)
         expect((globalThis as { __seedRuns?: number }).__seedRuns).toBe(1)
         expect(seedIo.successLines.some(line => line.includes('Seeded'))).toBe(true)
+    })
+
+    it('SeedCommand logs seeders executed through nested calls', async () => {
+        const workspace = makeTempDir('arkormx-cmd-nested-seeder-')
+        process.chdir(workspace)
+
+        class UserSeeder extends Seeder {
+            public run (): void {
+            }
+        }
+
+        class RoleSeeder extends Seeder {
+            public run (): void {
+            }
+        }
+
+        class DatabaseSeeder extends Seeder {
+            public async run (): Promise<void> {
+                await this.call(UserSeeder, RoleSeeder)
+            }
+        }
+
+        configureArkormRuntime(() => ({}), {
+            paths: {
+                seeders: join(workspace, 'database', 'seeders'),
+            },
+        })
+        registerSeeders(DatabaseSeeder)
+
+        const app = new CliApp()
+        const seedCommand = new SeedCommand(app, new Kernel(app));
+        (seedCommand as unknown as { app: CliApp }).app = app
+        const seedIo = attachCommandIo(seedCommand as unknown as any, {}, {
+            name: 'DatabaseSeeder',
+        })
+
+        await seedCommand.handle()
+
+        const seededLines = seedIo.successLines.filter(line => line.includes('Seeded'))
+        expect(seededLines.some(line => line.includes('DatabaseSeeder'))).toBe(true)
+        expect(seededLines.some(line => line.includes('UserSeeder'))).toBe(true)
+        expect(seededLines.some(line => line.includes('RoleSeeder'))).toBe(true)
     })
 
     it('MigrateFreshCommand runs prisma generate and db push when skip flags are not set', async () => {

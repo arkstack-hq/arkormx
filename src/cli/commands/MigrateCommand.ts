@@ -2,6 +2,7 @@ import { MigrationClass, MigrationInstanceLike } from 'src/types'
 import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, supportsDatabaseCreation, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
 import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
+import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
 import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
 
@@ -9,7 +10,6 @@ import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
-import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 
 /**
  * The MigrateCommand class implements the CLI command for applying migration 

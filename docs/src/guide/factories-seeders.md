@@ -60,6 +60,149 @@ Calling `make()` on a factory with an async definition or async state throws and
 points callers to `makeAsync()`, `makeManyAsync()`, `create()`, or
 `createMany()`.
 
+### Dependent attributes
+
+Definition values can use another factory. Arkorm creates the related model and
+assigns its primary key to the attribute:
+
+```ts
+export class PostFactory extends ModelFactory<Post> {
+  protected model = Post;
+
+  protected definition(sequence: number) {
+    return {
+      title: `Post ${sequence}`,
+      userId: User.factory(),
+      userType: async (attributes) => {
+        const user = await User.query().find(attributes.userId);
+
+        return user?.getAttribute('type');
+      },
+    };
+  }
+}
+```
+
+Attribute resolver functions run in definition order and receive attributes
+that have already been resolved. Factory-valued attributes and async resolvers
+require `makeAsync()`, `makeManyAsync()`, `create()`, or `createMany()`.
+
+### Factory states
+
+Use `state()` for one-off transformations:
+
+```ts
+await User.factory()
+  .state((attributes) => ({
+    ...attributes,
+    isActive: false,
+  }))
+  .create();
+```
+
+Expose reusable states as methods on the factory:
+
+```ts
+export class UserFactory extends ModelFactory<User> {
+  protected model = User;
+
+  protected definition(sequence: number) {
+    return {
+      name: `User ${sequence}`,
+      email: `user${sequence}@example.com`,
+      isActive: true,
+    };
+  }
+
+  public suspended() {
+    return this.state((attributes) => ({
+      ...attributes,
+      isActive: false,
+      suspendedAt: new Date(),
+    }));
+  }
+}
+
+await User.factory<UserFactory>().suspended().create();
+```
+
+States are applied in the order they are added. Explicit attributes passed to
+`make()` or `create()` are merged after states.
+
+### Factory callbacks
+
+Register `afterMaking` and `afterCreating` callbacks inside `configure()`:
+
+```ts
+export class UserFactory extends ModelFactory<User> {
+  protected model = User;
+
+  protected configure() {
+    this.afterMaking((user) => {
+      user.setAttribute('source', 'factory');
+    });
+
+    this.afterCreating(async (user) => {
+      await AuditLog.query().create({
+        userId: user.getAttribute('id'),
+        action: 'factory-created',
+      });
+    });
+  }
+
+  protected definition(sequence: number) {
+    return {
+      name: `User ${sequence}`,
+      email: `user${sequence}@example.com`,
+    };
+  }
+}
+```
+
+`configure()` runs once for each factory instance. Async callbacks are
+supported by async factory methods; synchronous `make()` rejects an async
+`afterMaking` callback.
+
+### Factory relationships
+
+#### Has Many and Many to Many Relationships
+
+Use `has()` for has-one or has-many relations:
+
+```ts
+await User.factory().has(Post.factory(3), 'posts').create();
+```
+
+### Pivot Table Attributes
+
+Use `hasAttached()` for many-to-many relations and pivot attributes:
+
+```ts
+await User.factory()
+  .hasAttached(Role.factory(2), { approved: true }, 'roles')
+  .create();
+```
+
+#### Belongs To Relationships
+
+Use `for()` to create or associate a belongs-to parent:
+
+```ts
+await Post.factory().for(User.factory(), 'user').create();
+```
+
+The relationship name is optional when it can be inferred from the related
+model name. Pass it explicitly when the model method uses a different name.
+
+Use `recycle()` to reuse existing models instead of creating another related
+record:
+
+```ts
+const user = await User.query().firstOrFail();
+
+await Post.factory().for(User.factory(), 'user').recycle(user).create();
+```
+
 ## Seeders
 
 ```ts
@@ -71,6 +214,15 @@ export class DatabaseSeeder extends Seeder {
     await this.call([PermissionSeeder]);
   }
 }
+```
+
+When a seeder calls other seeders through `this.call()`, the CLI reports every
+seeder that ran, including the root and nested seeders:
+
+```text
+Seeded  DatabaseSeeder
+Seeded  UserSeeder
+Seeded  RoleSeeder
 ```
 
 Run seeders through CLI:
