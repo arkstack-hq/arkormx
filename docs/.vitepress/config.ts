@@ -5,6 +5,7 @@ const sidebar: SidebarType = [
         text: 'Start Here',
         items: [
             { text: 'Get Started', link: '/guide/getting-started' },
+            { text: 'Upgrade Guide', link: '/guide/upgrade-guide' },
             { text: 'Setup', link: '/guide/setup' },
             { text: 'Configuration', link: '/guide/configuration' },
             { text: 'Database Adapters', link: '/guide/adapters' },
@@ -57,7 +58,7 @@ const sidebar2x: SidebarType = sidebar.slice().map(section => {
                         { text: 'Clear Router', link: '/plugins/clear-router' },
                     ]
                 },
-                { text: 'Upgrade Guide', link: '/guide/upgrade-guide' },
+                { text: 'Roadmap', link: '/roadmap' },
             )
         }
     }
@@ -99,6 +100,7 @@ export default defineVersionedConfig({
             { text: 'Guide', link: '/guide/getting-started' },
             { text: 'CLI', link: '/guide/migrations-cli' },
             { text: 'Production', link: '/guide/production' },
+            { text: 'Roadmap', link: '/guide/roadmap' },
             {
                 component: 'VersionSwitcher',
             },
@@ -109,7 +111,9 @@ export default defineVersionedConfig({
                 e.items = [...e.items ?? []].map(e => {
                     if ([
                         '/guide/adapters',
-                        '/guide/observability-errors'
+                        '/guide/upgrade-guide',
+                        '/guide/observability-errors',
+                        '/guide/roadmap'
                     ].includes(e.link ?? '')) return {}
                     return e
                 })
