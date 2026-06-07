@@ -35,7 +35,7 @@ export class DbUser extends Model<'user'> {
     }
 
     public tags () {
-        return this.morphToMany(DbTag, 'taggables', 'taggable', 'tagId')
+        return this.morphToMany(DbTag, 'taggables')
     }
 
     public scopeActive (query: QueryBuilder<DbUser>): QueryBuilder<DbUser> {
@@ -97,7 +97,11 @@ export const prisma = new PrismaClient({
 const TEST_LOCK_ID = 42424242
 
 export async function connectPostgresRuntime () {
-    configureArkormRuntime(prisma as unknown as Record<string, unknown>)
+    configureArkormRuntime(prisma as unknown as Record<string, unknown>, {
+        naming: {
+            case: 'camel',
+        },
+    })
     await prisma.$connect()
 }
 
@@ -106,7 +110,11 @@ export async function disconnectPostgresRuntime () {
 }
 
 export async function seedPostgresFixtures () {
-    configureArkormRuntime(prisma as unknown as Record<string, unknown>)
+    configureArkormRuntime(prisma as unknown as Record<string, unknown>, {
+        naming: {
+            case: 'camel',
+        },
+    })
 
     await prisma.$executeRawUnsafe('TRUNCATE TABLE "taggables", "tags", "comments", "images", "role_users", "roles", "posts", "profiles", "articles", "users" RESTART IDENTITY CASCADE')
 

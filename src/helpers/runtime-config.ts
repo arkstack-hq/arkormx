@@ -48,7 +48,7 @@ const resolveDefaultStubsPath = (): string => {
 
 const baseConfig: Partial<ArkormConfig> = {
     naming: {
-        modelTableCase: 'snake',
+        case: 'snake',
     },
     features: {
         persistedColumnMappings: true,
@@ -117,11 +117,19 @@ const mergeNamingConfig = (
 ): NonNullable<ArkormConfig['naming']> => {
     const defaults = baseConfig.naming ?? {}
     const current = userConfig.naming ?? {}
+    const resolvedCase = naming?.case
+        ?? naming?.modelTableCase
+        ?? current.case
+        ?? current.modelTableCase
+        ?? defaults.case
+        ?? defaults.modelTableCase
+        ?? 'snake'
 
     return {
         ...defaults,
         ...current,
         ...(naming ?? {}),
+        case: resolvedCase,
     }
 }
 

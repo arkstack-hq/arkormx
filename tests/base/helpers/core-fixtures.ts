@@ -283,7 +283,7 @@ export class User extends Model<'user'> {
     }
 
     public tags () {
-        return this.morphToMany(Tag, 'taggables', 'taggable', 'tagId')
+        return this.morphToMany(Tag, 'taggables')
     }
 
     public getDisplayNameAttribute (): string {
@@ -454,5 +454,9 @@ export function createCoreClient () {
 }
 
 export function setupCoreRuntime () {
-    configureArkormRuntime(createCoreClient())
+    configureArkormRuntime(createCoreClient(), {
+        naming: {
+            case: 'camel',
+        },
+    })
 }

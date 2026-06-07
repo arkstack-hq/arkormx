@@ -328,17 +328,34 @@ taggables
 ```ts
 class Post extends Model {
   tags() {
-    return this.morphToMany(
-      Tag,
-      'taggable',
-      'taggables',
-      'taggableId',
-      'tagId',
-      'id',
-      'id',
-    );
+    return this.morphToMany(Tag, 'taggables');
   }
 }
+```
+
+With the conventional pivot structure above, only the related model and pivot
+table are required. Arkorm infers:
+
+- Morph name `taggable` from the singular form of `taggables`
+- Morph columns `taggable_id` and `taggable_type`
+- Related pivot key `tag_id` from the related `Tag` model and its `id` key
+- Parent and related keys from each model's configured primary key
+
+Inferred pivot columns respect `naming.case`. With `case: 'camel'`, the same
+relationship uses `taggableId`, `taggableType`, and `tagId`.
+
+For a non-conventional pivot schema, each inferred value can still be
+overridden:
+
+```ts
+return this.morphToMany(
+  Tag,
+  'customTagLinks',
+  'taggable',
+  'tagReferenceId',
+  'id',
+  'id',
+);
 ```
 
 ## Default related models

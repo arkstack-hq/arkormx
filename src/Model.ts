@@ -19,6 +19,7 @@ import type {
     EagerLoadMap,
     ModelQuerySchemaLike,
     ModelStatic,
+    NamingCase,
     Serializable,
     SoftDeleteConfig,
     TransactionContext,
@@ -179,16 +180,16 @@ export abstract class Model<
             return this.delegate
         }
 
-        const modelTableCase = getUserConfig('naming')?.modelTableCase ?? 'snake'
+        const namingCase = Model.getNamingCase()
         const modelName = str(this.name)
 
-        if (modelTableCase === 'camel')
+        if (namingCase === 'camel')
             return `${modelName.camel().plural()}`
 
-        if (modelTableCase === 'kebab')
+        if (namingCase === 'kebab')
             return `${modelName.kebab().plural()}`
 
-        if (modelTableCase === 'studly')
+        if (namingCase === 'studly')
             return `${modelName.studly().plural()}`
 
         return `${modelName.snake().plural()}`
@@ -1435,9 +1436,9 @@ export abstract class Model<
      * Define a polymorphic many to many relationship.
      * 
      * @param related 
-    * @param throughTable
-     * @param morphName 
-     * @param relatedPivotKey 
+     * @param throughTable
+     * @param morphName
+     * @param relatedPivotKey
      * @param parentKey 
      * @param relatedKey 
      * @returns 
@@ -1445,22 +1446,50 @@ export abstract class Model<
     protected morphToMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         throughTable: string,
-        morphName: string,
-        relatedPivotKey: string,
+        morphName?: string,
+        relatedPivotKey?: string,
         parentKey?: string,
         relatedKey?: string
     ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
         const constructor = this.constructor as unknown as typeof Model
+        const namingCase = Model.getNamingCase()
+        const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
+        const resolvedMorphName = morphName ?? this.formatConventionName(
+            `${str(throughTable).singular()}`,
+            namingCase,
+        )
+        const resolvedRelatedPivotKey = relatedPivotKey
+            ?? this.formatConventionName(
+                `${str(related.getTable()).singular()}_${resolvedRelatedKey}`,
+                namingCase,
+            )
+        const morphIdColumn = this.formatConventionName(`${resolvedMorphName}_id`, namingCase)
+        const morphTypeColumn = this.formatConventionName(`${resolvedMorphName}_type`, namingCase)
 
         return new MorphToManyRelation(
             this,
             related,
             throughTable,
-            morphName,
-            relatedPivotKey,
+            resolvedMorphName,
+            morphIdColumn,
+            morphTypeColumn,
+            resolvedRelatedPivotKey,
             parentKey ?? constructor.getPrimaryKey(),
-            relatedKey ?? related.getPrimaryKey(),
+            resolvedRelatedKey,
         )
+    }
+
+    private formatConventionName (
+        value: string,
+        namingCase: NamingCase,
+    ): string {
+        return `${str(value)[namingCase]()}`
+    }
+
+    private static getNamingCase (): 'camel' | 'snake' | 'kebab' | 'studly' {
+        const naming = getUserConfig('naming')
+
+        return naming?.case ?? naming?.modelTableCase ?? 'snake'
     }
 
     /**

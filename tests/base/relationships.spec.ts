@@ -1,4 +1,4 @@
-import { ArkormCollection, PivotModel, QueryBuilder, RelationResolutionException, createPrismaDatabaseAdapter } from '../../src'
+import { ArkormCollection, Model, PivotModel, QueryBuilder, RelationResolutionException, configureArkormRuntime, createPrismaDatabaseAdapter } from '../../src'
 import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
@@ -139,6 +139,32 @@ describe('Model relationships', () => {
             relatedKey: 'id',
         })
         expect(User.getRelationMetadata('missing')).toBeNull()
+    })
+
+    it('uses naming.case for inferred morph-to-many pivot columns', () => {
+        class SnakeTag extends Model {
+            protected static override table = 'tags'
+        }
+
+        class SnakePost extends Model {
+            public tags () {
+                return this.morphToMany(SnakeTag, 'taggables')
+            }
+        }
+
+        configureArkormRuntime(createCoreClient(), {
+            naming: {
+                case: 'snake',
+            },
+        })
+
+        expect(SnakePost.getRelationMetadata('tags')).toMatchObject({
+            throughTable: 'taggables',
+            morphName: 'taggable',
+            morphIdColumn: 'taggable_id',
+            morphTypeColumn: 'taggable_type',
+            relatedPivotKey: 'tag_id',
+        })
     })
 
     it('returns empty collections for through and many-to-many relations with no matches', async () => {

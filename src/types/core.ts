@@ -99,7 +99,11 @@ export interface ArkormDebugEvent {
 }
 
 export type ArkormDebugHandler = (event: ArkormDebugEvent) => void
-export type ModelTableCase = 'camel' | 'snake' | 'kebab' | 'studly'
+export type NamingCase = 'camel' | 'snake' | 'kebab' | 'studly'
+/**
+ * @deprecated Use NamingCase instead.
+ */
+export type ModelTableCase = NamingCase
 
 export interface ArkormConfig {
     /**
@@ -132,12 +136,17 @@ export interface ArkormConfig {
         resolveCurrentPage?: PaginationCurrentPageResolver
     }
     /**
-     * @property naming Naming strategy options for inferred model table names.
+     * @property naming Naming strategy options for inferred database identifiers.
      */
     naming?: {
         /**
-         * @property modelTableCase Case transformer applied to inferred table names.
+         * @property case Case transformer applied to inferred database identifiers.
          * Defaults to 'snake'.
+         */
+        case?: NamingCase
+        /**
+         * @deprecated Use case instead.
+         * @property modelTableCase Compatibility alias for naming.case.
          */
         modelTableCase?: ModelTableCase
     }
