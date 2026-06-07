@@ -146,9 +146,9 @@ docs/.vitepress/dist
 vite.config.js.timestamp-*
 vite.config.ts.timestamp-*
 
-# VitePress
+# Dist
 docs/.vitepress/dist
-docs/.vitepress/cache
+**/dist
 
 /bin
 /src/dev

@@ -641,7 +641,9 @@ export abstract class Relation<TModel> {
 
         const query = await this.getQuery()
 
-        return query.where({ [key ?? this.getRelatedModelConstructor().getPrimaryKey()]: value } as never).firstOrFail()
+        return query.where({
+            [key ?? this.getRelatedModelConstructor().getPrimaryKey()]: value
+        }).firstOrFail()
     }
 
     /**

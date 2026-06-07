@@ -1225,6 +1225,26 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Find a related model by a specific key and value, applying relationship constraints, or 
+     * throw an error if not found.
+     * 
+     * @param value 
+     * @param key 
+     */
+    public async findOrFail<TKey extends keyof ModelAttributes<TModel> & string> (
+        value: ModelAttributes<TModel>[TKey],
+        key: TKey
+    ): Promise<TModel>
+    public async findOrFail (value: string | number, key?: string): Promise<TModel>
+    public async findOrFail (value: unknown, key?: string): Promise<TModel> {
+        const model = await this.find(value as never, key)
+        if (!model)
+            throw new ModelNotFoundException(this.model.name, 'Record not found.')
+
+        return model
+    }
+
+    /**
      * Finds a record by id/key and returns callback result when not found.
      *
      * @param value

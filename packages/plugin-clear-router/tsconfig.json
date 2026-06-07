@@ -3,13 +3,14 @@
   "compilerOptions": {
     "outDir": "./dist",
     "rootDir": "../../",
-    "baseUrl": ".",
     "moduleResolution": "bundler",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "useDefineForClassFields": false,
     "paths": {
-      "@arkormx/plugin-clear-router": ["src/index.ts"]
+      "src": ["./src/index.ts"],
+      "src/*": ["./src/*"],
+      "@arkormx/plugin-clear-router": ["./src/index.ts"]
     }
   },
   "include": [
