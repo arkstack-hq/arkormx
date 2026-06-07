@@ -87,6 +87,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         relationLoads: true,
         relationAggregates: true,
         relationFilters: true,
+        rawSelect: true,
         rawWhere: true,
     }
 
@@ -597,7 +598,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         if (!columns || columns.length === 0)
             return sql.raw('*')
 
-        return sql.join(columns.map(({ column, alias }) => {
+        return sql.join(columns.map(({ column, alias, raw }) => {
+            if (raw) {
+                const expression = sql.raw(column)
+
+                return alias
+                    ? sql`${expression} as ${sql.id(alias)}`
+                    : expression
+            }
+
             const mappedColumn = this.mapColumn(target, column)
             const resultAlias = alias ?? column
 

@@ -25,6 +25,7 @@ export type AdapterCapability =
     | 'relationLoads'
     | 'relationAggregates'
     | 'relationFilters'
+    | 'rawSelect'
     | 'rawWhere'
 
 export type AdapterCapabilities = Partial<Record<AdapterCapability, boolean>>
@@ -67,6 +68,7 @@ export interface QueryTarget<TModel = unknown> {
 export interface QuerySelectColumn {
     column: string
     alias?: string
+    raw?: boolean
 }
 
 export interface QueryOrderBy {

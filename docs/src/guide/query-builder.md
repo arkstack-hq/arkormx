@@ -37,8 +37,8 @@ const users = DB.table('users', {
 
 ## Selecting columns
 
-Use `select()` to restrict the scalar columns returned by the adapter. The
-selection map replaces any selection already present on the builder.
+Use `select()` to restrict the columns returned by the adapter. The selection
+replaces any selection already present on the builder.
 
 ```ts
 const users = await User.query()
@@ -60,8 +60,47 @@ user.getAttribute('email'); // selected value
 user.getAttribute('name'); // undefined
 ```
 
-Top-level `select()` accepts scalar projections only. Use `with()` or
-`include()` for relationships. A nested selection such as
+Use an expression-to-alias entry for a computed projection:
+
+```ts
+const users = await User.query()
+  .select({
+    id: true,
+    name: true,
+    '1': 'isActive',
+  })
+  .get();
+```
+
+The object key is emitted as a raw SQL expression and the string value is its
+result alias. String and string-array overloads are also available:
+
+```ts
+await User.query().select('1 as "isActive"').get();
+
+await User.query()
+  .select([
+    'id',
+    'COALESCE("display_name", "name") as "displayName"',
+  ])
+  .get();
+```
+
+Computed projections retain the value type returned by the database. For
+example, `1 AS isActive` returns `1` unless the model defines a cast for
+`isActive`.
+
+::: warning Trusted SQL only
+Expression keys and string projections are inserted as raw SQL. Never build
+them from request values or other untrusted input. Raw projections do not
+support parameter bindings; use `DB.raw()` when values need to be bound.
+:::
+
+Raw projections require the adapter's `rawSelect` capability. They work with
+the Kysely adapter and are intentionally unsupported by the Prisma
+compatibility adapter.
+
+Use `with()` or `include()` for relationships. A nested selection such as
 `select({ posts: { select: { id: true } } })` throws
 `UnsupportedAdapterFeatureException`.
 

@@ -210,6 +210,32 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(trashedArticles.all().map(article => article.getAttribute('title'))).toEqual(['Archived'])
     })
 
+    it('supports raw and aliased select expressions through QueryBuilder', async () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const aliased = await DbUser.query()
+            .select({ id: true, '1': 'isActive' })
+            .orderBy({ id: 'asc' })
+            .firstOrFail()
+
+        expect(aliased.getAttribute('id')).toBe(1)
+        expect(aliased.getAttribute('isActive')).toBe(1)
+
+        const raw = await DbUser.query()
+            .select(['id', '1 as "isActive"'])
+            .orderBy({ id: 'asc' })
+            .firstOrFail()
+
+        expect(raw.getAttribute('id')).toBe(1)
+        expect(raw.getAttribute('isActive')).toBe(1)
+
+        const rawExpression = await DbUser.query()
+            .select('1 as "isActive"')
+            .firstOrFail()
+
+        expect(rawExpression.getAttribute('isActive')).toBe(1)
+    })
+
     it('supports raw where clauses through the Kysely adapter', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 
