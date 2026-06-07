@@ -4,7 +4,6 @@
     "target": "ES2023",
     "lib": ["es2022", "DOM"],
     "esModuleInterop": true,
-    "ignoreDeprecations": "6.0",
     "skipLibCheck": true,
     "strict": true,
     "moduleResolution": "bundler",
@@ -15,7 +14,6 @@
     "declaration": true,
     "sourceMap": true,
     "outDir": "./dist",
-    "rootDir": "./",
     "types": ["node", "vitest"],
     "paths": {
       "src": ["./src"],
