@@ -1,4 +1,4 @@
-import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex } from 'src/types'
+import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex, SchemaPrimaryKey, SchemaUniqueConstraint } from 'src/types'
 import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
@@ -129,6 +129,8 @@ export class TableBuilder {
     private readonly dropColumnNames: string[] = []
     private readonly indexes: SchemaIndex[] = []
     private readonly foreignKeys: SchemaForeignKey[] = []
+    private readonly compositeUniqueConstraints: SchemaUniqueConstraint[] = []
+    private compositePrimaryKey?: SchemaPrimaryKey
     private latestColumnName: string | undefined
 
     /**
@@ -138,6 +140,7 @@ export class TableBuilder {
      * @param options 
      * @returns 
      */
+    public primary (columns: string[], name?: string): this
     public primary (
         columnNameOrOptions?: string | {
             columnName?: string
@@ -148,11 +151,37 @@ export class TableBuilder {
             autoIncrement?: boolean
             default?: unknown
         }
+    ): this
+    public primary (
+        columnNameOrOptions?: string | string[] | {
+            columnName?: string
+            autoIncrement?: boolean
+            default?: unknown
+        },
+        options?: {
+            autoIncrement?: boolean
+            default?: unknown
+        } | string
     ): this {
+        if (Array.isArray(columnNameOrOptions)) {
+            const columns = this.normalizeCompositeColumns(columnNameOrOptions, 'primary key')
+            if (this.compositePrimaryKey)
+                throw new Error('A composite primary key has already been defined for this table.')
+
+            this.compositePrimaryKey = {
+                columns,
+                ...(typeof options === 'string' && options.trim()
+                    ? { name: options.trim() }
+                    : {}),
+            }
+
+            return this
+        }
+
         const config = typeof columnNameOrOptions === 'string'
             ? {
                 columnName: columnNameOrOptions,
-                ...(options ?? {}),
+                ...(typeof options === 'object' ? options : {}),
             }
             : (columnNameOrOptions ?? {})
         const column = this.resolveColumn(config.columnName)
@@ -294,8 +323,30 @@ export class TableBuilder {
      * When omitted, applies to the latest defined column.
      * @returns The current TableBuilder instance for chaining.
      */
-    public unique (name?: string): this {
-        const column = this.resolveColumn(name)
+    public unique (columns: string[], name?: string): this
+    public unique (name?: string): this
+    public unique (columnsOrName?: string | string[], name?: string): this {
+        if (Array.isArray(columnsOrName)) {
+            const columns = this.normalizeCompositeColumns(columnsOrName, 'unique constraint')
+            const normalizedName = name?.trim()
+            const duplicate = this.compositeUniqueConstraints.find(constraint =>
+                constraint.columns.length === columns.length
+                && constraint.columns.every((column, index) => column === columns[index])
+            )
+            if (duplicate)
+                throw new Error(`A unique constraint for columns [${columns.join(', ')}] has already been defined for this table.`)
+            if (normalizedName && this.compositeUniqueConstraints.some(constraint => constraint.name === normalizedName))
+                throw new Error(`A unique constraint named [${normalizedName}] has already been defined for this table.`)
+
+            this.compositeUniqueConstraints.push({
+                columns,
+                ...(normalizedName ? { name: normalizedName } : {}),
+            })
+
+            return this
+        }
+
+        const column = this.resolveColumn(columnsOrName)
         column.unique = true
 
         return this
@@ -575,6 +626,28 @@ export class TableBuilder {
     }
 
     /**
+     * Returns a copy of the table-level composite primary key.
+     */
+    public getPrimaryKey (): SchemaPrimaryKey | undefined {
+        return this.compositePrimaryKey
+            ? {
+                ...this.compositePrimaryKey,
+                columns: [...this.compositePrimaryKey.columns],
+            }
+            : undefined
+    }
+
+    /**
+     * Returns copies of table-level composite unique constraints.
+     */
+    public getUniqueConstraints (): SchemaUniqueConstraint[] {
+        return this.compositeUniqueConstraints.map(constraint => ({
+            ...constraint,
+            columns: [...constraint.columns],
+        }))
+    }
+
+    /**
      * Defines a column in the table with the given name.
      * 
      * @param name      The name of the column.
@@ -625,5 +698,17 @@ export class TableBuilder {
             throw new Error(`Column [${targetName}] was not found in the table definition.`)
 
         return column
+    }
+
+    private normalizeCompositeColumns (columns: string[], label: string): string[] {
+        const normalized = columns.map(column => column.trim())
+        if (normalized.length < 2)
+            throw new Error(`A composite ${label} must contain at least two columns.`)
+        if (normalized.some(column => !column))
+            throw new Error(`Composite ${label} columns must be non-empty strings.`)
+        if (new Set(normalized).size !== normalized.length)
+            throw new Error(`Composite ${label} columns must be unique.`)
+
+        return normalized
     }
 }

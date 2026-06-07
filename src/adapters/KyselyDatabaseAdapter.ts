@@ -44,7 +44,7 @@ import type {
     HasOneThroughRelationMetadata,
     ModelStatic,
 } from '../types'
-import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaOperation } from '../types/migrations'
+import type { AppliedMigrationsState, SchemaColumn, SchemaForeignKey, SchemaIndex, SchemaOperation, SchemaPrimaryKey, SchemaUniqueConstraint } from '../types/migrations'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { Pool } from 'pg'
@@ -312,6 +312,33 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return `create index if not exists ${this.quoteIdentifier(this.resolveSchemaIndexName(table, index))} on ${this.quoteIdentifier(table)} (${mappedColumns})`
     }
 
+    private buildSchemaPrimaryKeyConstraint (
+        table: string,
+        primaryKey: SchemaPrimaryKey,
+        columns: SchemaColumn[] = [],
+    ): string {
+        const name = primaryKey.name?.trim() || `${table}_pkey`
+        const mappedColumns = primaryKey.columns
+            .map(column => this.quoteIdentifier(this.resolveSchemaColumnName(column, columns)))
+            .join(', ')
+
+        return `constraint ${this.quoteIdentifier(name)} primary key (${mappedColumns})`
+    }
+
+    private buildSchemaUniqueConstraint (
+        table: string,
+        constraint: SchemaUniqueConstraint,
+        columns: SchemaColumn[] = [],
+    ): string {
+        const mappedColumnNames = constraint.columns.map(column => this.resolveSchemaColumnName(column, columns))
+        const name = constraint.name?.trim() || `${table}_${mappedColumnNames.join('_')}_key`
+        const mappedColumns = mappedColumnNames
+            .map(column => this.quoteIdentifier(column))
+            .join(', ')
+
+        return `constraint ${this.quoteIdentifier(name)} unique (${mappedColumns})`
+    }
+
     private async ensureEnumTypes (table: string, columns: SchemaColumn[], executor: KyselyExecutor = this.db): Promise<void> {
         for (const column of columns) {
             if (column.type !== 'enum')
@@ -345,8 +372,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         await this.ensureEnumTypes(table, operation.columns, executor)
 
         const columnDefinitions = operation.columns.map((column: SchemaColumn) => this.buildSchemaColumnDefinition(table, column))
+        const primaryKeys = operation.primaryKey
+            ? [this.buildSchemaPrimaryKeyConstraint(table, operation.primaryKey, operation.columns)]
+            : []
+        const uniqueConstraints = (operation.uniqueConstraints ?? [])
+            .map(constraint => this.buildSchemaUniqueConstraint(table, constraint, operation.columns))
         const foreignKeys = (operation.foreignKeys ?? []).map((foreignKey: SchemaForeignKey) => this.buildSchemaForeignKeyConstraint(table, foreignKey, operation.columns))
-        const definitions = [...columnDefinitions, ...foreignKeys].join(', ')
+        const definitions = [...columnDefinitions, ...primaryKeys, ...uniqueConstraints, ...foreignKeys].join(', ')
 
         await this.executeRawStatement(`create table if not exists ${this.quoteIdentifier(table)} (${definitions})`, executor)
 
@@ -375,6 +407,20 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         for (const foreignKey of operation.addForeignKeys ?? []) {
             await this.executeRawStatement(
                 `alter table ${this.quoteIdentifier(table)} add ${this.buildSchemaForeignKeyConstraint(table, foreignKey, operation.addColumns)}`,
+                executor,
+            )
+        }
+
+        if (operation.addPrimaryKey) {
+            await this.executeRawStatement(
+                `alter table ${this.quoteIdentifier(table)} add ${this.buildSchemaPrimaryKeyConstraint(table, operation.addPrimaryKey, operation.addColumns)}`,
+                executor,
+            )
+        }
+
+        for (const constraint of operation.addUniqueConstraints ?? []) {
+            await this.executeRawStatement(
+                `alter table ${this.quoteIdentifier(table)} add ${this.buildSchemaUniqueConstraint(table, constraint, operation.addColumns)}`,
                 executor,
             )
         }

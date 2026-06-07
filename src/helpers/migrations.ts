@@ -1,8 +1,8 @@
-import { GenerateMigrationOptions, GeneratedMigrationFile, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaForeignKey, SchemaForeignKeyAction, SchemaIndex, SchemaOperation, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation } from 'src/types/migrations'
-import type { DatabaseAdapter } from 'src/types/adapter'
+import { GenerateMigrationOptions, GeneratedMigrationFile, PrismaMigrationWorkflowOptions, PrismaSchemaSyncOptions, SchemaColumn, SchemaForeignKey, SchemaForeignKeyAction, SchemaIndex, SchemaOperation, SchemaPrimaryKey, SchemaTableAlterOperation, SchemaTableCreateOperation, SchemaTableDropOperation, SchemaUniqueConstraint } from 'src/types/migrations'
 import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
 import { ArkormException } from '../Exceptions/ArkormException'
+import type { DatabaseAdapter } from 'src/types/adapter'
 import { Migration } from '../database/Migration'
 import { SchemaBuilder } from '../database/SchemaBuilder'
 import { join } from 'node:path'
@@ -343,6 +343,36 @@ export const buildIndexLine = (index: SchemaIndex): string => {
 }
 
 /**
+ * Build a Prisma model-level composite primary key definition.
+ *
+ * @param primaryKey
+ * @returns
+ */
+export const buildPrimaryKeyLine = (primaryKey: SchemaPrimaryKey): string => {
+    const columns = primaryKey.columns.join(', ')
+    const named = typeof primaryKey.name === 'string' && primaryKey.name.trim().length > 0
+        ? `, name: "${primaryKey.name.replace(/"/g, '\\"')}"`
+        : ''
+
+    return `  @@id([${columns}]${named})`
+}
+
+/**
+ * Build a Prisma model-level composite unique constraint definition.
+ *
+ * @param constraint
+ * @returns
+ */
+export const buildUniqueConstraintLine = (constraint: SchemaUniqueConstraint): string => {
+    const columns = constraint.columns.join(', ')
+    const named = typeof constraint.name === 'string' && constraint.name.trim().length > 0
+        ? `, name: "${constraint.name.replace(/"/g, '\\"')}"`
+        : ''
+
+    return `  @@unique([${columns}]${named})`
+}
+
+/**
  * Derive a relation field name from a foreign key column name by applying 
  * common conventions, such as removing "Id" suffixes and converting to camelCase.
  * 
@@ -573,7 +603,10 @@ export const buildModelBlock = (operation: SchemaTableCreateOperation): string =
     const fields = operation.columns.map(buildFieldLine)
     const relations = (operation.foreignKeys ?? []).map(foreignKey => buildRelationLine(modelName, foreignKey, operation.columns))
     const indexes = (operation.indexes ?? []).map(buildIndexLine)
+    const uniqueConstraints = (operation.uniqueConstraints ?? []).map(buildUniqueConstraintLine)
     const metadata = [
+        ...(operation.primaryKey ? [buildPrimaryKeyLine(operation.primaryKey)] : []),
+        ...uniqueConstraints,
         ...indexes,
         ...(mapped ? [`  @@map("${str(operation.table).snake()}")`] : []),
     ]
@@ -702,6 +735,26 @@ export const applyAlterTableOperation = (
         const insertIndex = Math.max(1, bodyLines.length - 1)
         bodyLines.splice(insertIndex, 0, indexLine)
     })
+
+    if (operation.addPrimaryKey) {
+        const primaryKeyLine = buildPrimaryKeyLine(operation.addPrimaryKey)
+        const hasPrimaryKey = bodyLines.some(line => line.includes(' @id') || line.trim().startsWith('@@id('))
+        if (hasPrimaryKey)
+            throw new ArkormException(`Prisma model for table [${operation.table}] already defines a primary key.`)
+
+        const insertIndex = Math.max(1, bodyLines.length - 1)
+        bodyLines.splice(insertIndex, 0, primaryKeyLine)
+    }
+
+    for (const constraint of operation.addUniqueConstraints ?? []) {
+        const constraintLine = buildUniqueConstraintLine(constraint)
+        const exists = bodyLines.some(line => line.trim() === constraintLine.trim())
+        if (exists)
+            continue
+
+        const insertIndex = Math.max(1, bodyLines.length - 1)
+        bodyLines.splice(insertIndex, 0, constraintLine)
+    }
 
     for (const foreignKey of (operation.addForeignKeys ?? [])) {
         const relationLine = buildRelationLine(model.modelName, foreignKey, operation.addColumns)

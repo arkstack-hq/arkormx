@@ -21,12 +21,17 @@ export class SchemaBuilder {
     public createTable (table: string, callback: (table: TableBuilder) => void): this {
         const builder = new TableBuilder()
         callback(builder)
+        const primaryKey = builder.getPrimaryKey()
+        this.validateCompositePrimaryKey(table, primaryKey, builder.getColumns(), true)
+        this.validateCompositeUniqueConstraints(table, builder.getUniqueConstraints(), builder.getColumns(), true)
         this.operations.push({
             type: 'createTable',
             table,
             columns: builder.getColumns(),
             indexes: builder.getIndexes(),
             foreignKeys: builder.getForeignKeys(),
+            primaryKey,
+            uniqueConstraints: builder.getUniqueConstraints(),
         })
 
         return this
@@ -42,6 +47,9 @@ export class SchemaBuilder {
     public alterTable (table: string, callback: (table: TableBuilder) => void): this {
         const builder = new TableBuilder()
         callback(builder)
+        const primaryKey = builder.getPrimaryKey()
+        this.validateCompositePrimaryKey(table, primaryKey, builder.getColumns(), false)
+        this.validateCompositeUniqueConstraints(table, builder.getUniqueConstraints(), builder.getColumns(), false)
         this.operations.push({
             type: 'alterTable',
             table,
@@ -49,6 +57,8 @@ export class SchemaBuilder {
             dropColumns: builder.getDropColumns(),
             addIndexes: builder.getIndexes(),
             addForeignKeys: builder.getForeignKeys(),
+            addPrimaryKey: primaryKey,
+            addUniqueConstraints: builder.getUniqueConstraints(),
         })
 
         return this
@@ -88,6 +98,13 @@ export class SchemaBuilder {
                         columns: [...index.columns],
                     })),
                     foreignKeys: operation.foreignKeys.map(foreignKey => ({ ...foreignKey })),
+                    primaryKey: operation.primaryKey
+                        ? { ...operation.primaryKey, columns: [...operation.primaryKey.columns] }
+                        : undefined,
+                    uniqueConstraints: operation.uniqueConstraints?.map(constraint => ({
+                        ...constraint,
+                        columns: [...constraint.columns],
+                    })),
                 }
             }
 
@@ -104,10 +121,58 @@ export class SchemaBuilder {
                         columns: [...index.columns],
                     })),
                     addForeignKeys: operation.addForeignKeys.map(foreignKey => ({ ...foreignKey })),
+                    addPrimaryKey: operation.addPrimaryKey
+                        ? { ...operation.addPrimaryKey, columns: [...operation.addPrimaryKey.columns] }
+                        : undefined,
+                    addUniqueConstraints: operation.addUniqueConstraints?.map(constraint => ({
+                        ...constraint,
+                        columns: [...constraint.columns],
+                    })),
                 }
             }
 
             return { ...operation }
+        })
+    }
+
+    private validateCompositePrimaryKey (
+        table: string,
+        primaryKey: ReturnType<TableBuilder['getPrimaryKey']>,
+        columns: ReturnType<TableBuilder['getColumns']>,
+        requireColumns: boolean,
+    ): void {
+        if (!primaryKey)
+            return
+
+        if (columns.some(column => column.primary))
+            throw new Error(`Table [${table}] cannot combine column primary keys with a composite primary key.`)
+
+        if (!requireColumns)
+            return
+
+        primaryKey.columns.forEach((columnName) => {
+            const column = columns.find(candidate => candidate.name === columnName)
+            if (!column)
+                throw new Error(`Composite primary key column [${columnName}] was not found on table [${table}].`)
+            if (column.nullable)
+                throw new Error(`Composite primary key column [${columnName}] on table [${table}] cannot be nullable.`)
+        })
+    }
+
+    private validateCompositeUniqueConstraints (
+        table: string,
+        constraints: ReturnType<TableBuilder['getUniqueConstraints']>,
+        columns: ReturnType<TableBuilder['getColumns']>,
+        requireColumns: boolean,
+    ): void {
+        if (!requireColumns)
+            return
+
+        constraints.forEach((constraint) => {
+            constraint.columns.forEach((columnName) => {
+                if (!columns.some(column => column.name === columnName))
+                    throw new Error(`Composite unique constraint column [${columnName}] was not found on table [${table}].`)
+            })
         })
     }
 }
