@@ -47,6 +47,16 @@ export interface SchemaIndex {
     name?: string
 }
 
+export interface SchemaPrimaryKey {
+    columns: string[]
+    name?: string
+}
+
+export interface SchemaUniqueConstraint {
+    columns: string[]
+    name?: string
+}
+
 export type SchemaForeignKeyAction =
     | 'cascade'
     | 'restrict'
@@ -70,6 +80,8 @@ export interface SchemaTableCreateOperation {
     columns: SchemaColumn[]
     indexes: SchemaIndex[]
     foreignKeys: SchemaForeignKey[]
+    primaryKey?: SchemaPrimaryKey
+    uniqueConstraints?: SchemaUniqueConstraint[]
 }
 
 export interface SchemaTableAlterOperation {
@@ -79,6 +91,8 @@ export interface SchemaTableAlterOperation {
     dropColumns: string[]
     addIndexes: SchemaIndex[]
     addForeignKeys: SchemaForeignKey[]
+    addPrimaryKey?: SchemaPrimaryKey
+    addUniqueConstraints?: SchemaUniqueConstraint[]
 }
 
 export interface SchemaTableDropOperation {

@@ -587,6 +587,114 @@ describe('Database migration, seeding and factory helpers', () => {
         expect(manualPrimaryApplied.schema).toContain('id Int @id @default(42)')
         expect(manualPrimaryApplied.schema).toContain('slug String @id')
 
+        class CreateMembershipsMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('memberships', table => {
+                    table.integer('userId').map('user_id')
+                    table.integer('teamId').map('team_id')
+                    table.string('role')
+                    table.primary(['userId', 'teamId'], 'membershipIdentity')
+                    table.unique(['teamId', 'role'], 'membershipRoleIdentity')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('memberships')
+            }
+        }
+
+        const membershipPlan = await getMigrationPlan(CreateMembershipsMigration, 'up')
+        expect(membershipPlan[0]).toMatchObject({
+            type: 'createTable',
+            table: 'memberships',
+            primaryKey: {
+                columns: ['userId', 'teamId'],
+                name: 'membershipIdentity',
+            },
+            uniqueConstraints: [{
+                columns: ['teamId', 'role'],
+                name: 'membershipRoleIdentity',
+            }],
+        })
+
+        const membershipsApplied = await applyMigrationToPrismaSchema(CreateMembershipsMigration, {
+            schemaPath,
+        })
+        expect(membershipsApplied.schema).toContain('@@id([userId, teamId], name: "membershipIdentity")')
+        expect(membershipsApplied.schema).toContain('@@unique([teamId, role], name: "membershipRoleIdentity")')
+        expect(membershipsApplied.schema).not.toContain('userId Int @id')
+        expect(membershipsApplied.schema).not.toContain('teamId Int @id')
+
+        class CreateAssignmentsMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.createTable('assignments', table => {
+                    table.integer('accountId')
+                    table.string('code')
+                    table.string('source')
+                })
+            }
+
+            public async down (schema: SchemaBuilder): Promise<void> {
+                schema.dropTable('assignments')
+            }
+        }
+
+        class AddAssignmentsPrimaryKeyMigration extends Migration {
+            public async up (schema: SchemaBuilder): Promise<void> {
+                schema.alterTable('assignments', table => {
+                    table.primary(['accountId', 'code'])
+                    table.unique(['accountId', 'source'], 'assignmentSourceIdentity')
+                })
+            }
+
+            public async down (_schema: SchemaBuilder): Promise<void> {
+            }
+        }
+
+        await applyMigrationToPrismaSchema(CreateAssignmentsMigration, {
+            schemaPath,
+        })
+        const assignmentPlan = await getMigrationPlan(AddAssignmentsPrimaryKeyMigration, 'up')
+        expect(assignmentPlan[0]).toMatchObject({
+            type: 'alterTable',
+            addPrimaryKey: {
+                columns: ['accountId', 'code'],
+            },
+            addUniqueConstraints: [{
+                columns: ['accountId', 'source'],
+                name: 'assignmentSourceIdentity',
+            }],
+        })
+
+        const assignmentsApplied = await applyMigrationToPrismaSchema(AddAssignmentsPrimaryKeyMigration, {
+            schemaPath,
+        })
+        expect(assignmentsApplied.schema).toContain('@@id([accountId, code])')
+        expect(assignmentsApplied.schema).toContain('@@unique([accountId, source], name: "assignmentSourceIdentity")')
+
+        expect(() => new SchemaBuilder().createTable('invalid_memberships', table => {
+            table.integer('userId')
+            table.primary(['userId', 'missingId'])
+        })).toThrow('Composite primary key column [missingId] was not found')
+
+        expect(() => new SchemaBuilder().createTable('conflicting_memberships', table => {
+            table.id()
+            table.integer('teamId')
+            table.primary(['id', 'teamId'])
+        })).toThrow('cannot combine column primary keys with a composite primary key')
+
+        expect(() => new SchemaBuilder().createTable('invalid_unique_memberships', table => {
+            table.integer('userId')
+            table.unique(['userId', 'missingId'])
+        })).toThrow('Composite unique constraint column [missingId] was not found')
+
+        expect(() => new SchemaBuilder().createTable('duplicate_unique_memberships', table => {
+            table.integer('userId')
+            table.integer('teamId')
+            table.unique(['userId', 'teamId'])
+            table.unique(['userId', 'teamId'])
+        })).toThrow('has already been defined')
+
         class CreateTokensMigration extends Migration {
             public async up (schema: SchemaBuilder): Promise<void> {
                 schema.createTable('tokens', table => {

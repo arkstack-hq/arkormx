@@ -141,6 +141,78 @@ describe('PostgreSQL Kysely migration backend', () => {
         }
     })
 
+    it('creates composite primary key constraints with mapped columns', async () => {
+        const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        const tableName = `arkorm_composite_key_${suffix}`
+        const constraintName = `${tableName}_identity`
+        const uniqueConstraintName = `${tableName}_tenant_value_unique`
+
+        try {
+            await adapter.executeSchemaOperations?.([
+                {
+                    type: 'createTable',
+                    table: tableName,
+                    columns: [
+                        { name: 'tenantId', map: 'tenant_id', type: 'integer' },
+                        { name: 'slug', type: 'string' },
+                        { name: 'value', type: 'string' },
+                    ],
+                    indexes: [],
+                    foreignKeys: [],
+                    primaryKey: {
+                        columns: ['tenantId', 'slug'],
+                        name: constraintName,
+                    },
+                    uniqueConstraints: [{
+                        columns: ['tenantId', 'value'],
+                        name: uniqueConstraintName,
+                    }],
+                },
+            ])
+
+            const constraintResult = await sql<{ constraint_name: string, columns: string }>`
+                select
+                    constraint_name,
+                    array_to_string(array_agg(column_name order by ordinal_position), ',') as columns
+                from information_schema.key_column_usage
+                where table_name = ${tableName}
+                  and constraint_name = ${constraintName}
+                group by constraint_name
+            `.execute(db)
+
+            expect(constraintResult.rows).toEqual([
+                {
+                    constraint_name: constraintName,
+                    columns: 'tenant_id,slug',
+                },
+            ])
+
+            const uniqueConstraintResult = await sql<{ constraint_name: string, columns: string }>`
+                select
+                    constraint_name,
+                    array_to_string(array_agg(column_name order by ordinal_position), ',') as columns
+                from information_schema.key_column_usage
+                where table_name = ${tableName}
+                  and constraint_name = ${uniqueConstraintName}
+                group by constraint_name
+            `.execute(db)
+
+            expect(uniqueConstraintResult.rows).toEqual([
+                {
+                    constraint_name: uniqueConstraintName,
+                    columns: 'tenant_id,value',
+                },
+            ])
+        } finally {
+            await adapter.executeSchemaOperations?.([
+                {
+                    type: 'dropTable',
+                    table: tableName,
+                },
+            ])
+        }
+    })
+
     it('prefixes implicit enum type names with the table name to avoid collisions across tables', async () => {
         const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
         const usersTable = `arkorm_users_${suffix}`

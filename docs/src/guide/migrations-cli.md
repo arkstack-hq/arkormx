@@ -103,6 +103,60 @@ them against the database or apply them to Prisma schema text.
 | `softDeletes(column?)`                               | Add a nullable soft-delete timestamp.                  |
 | `morphs(name)` / `nullableMorphs(name)`              | Add polymorphic type and id columns.                   |
 
+Define a composite primary key at table level:
+
+```ts
+schema.createTable('memberships', (table) => {
+  table.integer('userId').map('user_id');
+  table.integer('teamId').map('team_id');
+  table.string('role');
+
+  table.primary(['userId', 'teamId'], 'membershipIdentity');
+});
+```
+
+The optional second argument names the constraint. Composite primary keys are
+emitted as Prisma `@@id` declarations and database-level `PRIMARY KEY`
+constraints. They can also be added through `alterTable()`:
+
+```ts
+schema.alterTable('assignments', (table) => {
+  table.primary(['accountId', 'code']);
+});
+```
+
+Composite keys must contain at least two unique, non-nullable columns and
+cannot be combined with a column-level `primary()` or `id()` definition.
+Arkorm model identity helpers currently use a single configured primary-key
+attribute; composite-key support here applies to schema creation and
+migrations.
+
+Define a composite unique constraint with the same table-level syntax:
+
+```ts
+schema.createTable('memberships', (table) => {
+  table.integer('teamId');
+  table.string('role');
+  table.unique(['teamId', 'role'], 'membershipRoleIdentity');
+});
+```
+
+The optional second argument names the constraint. Without a name, the
+database adapter chooses one. Prisma schema generation emits an equivalent
+`@@unique([teamId, role])` model attribute.
+
+Composite unique constraints can also be added while altering a table:
+
+```ts
+schema.alterTable('memberships', (table) => {
+  table.unique(['teamId', 'role']);
+});
+```
+
+Each composite unique constraint must contain at least two distinct,
+non-empty column names. During table creation, every referenced column must
+be defined in the same table callback.
+
 Column modifiers can be chained from a column definition:
 
 ```ts
