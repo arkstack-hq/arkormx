@@ -69,6 +69,7 @@ export interface QuerySelectColumn {
     column: string
     alias?: string
     raw?: boolean
+    wildcard?: boolean
 }
 
 export interface QueryOrderBy {

@@ -598,7 +598,10 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         if (!columns || columns.length === 0)
             return sql.raw('*')
 
-        return sql.join(columns.map(({ column, alias, raw }) => {
+        return sql.join(columns.map(({ column, alias, raw, wildcard }) => {
+            if (wildcard)
+                return sql.raw('*')
+
             if (raw) {
                 const expression = sql.raw(column)
 

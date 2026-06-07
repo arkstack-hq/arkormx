@@ -78,6 +78,14 @@ describe('adapter-first typing', () => {
 
     it('infers query helper payloads from the model generic', () => {
         const query = Product.query()
+        const _withTrashedQuery = Product.withTrashed()
+        const _onlyTrashedQuery = Product.onlyTrashed()
+
+        expectTypeOf<ReturnType<typeof query.first>>().toEqualTypeOf<Promise<Product | null>>()
+        expectTypeOf<ReturnType<typeof query.firstOrFail>>().toEqualTypeOf<Promise<Product>>()
+        expectTypeOf<ReturnType<typeof query.get>>().toEqualTypeOf<Promise<ArkormCollection<Product>>>()
+        expectTypeOf<ReturnType<typeof _withTrashedQuery.firstOrFail>>().toEqualTypeOf<Promise<Product>>()
+        expectTypeOf<ReturnType<typeof _onlyTrashedQuery.firstOrFail>>().toEqualTypeOf<Promise<Product>>()
 
         query.whereKey('name', 'Desk')
         query.whereKey('price', 99)

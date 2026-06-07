@@ -177,6 +177,9 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             })
         }
 
+        if (columns.some(column => column.wildcard))
+            return undefined
+
         return columns.reduce<PrismaLikeSelect>((select, column) => {
             select[column.column] = true
 
