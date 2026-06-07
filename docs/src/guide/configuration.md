@@ -47,7 +47,7 @@ class AppURLDriver extends URLDriver {}
 export default defineConfig({
   adapter: createKyselyAdapter(db),
   naming: {
-    modelTableCase: 'snake',
+    case: 'snake',
   },
   features: {
     persistedColumnMappings: true,
@@ -92,7 +92,7 @@ export default defineConfig({
 | `client` (optional)                   | Runtime client instance or resolver function for compatibility mode, CLI flows, and transaction fallback when no adapter transaction path is available.         |
 | `prisma` (optional, deprecated alias) | Prisma client instance or resolver function kept for 2.x compatibility with older config.                                                                       |
 | `adapter`                             | Optional global adapter applied automatically to models that do not define their own adapter.                                                                   |
-| `naming.modelTableCase`               | Inferred model table-name casing strategy (`'snake'` default, also supports `'camel'`, `'kebab'`, and `'studly'`).                                              |
+| `naming.case`                         | Casing strategy for inferred database identifiers (`'snake'` default, also supports `'camel'`, `'kebab'`, and `'studly'`).                                    |
 | `features.persistedColumnMappings`    | Enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`. |
 | `features.persistedEnums`             | Enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.                                                  |
 | `boot`                                | Optional low-level synchronous hook for advanced runtime binding work.                                                                                          |
@@ -105,6 +105,9 @@ export default defineConfig({
 | `paths.migrations`                    | Generated migration directory.                                                                                                                                  |
 | `paths.buildOutput`                   | Build output root used to map runtime files in production.                                                                                                      |
 | `outputExt`                           | Preferred generated extension (`'ts'` by default, falls back to `'js'` when TypeScript is unavailable).                                                         |
+
+`naming.modelTableCase` is deprecated. It remains available as a compatibility
+alias for `naming.case` during the 2.x transition.
 
 For event phases, query inspection, and structured exceptions, see
 [Observability and Errors](./observability-errors.md).

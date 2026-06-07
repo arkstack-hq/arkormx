@@ -70,11 +70,36 @@ describe('runtime config defaults', () => {
 
         configureArkormRuntime(() => ({}), {
             naming: {
+                case: 'camel',
+            },
+        })
+
+        expect(RuntimeBlogPost.getTable()).toBe('runtimeBlogPosts')
+    })
+
+    it('supports the deprecated modelTableCase naming alias', () => {
+        class RuntimeBlogPost extends Model { }
+
+        configureArkormRuntime(() => ({}), {
+            naming: {
                 modelTableCase: 'camel',
             },
         })
 
         expect(RuntimeBlogPost.getTable()).toBe('runtimeBlogPosts')
+    })
+
+    it('prefers naming.case over the deprecated modelTableCase alias', () => {
+        class RuntimeBlogPost extends Model { }
+
+        configureArkormRuntime(() => ({}), {
+            naming: {
+                case: 'kebab',
+                modelTableCase: 'camel',
+            },
+        })
+
+        expect(RuntimeBlogPost.getTable()).toBe('runtime-blog-posts')
     })
 
     it('uses a configured global adapter for models without model-specific bindings', () => {

@@ -55,7 +55,7 @@ import { defineConfig } from 'arkormx';
 
 export default defineConfig({
   naming: {
-    modelTableCase: 'camel', // 'snake' (default), 'camel', 'kebab', 'studly'
+    case: 'camel', // 'snake' (default), 'camel', 'kebab', 'studly'
   },
 });
 ```

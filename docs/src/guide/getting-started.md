@@ -67,7 +67,7 @@ export class User extends Model {}
 For conventional models, Arkorm can infer the runtime table/delegate name from
 the model class. Add `delegate` or `table` only when your storage name differs
 from that convention. The inferred fallback uses plural snake case by default
-and can be customized with `defineConfig({ naming: { modelTableCase: ... } })`.
+and can be customized with `defineConfig({ naming: { case: ... } })`.
 
 ## 4. Run queries
 
