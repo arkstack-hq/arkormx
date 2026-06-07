@@ -8,7 +8,7 @@ import {
     getMigrationPlan,
     runMigrationWithPrisma,
 } from '../../src'
-import { User, setupCoreRuntime } from './helpers/core-fixtures'
+import { Post, Role, User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it } from 'vitest'
 import { deriveCollectionFieldName, deriveRelationAlias, deriveSingularFieldName } from '../../src/helpers/migrations'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
@@ -27,6 +27,7 @@ describe('Database migration, seeding and factory helpers', () => {
 
             protected definition (sequence: number) {
                 return {
+                    id: 2000 + sequence,
                     name: `User ${sequence}`,
                     email: `user${sequence}@example.com`,
                     password: 'secret',
@@ -56,6 +57,145 @@ describe('Database migration, seeding and factory helpers', () => {
         const directFactory = new UserFactory().count(1)
         const directModel = directFactory.make()
         expect(directModel.getAttribute('name')).toBe('User 0')
+    })
+
+    it('supports has, for, hasAttached, and recycle factory relationships', async () => {
+        class UserFactory extends ModelFactory<User> {
+            protected model = User
+
+            protected definition (sequence: number) {
+                return {
+                    id: 2000 + sequence,
+                    name: `User ${sequence}`,
+                    email: `user${sequence}@example.com`,
+                    password: 'secret',
+                    isActive: 1,
+                }
+            }
+        }
+
+        class PostFactory extends ModelFactory<Post> {
+            protected model = Post
+
+            protected definition (sequence: number) {
+                return {
+                    title: `Post ${sequence}`,
+                }
+            }
+        }
+
+        class RoleFactory extends ModelFactory<Role> {
+            protected model = Role
+
+            protected definition (sequence: number) {
+                return {
+                    id: 4000 + sequence,
+                    name: `Role ${sequence}`,
+                }
+            }
+        }
+
+        User.setFactory(UserFactory)
+
+        const user = await User.factory<UserFactory>()
+            .has(new PostFactory().count(2))
+            .hasAttached(new RoleFactory().count(2), { approved: true })
+            .create()
+
+        const posts = await user.posts().orderBy({ id: 'asc' }).getResults()
+        expect(posts.all().map(post => post.getAttribute('userId'))).toEqual([
+            user.getAttribute('id'),
+            user.getAttribute('id'),
+        ])
+
+        const roles = await user.roles().wherePivot('approved', true).orderBy({ id: 'asc' }).getResults()
+        expect(roles.all().map(role => role.getAttribute('name'))).toEqual(['Role 0', 'Role 1'])
+
+        let madeParentId: unknown
+        let createdParentId: unknown
+        const postWithParentFactory = new PostFactory()
+            .for(new UserFactory()
+                .afterMaking((parent) => {
+                    madeParentId = parent.getAttribute('id')
+                })
+                .afterCreating((parent) => {
+                    createdParentId = parent.getAttribute('id')
+                }))
+        const madePostWithParent = await postWithParentFactory.makeAsync()
+        expect(madeParentId).toBe(2000)
+        expect(createdParentId).toBe(2000)
+        expect(typeof madePostWithParent.getAttribute('userId')).toBe('number')
+
+        const postWithParent = await postWithParentFactory.create()
+        expect(typeof postWithParent.getAttribute('userId')).toBe('number')
+
+        const recycledUser = await User.query().find(1)
+        if (!recycledUser)
+            throw new Error('Expected recycled user to exist.')
+
+        const recycledPost = await new PostFactory()
+            .for(new UserFactory())
+            .recycle(recycledUser)
+            .create()
+        expect(recycledPost.getAttribute('userId')).toBe(1)
+    })
+
+    it('supports dependent definitions, configured callbacks, and ordered states', async () => {
+        const callbacks: string[] = []
+
+        class UserFactory extends ModelFactory<User> {
+            protected model = User
+
+            protected definition (sequence: number) {
+                return {
+                    id: 5000 + sequence,
+                    name: `User ${sequence}`,
+                    email: `dependent-user${sequence}@example.com`,
+                    password: 'secret',
+                    isActive: 1,
+                }
+            }
+        }
+
+        class DependentPostFactory extends ModelFactory<Post, Record<string, unknown>> {
+            protected model = Post
+
+            protected override configure (): void {
+                this.afterMaking((post) => {
+                    callbacks.push(`making:${String(post.getAttribute('title'))}`)
+                })
+                this.afterCreating((post) => {
+                    callbacks.push(`created:${String(post.getAttribute('title'))}`)
+                })
+            }
+
+            protected definition (_sequence: number) {
+                return {
+                    userId: new UserFactory(),
+                    status: 'draft',
+                    title: (attributes: Record<string, unknown>) => `Post for ${String(attributes.userId)} (${String(attributes.status)})`,
+                }
+            }
+        }
+
+        const post = await new DependentPostFactory()
+            .state(attributes => ({
+                ...attributes,
+                status: 'active',
+            }))
+            .create()
+
+        const userId = post.getAttribute('userId')
+        expect(typeof userId).toBe('number')
+        expect(post.getAttribute('title')).toBe(`Post for ${String(userId)} (active)`)
+        expect(callbacks).toEqual([
+            `making:Post for ${String(userId)} (active)`,
+            `created:Post for ${String(userId)} (active)`,
+        ])
+
+        expect(() => new DependentPostFactory().make()).toThrow(
+            'This factory definition creates a related model.'
+        )
     })
 
     it('supports async factory definitions through explicit async factory methods', async () => {
@@ -124,10 +264,17 @@ describe('Database migration, seeding and factory helpers', () => {
             }
         }
 
-        await new RootSeeder().run()
+        const report = await Seeder.runWithReport(new RootSeeder())
 
         const users = await User.query().whereIn('id', [100, 101]).orderBy({ id: 'asc' }).get()
         expect(users.all().map(model => model.getAttribute('id'))).toEqual([100, 100, 101, 101])
+        expect(report).toEqual([
+            'RootSeeder',
+            'SeedOne',
+            'SeedTwo',
+            'SeedOne',
+            'SeedTwo',
+        ])
     })
 
     it('supports migration schema planning and prisma schema mutation workflow', async () => {

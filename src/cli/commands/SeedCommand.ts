@@ -1,10 +1,10 @@
 import { existsSync, readdirSync } from 'node:fs'
+import { getRegisteredPaths, getRegisteredSeeders } from '../../helpers/runtime-registry'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
-import { SEEDER_BRAND } from '../../database/Seeder'
-import { getRegisteredPaths, getRegisteredSeeders } from '../../helpers/runtime-registry'
+import { SEEDER_BRAND, Seeder } from '../../database/Seeder'
 import { join } from 'node:path'
 
 type SeederInstanceLike = {
@@ -48,11 +48,15 @@ export class SeedCommand extends Command<CliApp> {
         if (classes.length === 0)
             return void this.error('ERROR: No seeder classes found to run.')
 
-        for (const SeederClassItem of classes)
-            await new SeederClassItem().run()
+        const executedSeeders: string[] = []
+        for (const SeederClassItem of classes) {
+            executedSeeders.push(...await Seeder.runWithReport(
+                new SeederClassItem() as Seeder
+            ))
+        }
 
         this.success('Database seeding completed')
-        classes.forEach(cls => this.success(this.app.splitLogger('Seeded', cls.name)))
+        executedSeeders.forEach(name => this.success(this.app.splitLogger('Seeded', name)))
     }
 
     /**
