@@ -108,13 +108,13 @@ importers:
       arkormx:
         specifier: workspace:^
         version: link:../..
+      clear-router:
+        specifier: ^2.8.6
+        version: 2.8.6(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
     devDependencies:
-      clear-router:
-        specifier: ^2.8.2
-        version: 2.8.2(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
       express:
         specifier: ^5.2.1
         version: 5.2.1
@@ -1620,8 +1620,8 @@ packages:
   citty@0.2.1:
     resolution: {integrity: sha512-kEV95lFBhQgtogAPlQfJJ0WGVSokvLr/UEoFPiKKOXF7pl98HfUVUD0ejsuTCld/9xH9vogSywZ5KqHzXrZpqg==}
 
-  clear-router@2.8.2:
-    resolution: {integrity: sha512-53qN9Fc5RvwGuxsRbLmizCDT1TzwbsazVfb9A0nRnZlWDI0za//KbF249AGeFJoQII3R5CKn1kGeQML6XXk4cQ==}
+  clear-router@2.8.6:
+    resolution: {integrity: sha512-9NCCaS92fKvEESjNSXJVHUPxtThqdllrK6U/GWBJS/z/+9IubHUH2npB3Rifnlsh8LpKDq59bTJWwMHP0LH4gw==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
       '@h3ravel/support': ^0.15.11
@@ -4936,7 +4936,7 @@ snapshots:
 
   citty@0.2.1: {}
 
-  clear-router@2.8.2(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
+  clear-router@2.8.6(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
     dependencies:
       jiti: 2.7.0
     optionalDependencies:
