@@ -105,7 +105,16 @@ export default defineVersionedConfig({
         ],
         sidebar: {
             root: sidebar2x,
-            '1.x': sidebar
+            '1.x': [...sidebar].map((e) => {
+                e.items = [...e.items ?? []].map(e => {
+                    if ([
+                        '/guide/adapters',
+                        '/guide/observability-errors'
+                    ].includes(e.link ?? '')) return {}
+                    return e
+                })
+                return e
+            })
         },
         socialLinks: [
             { icon: 'discord', link: 'https://discord.gg/jmQybxKQ7R' },
