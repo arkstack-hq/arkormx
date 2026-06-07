@@ -1,7 +1,7 @@
 import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex, SchemaPrimaryKey, SchemaUniqueConstraint } from 'src/types'
-import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
+import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
 
 const PRISMA_ENUM_MEMBER_REGEX = /^[A-Za-z][A-Za-z0-9_]*$/
 
@@ -399,6 +399,19 @@ export class TableBuilder {
     }
 
     /**
+     * Defines columns for a polymorphic relationship in the table with UUID ID.
+     * 
+     * @param name    The base name for the polymorphic relationship columns.
+     * @returns 
+     */
+    public uuidMorphs (name: string, nullable = false): this {
+        this.string(`${name}Type`, { nullable })
+        this.uuid(`${name}Id`, { nullable })
+
+        return this
+    }
+
+    /**
      * Defines nullable columns for a polymorphic relationship in the table.
      * 
      * @param name  The base name for the polymorphic relationship columns.
@@ -406,6 +419,16 @@ export class TableBuilder {
      */
     public nullableMorphs (name: string): this {
         return this.morphs(name, true)
+    }
+
+    /**
+     * Defines nullable columns for a polymorphic relationship in the table with UUID ID.
+     * 
+     * @param name  The base name for the polymorphic relationship columns.
+     * @returns 
+     */
+    public nullableUuidMorphs (name: string): this {
+        return this.uuidMorphs(name, true)
     }
 
     /**
