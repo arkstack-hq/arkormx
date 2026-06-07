@@ -34,6 +34,7 @@ export default defineConfig(
             'docs/.vitepress/**',
             '**bin/**',
             '**dist/**',
+            '**/dist',
             '**build/**',
             '**node_modules/**',
         ])
