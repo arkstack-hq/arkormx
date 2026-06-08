@@ -272,9 +272,22 @@ images
 ```ts
 class User extends Model {
   avatar() {
-    return this.morphOne(Image, 'imageable', 'id');
+    return this.morphOne(Image, 'imageable');
   }
 }
+```
+
+Arkorm infers `imageable_id` and `imageable_type` using `naming.case`. Override
+the inferred columns and local key with positional arguments:
+
+```ts
+return this.morphOne(
+  Image,
+  'imageable',
+  'owner_id',
+  'owner_type',
+  'uuid',
+);
 ```
 
 ### morphMany
@@ -298,9 +311,15 @@ comments
 ```ts
 class Post extends Model {
   comments() {
-    return this.morphMany(Comment, 'commentable', 'id');
+    return this.morphMany(Comment, 'commentable');
   }
 }
+```
+
+`morphMany` uses the same argument order as `morphOne`:
+
+```ts
+morphMany(related, name, idColumn?, typeColumn?, localKey?);
 ```
 
 ### morphToMany
@@ -328,15 +347,15 @@ taggables
 ```ts
 class Post extends Model {
   tags() {
-    return this.morphToMany(Tag, 'taggables');
+    return this.morphToMany(Tag, 'taggable');
   }
 }
 ```
 
 With the conventional pivot structure above, only the related model and pivot
-table are required. Arkorm infers:
+name are required. Arkorm infers:
 
-- Morph name `taggable` from the singular form of `taggables`
+- Pivot table `taggables` from the plural form of `taggable`
 - Morph columns `taggable_id` and `taggable_type`
 - Related pivot key `tag_id` from the related `Tag` model and its `id` key
 - Parent and related keys from each model's configured primary key
@@ -350,11 +369,28 @@ overridden:
 ```ts
 return this.morphToMany(
   Tag,
-  'customTagLinks',
   'taggable',
-  'tagReferenceId',
-  'id',
-  'id',
+  'custom_tag_links',
+  'owner_id',
+  'owner_type',
+  'tag_reference_id',
+  'uuid',
+  'tag_uuid',
+);
+```
+
+The complete positional signature is:
+
+```ts
+morphToMany(
+  related,
+  name,
+  table?,
+  foreignPivotKey?,
+  typeColumn?,
+  relatedPivotKey?,
+  parentKey?,
+  relatedKey?,
 );
 ```
 

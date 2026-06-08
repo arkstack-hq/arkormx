@@ -283,7 +283,7 @@ export class User extends Model<'user'> {
     }
 
     public tags () {
-        return this.morphToMany(Tag, 'taggables')
+        return this.morphToMany(Tag, 'taggable')
     }
 
     public getDisplayNameAttribute (): string {
