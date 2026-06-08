@@ -9,11 +9,12 @@ import {
     seedPostgresFixtures,
     setPostgresModelAdapter,
 } from './helpers/fixtures'
-import { Kysely, PostgresDialect } from 'kysely'
+import { Kysely, PostgresDialect, sql } from 'kysely'
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
     ArkormCollection,
     type DatabaseAdapter,
+    Model,
     QueryExecutionException,
     QueryBuilder,
     createKyselyAdapter,
@@ -161,6 +162,101 @@ describe('PostgreSQL Kysely adapter', () => {
         })
 
         expect(deleted?.email).toBe('kysely@example.com')
+    })
+
+    it('persists only dirty model attributes and serializes JSON casts', async () => {
+        const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+        const tableName = `arkorm_json_updates_${suffix}`
+
+        class JsonRecord extends Model {
+            protected static override table = tableName
+            protected override casts = {
+                payload: 'json',
+                createdAt: 'date',
+                updatedAt: 'date',
+            } as const
+
+            public static override getModelMetadata () {
+                return {
+                    ...super.getModelMetadata(),
+                    timestampColumns: [
+                        { column: 'createdAt', default: 'now()' as const },
+                        { column: 'updatedAt', updatedAt: true },
+                    ],
+                }
+            }
+        }
+
+        await sql`
+            create table ${sql.table(tableName)} (
+                id serial primary key,
+                payload jsonb not null,
+                score integer not null,
+                "createdAt" timestamptz not null default now(),
+                "updatedAt" timestamptz not null default now()
+            )
+        `.execute(db)
+        await sql`
+            insert into ${sql.table(tableName)} (payload, score)
+            values (${JSON.stringify([{ code: 'A' }])}::jsonb, 1)
+        `.execute(db)
+
+        const updateSpy = vi.spyOn(kyselyAdapter, 'update')
+        const insertSpy = vi.spyOn(kyselyAdapter, 'insert')
+        JsonRecord.setAdapter(kyselyAdapter)
+
+        try {
+            const record = await JsonRecord.query().find(1)
+            expect(record).not.toBeNull()
+            expect(record?.getAttribute('payload')).toEqual([{ code: 'A' }])
+
+            record?.setAttribute('score', 2)
+            await record?.save()
+
+            const unrelatedUpdate = updateSpy.mock.calls.at(-1)?.[0].values
+            expect(unrelatedUpdate).toMatchObject({
+                score: 2,
+                updatedAt: expect.any(Date),
+            })
+            expect(unrelatedUpdate).not.toHaveProperty('id')
+            expect(unrelatedUpdate).not.toHaveProperty('payload')
+            expect(unrelatedUpdate).not.toHaveProperty('createdAt')
+
+            record?.setAttribute('payload', [{ code: 'B' }, { code: 'C' }])
+            await record?.save()
+
+            const jsonUpdate = updateSpy.mock.calls.at(-1)?.[0].values
+            expect(jsonUpdate?.payload).toBe('[{"code":"B"},{"code":"C"}]')
+            expect(jsonUpdate).not.toHaveProperty('id')
+            expect(jsonUpdate).not.toHaveProperty('createdAt')
+            expect(jsonUpdate?.updatedAt).toBeInstanceOf(Date)
+
+            const persisted = await sql<{ payload: unknown, score: number }>`
+                select payload, score
+                from ${sql.table(tableName)}
+                where id = 1
+            `.execute(db)
+            expect(persisted.rows[0]).toEqual({
+                payload: [{ code: 'B' }, { code: 'C' }],
+                score: 2,
+            })
+
+            const created = new JsonRecord({
+                payload: [{ code: 'D' }],
+                score: 3,
+            })
+            await created.save()
+
+            const insertValues = insertSpy.mock.calls.at(-1)?.[0].values
+            expect(insertValues?.payload).toBe('[{"code":"D"}]')
+            expect(insertValues?.createdAt).toBeInstanceOf(Date)
+            expect(insertValues?.updatedAt).toBeInstanceOf(Date)
+        } finally {
+            updateSpy.mockRestore()
+            insertSpy.mockRestore()
+            JsonRecord.setAdapter(undefined)
+            await sql`drop table if exists ${sql.table(tableName)}`.execute(db)
+        }
     })
 
     it('supports core QueryBuilder CRUD and pagination against Postgres', async () => {

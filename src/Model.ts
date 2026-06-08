@@ -842,7 +842,7 @@ export abstract class Model<
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
 
-            const payload = this.getRawAttributes()
+            const payload = this.normalizePersistenceAttributes(this.getRawAttributes())
             const model = await constructor.query().create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
@@ -857,7 +857,8 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
 
-        const payload = this.getRawAttributes()
+        const payload = this.normalizePersistenceAttributes(this.getDirtyAttributes())
+        delete payload[primaryKey]
         const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
@@ -1576,6 +1577,25 @@ export abstract class Model<
 
             return dirty
         }, {})
+    }
+
+    /**
+     * Normalize built-in persistence casts without re-running arbitrary custom setters.
+     *
+     * @param attributes
+     * @returns
+     */
+    private normalizePersistenceAttributes (
+        attributes: Record<string, unknown>,
+    ): Record<string, unknown> {
+        return Object.entries(attributes)
+            .reduce<Record<string, unknown>>((normalized, [key, value]) => {
+                normalized[key] = this.casts[key] === 'json'
+                    ? resolveCast('json').set(value)
+                    : value
+
+                return normalized
+            }, {})
     }
 
     /**
