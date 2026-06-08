@@ -378,6 +378,54 @@ describe('runtime config defaults', () => {
         expect(User.getAdapter()).toBe(getUserConfig('adapter'))
     })
 
+    it('auto-registers exported models from the configured models path', async () => {
+        const workspace = makeTempDir('arkormx-runtime-config-auto-models-')
+        const modelsDirectory = join(workspace, 'src', 'models', 'admin')
+
+        mkdirSync(modelsDirectory, { recursive: true })
+        process.chdir(workspace)
+
+        writeFileSync(join(workspace, 'arkormx.config.js'), [
+            'export default {',
+            '  paths: {',
+            '    models: "./src/models",',
+            '  },',
+            '}',
+            '',
+        ].join('\n'))
+
+        writeFileSync(join(modelsDirectory, 'AdminUser.ts'), [
+            `import { Model } from ${JSON.stringify(join(originalCwd, 'src', 'Model.ts'))}`,
+            'export class AdminUser extends Model {}',
+            'export const notAModel = class NotAModel {}',
+            '',
+        ].join('\n'))
+
+        await loadArkormConfig()
+
+        expect(getRegisteredModels().map(model => model.name)).toContain('AdminUser')
+        expect(getRegisteredModels().map(model => model.name)).not.toContain('NotAModel')
+    })
+
+    it('auto-registers exported models from loadModelsFrom paths', async () => {
+        const workspace = makeTempDir('arkormx-runtime-config-added-models-')
+        const modelsDirectory = join(workspace, 'packages', 'audit', 'models')
+
+        mkdirSync(modelsDirectory, { recursive: true })
+        process.chdir(workspace)
+
+        writeFileSync(join(modelsDirectory, 'AuditLog.ts'), [
+            `import { Model } from ${JSON.stringify(join(originalCwd, 'src', 'Model.ts'))}`,
+            'export default class AuditLog extends Model {}',
+            '',
+        ].join('\n'))
+
+        loadModelsFrom(modelsDirectory)
+        await loadArkormConfig()
+
+        expect(getRegisteredModels().map(model => model.name)).toContain('AuditLog')
+    })
+
     it('applies the configured global adapter to models defined outside the configured models path', async () => {
         const workspace = makeTempDir('arkormx-runtime-config-external-models-')
         process.chdir(workspace)

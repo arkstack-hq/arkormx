@@ -8,6 +8,7 @@ import {
     HasOneThroughRelation,
     MorphManyRelation,
     MorphOneRelation,
+    MorphToRelation,
     MorphToManyRelation,
     Relation,
 } from './relationship'
@@ -1455,6 +1456,51 @@ export abstract class Model<
             columns.idColumn,
             columns.typeColumn,
             localKey ?? constructor.getPrimaryKey(),
+        )
+    }
+
+    /**
+     * Define the inverse side of a polymorphic relationship.
+     *
+     * @param morphName
+     * @param typeColumnOrRelated
+     * @param idColumn
+     * @param ownerKey
+     * @returns
+     */
+    protected morphTo<TRelatedClass extends RelatedModelClass> (
+        morphName: string,
+        related: TRelatedClass,
+        idColumn?: string,
+        ownerKey?: string,
+    ): MorphToRelation<this, InstanceType<TRelatedClass>>
+    protected morphTo<TRelated extends Model = Model> (
+        morphName: string,
+        typeColumn?: string,
+        idColumn?: string,
+        ownerKey?: string,
+    ): MorphToRelation<this, TRelated>
+    protected morphTo (
+        morphName: string,
+        typeColumnOrRelated?: string | RelatedModelClass,
+        idColumn?: string,
+        ownerKey?: string,
+    ): MorphToRelation<this, Model> {
+        const related = typeof typeColumnOrRelated === 'function'
+            ? typeColumnOrRelated
+            : undefined
+        const typeColumn = typeof typeColumnOrRelated === 'string'
+            ? typeColumnOrRelated
+            : undefined
+        const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
+
+        return new MorphToRelation<this, Model>(
+            this,
+            morphName,
+            columns.typeColumn,
+            columns.idColumn,
+            ownerKey,
+            related,
         )
     }
 

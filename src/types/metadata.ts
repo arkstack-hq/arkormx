@@ -28,6 +28,7 @@ export type RelationMetadataType =
     | 'hasManyThrough'
     | 'morphOne'
     | 'morphMany'
+    | 'morphTo'
     | 'morphToMany'
 
 interface BaseRelationMetadata {
@@ -102,6 +103,14 @@ export interface MorphManyRelationMetadata extends BaseRelationMetadata {
     localKey: string
 }
 
+export interface MorphToRelationMetadata {
+    type: 'morphTo'
+    morphName: string
+    morphIdColumn: string
+    morphTypeColumn: string
+    ownerKey?: string
+}
+
 export interface MorphToManyRelationMetadata extends BaseRelationMetadata {
     type: 'morphToMany'
     throughTable: string
@@ -122,4 +131,5 @@ export type RelationMetadata =
     | HasManyThroughRelationMetadata
     | MorphOneRelationMetadata
     | MorphManyRelationMetadata
+    | MorphToRelationMetadata
     | MorphToManyRelationMetadata

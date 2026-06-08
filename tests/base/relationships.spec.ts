@@ -1,4 +1,4 @@
-import { ArkormCollection, Model, PivotModel, QueryBuilder, RelationResolutionException, configureArkormRuntime, createPrismaDatabaseAdapter } from '../../src'
+import { ArkormCollection, Model, PivotModel, QueryBuilder, RelationResolutionException, configureArkormRuntime, createPrismaDatabaseAdapter, registerModels } from '../../src'
 import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
@@ -96,14 +96,44 @@ describe('Model relationships', () => {
     })
 
     it('supports polymorphic relations', async () => {
+        registerModels(User, Post)
+
         const user = await User.query().find(1)
         expect(user).not.toBeNull()
 
         const comments = await user?.comments().getResults()
         const tags = await user?.tags().getResults()
+        const userComment = await Comment.query().find(1000)
+        const postComment = await Comment.query().find(1001)
+        const commentUser = await userComment?.commentable().getResults()
+        const commentPost = await postComment?.commentable().getResults()
 
         expect((comments as ArkormCollection<Comment>).all().length).toBe(1)
         expect((tags as ArkormCollection<Tag>).all().length).toBe(2)
+        expect(commentUser).toBeInstanceOf(User)
+        expect(commentUser?.getAttribute('id')).toBe(1)
+        expect(commentPost).toBeInstanceOf(Post)
+        expect(commentPost?.getAttribute('id')).toBe(100)
+    })
+
+    it('accepts a model constructor for morph-to resolution', async () => {
+        const comment = await Comment.query().find(1000)
+        expect(comment).not.toBeNull()
+        if (!comment)
+            throw new Error('Expected comment to exist.')
+
+        class ConstructorComment extends Model {
+            public commentable () {
+                return this.morphTo('commentable', User)
+            }
+        }
+
+        const constructorComment = ConstructorComment.hydrate(comment.getRawAttributes())
+        const related = await constructorComment.commentable().getResults()
+
+        expectTypeOf(related).toEqualTypeOf<User | null>()
+        expect(related).toBeInstanceOf(User)
+        expect(related?.getAttribute('id')).toBe(1)
     })
 
     it('exposes relation metadata from model relationship definitions', () => {
@@ -138,7 +168,26 @@ describe('Model relationships', () => {
             parentKey: 'id',
             relatedKey: 'id',
         })
+        expect(Comment.getRelationMetadata('commentable')).toMatchObject({
+            type: 'morphTo',
+            morphName: 'commentable',
+            morphIdColumn: 'commentableId',
+            morphTypeColumn: 'commentableType',
+        })
         expect(User.getRelationMetadata('missing')).toBeNull()
+    })
+
+    it('eager loads mixed morph-to model types', async () => {
+        registerModels(User, Post)
+
+        const comments = await Comment.query()
+            .with('commentable')
+            .orderBy({ id: 'asc' })
+            .get()
+        const loaded = comments.all()
+
+        expect(loaded[0]?.getAttribute('commentable')).toBeInstanceOf(User)
+        expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
     })
 
     it('uses naming.case for inferred morph-to-many pivot columns', () => {
@@ -164,6 +213,17 @@ describe('Model relationships', () => {
             morphIdColumn: 'taggable_id',
             morphTypeColumn: 'taggable_type',
             relatedPivotKey: 'tag_id',
+        })
+
+        class SnakeComment extends Model {
+            public commentable () {
+                return this.morphTo('commentable')
+            }
+        }
+
+        expect(SnakeComment.getRelationMetadata('commentable')).toMatchObject({
+            morphIdColumn: 'commentable_id',
+            morphTypeColumn: 'commentable_type',
         })
     })
 
@@ -199,6 +259,12 @@ describe('Model relationships', () => {
             }
         }
 
+        class CustomMorphComment extends Model {
+            public commentable () {
+                return this.morphTo('commentable', 'ownerType', 'ownerId', 'uuid')
+            }
+        }
+
         expect(CustomPost.getRelationMetadata('primaryComment')).toMatchObject({
             morphName: 'commentable',
             morphIdColumn: 'ownerId',
@@ -220,6 +286,24 @@ describe('Model relationships', () => {
             parentKey: 'uuid',
             relatedKey: 'tagUuid',
         })
+        expect(CustomMorphComment.getRelationMetadata('commentable')).toMatchObject({
+            morphName: 'commentable',
+            morphIdColumn: 'ownerId',
+            morphTypeColumn: 'ownerType',
+            ownerKey: 'uuid',
+        })
+    })
+
+    it('reports unregistered morph-to model types', async () => {
+        const comment = Comment.hydrate({
+            id: 1,
+            commentableId: 1,
+            commentableType: 'MissingModel',
+        })
+
+        await expect(comment.commentable().getResults()).rejects.toThrow(
+            'Morph model [MissingModel] is not registered.',
+        )
     })
 
     it('returns empty collections for through and many-to-many relations with no matches', async () => {

@@ -20,11 +20,16 @@ import type { DatabaseAdapter } from '../types/adapter'
 import { RuntimeModuleLoader } from './runtime-module-loader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
 import { createRequire } from 'module'
-import { existsSync } from 'fs'
+import { existsSync, readdirSync } from 'fs'
 import { fileURLToPath } from 'url'
 import path from 'path'
 import { resetPersistedColumnMappingsCache } from './column-mappings'
-import { resetRuntimeRegistryForTests } from './runtime-registry'
+import {
+    getRegisteredPaths,
+    registerModels,
+    resetRuntimeRegistryForTests,
+    type RegisteredModel,
+} from './runtime-registry'
 
 const resolveDefaultStubsPath = (): string => {
     let current = path.dirname(fileURLToPath(import.meta.url))
@@ -78,6 +83,8 @@ const userConfig: Partial<ArkormConfig> = {
 }
 let runtimeConfigLoaded = false
 let runtimeConfigLoadingPromise: Promise<void> | undefined
+let runtimeModelRegistrationPromise: Promise<void> | undefined
+let runtimeModelRegistrationGeneration = 0
 let runtimeClientResolver: ClientResolver | undefined
 let runtimeAdapter: DatabaseAdapter | undefined
 let runtimePaginationURLDriverFactory: PaginationURLDriverFactory | undefined
@@ -174,6 +181,96 @@ const mergeFeatureConfig = (
     }
 }
 
+const resolveRuntimeModelsDirectory = (directory: string): string => {
+    if (existsSync(directory))
+        return directory
+
+    const buildOutput = userConfig.paths?.buildOutput
+    if (typeof buildOutput !== 'string' || buildOutput.trim().length === 0)
+        return directory
+
+    const relativeSource = path.relative(process.cwd(), directory)
+    if (!relativeSource || relativeSource.startsWith('..'))
+        return directory
+
+    const mappedDirectory = path.join(buildOutput, relativeSource)
+
+    return existsSync(mappedDirectory) ? mappedDirectory : directory
+}
+
+const collectRuntimeModelFiles = (directory: string): string[] => {
+    if (!existsSync(directory))
+        return []
+
+    return readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+        const entryPath = path.join(directory, entry.name)
+        if (entry.isDirectory())
+            return collectRuntimeModelFiles(entryPath)
+
+        if (!entry.isFile() || !/\.(ts|tsx|mts|cts|js|mjs|cjs)$/i.test(entry.name))
+            return []
+
+        if (/\.d\.(ts|mts|cts)$/i.test(entry.name))
+            return []
+
+        return [entryPath]
+    })
+}
+
+const isModelConstructor = (value: unknown): value is RegisteredModel => {
+    if (typeof value !== 'function')
+        return false
+
+    const candidate = value as unknown as Record<string, unknown>
+
+    return typeof candidate.query === 'function'
+        && typeof candidate.hydrate === 'function'
+        && typeof candidate.getTable === 'function'
+        && typeof candidate.getPrimaryKey === 'function'
+}
+
+const registerConfiguredModels = async (generation: number): Promise<void> => {
+    const configured = userConfig.paths?.models
+    const additional = getRegisteredPaths('models') as string[]
+    const directories = [
+        ...(typeof configured === 'string' ? [configured] : []),
+        ...additional,
+    ]
+        .map(directory => resolveRuntimeModelsDirectory(
+            path.isAbsolute(directory) ? directory : path.resolve(process.cwd(), directory)
+        ))
+        .filter((directory, index, all) => all.indexOf(directory) === index)
+
+    const files = directories.flatMap(collectRuntimeModelFiles)
+    const modules = await Promise.all(files.map(async (file) => {
+        try {
+            return await RuntimeModuleLoader.load<Record<string, unknown>>(file)
+        } catch {
+            return null
+        }
+    }))
+    const models = modules.flatMap(module => module
+        ? Object.values(module).filter(isModelConstructor)
+        : []
+    )
+
+    if (generation === runtimeModelRegistrationGeneration)
+        registerModels(models)
+}
+
+const scheduleConfiguredModelRegistration = (): Promise<void> => {
+    const generation = runtimeModelRegistrationGeneration
+    runtimeModelRegistrationPromise = (runtimeModelRegistrationPromise ?? Promise.resolve())
+        .then(async () => await registerConfiguredModels(generation))
+
+    return runtimeModelRegistrationPromise
+}
+
+export const awaitConfiguredModelsRegistration = async (): Promise<void> => {
+    if (runtimeModelRegistrationPromise)
+        await runtimeModelRegistrationPromise
+}
+
 /**
  * Define the ArkORM runtime configuration. This function can be used to provide.
  * 
@@ -262,6 +359,7 @@ export const configureArkormRuntime = (
     runtimePaginationURLDriverFactory = nextConfig.pagination?.urlDriver
     runtimePaginationCurrentPageResolver = nextConfig.pagination?.resolveCurrentPage
     runtimeDebugHandler = resolveDebugHandler(nextConfig.debug)
+    void scheduleConfiguredModelRegistration()
 
     const bootClient = resolveClient(resolvedClient)
 
@@ -291,6 +389,8 @@ export const resetArkormRuntimeForTests = (): void => {
     })
     runtimeConfigLoaded = false
     runtimeConfigLoadingPromise = undefined
+    runtimeModelRegistrationPromise = undefined
+    runtimeModelRegistrationGeneration++
     runtimeClientResolver = undefined
     runtimeAdapter = undefined
     runtimePaginationURLDriverFactory = undefined
@@ -391,14 +491,20 @@ const loadRuntimeConfigSync = (): boolean => {
  * @returns 
  */
 export const loadArkormConfig = async (): Promise<void> => {
-    if (runtimeConfigLoaded)
+    if (runtimeConfigLoaded) {
+        await awaitConfiguredModelsRegistration()
+
         return
+    }
 
     if (runtimeConfigLoadingPromise)
         return await runtimeConfigLoadingPromise
 
-    if (loadRuntimeConfigSync())
+    if (loadRuntimeConfigSync()) {
+        await awaitConfiguredModelsRegistration()
+
         return
+    }
 
     runtimeConfigLoadingPromise = (async () => {
         const configPaths = [
@@ -413,6 +519,7 @@ export const loadArkormConfig = async (): Promise<void> => {
             try {
                 const imported = await importConfigFile(configPath)
                 resolveAndApplyConfig(imported)
+                await awaitConfiguredModelsRegistration()
 
                 return
             } catch {
@@ -421,6 +528,8 @@ export const loadArkormConfig = async (): Promise<void> => {
         }
 
         runtimeConfigLoaded = true
+        await scheduleConfiguredModelRegistration()
+        await awaitConfiguredModelsRegistration()
     })()
 
     await runtimeConfigLoadingPromise

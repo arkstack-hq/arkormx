@@ -28,6 +28,7 @@ Supported relationships:
 - [`hasManyThrough`](#hasmanythrough)
 - [`morphOne`](#morphone)
 - [`morphMany`](#morphmany)
+- [`morphTo`](#morphto)
 - [`morphToMany`](#morphtomany)
 
 ## Supported relationship patterns
@@ -320,6 +321,43 @@ class Post extends Model {
 
 ```ts
 morphMany(related, name, idColumn?, typeColumn?, localKey?);
+```
+
+### morphTo
+
+Use `morphTo` on the inverse side of a polymorphic relation:
+
+```ts
+class Image extends Model {
+  imageable() {
+    return this.morphTo('imageable');
+  }
+}
+```
+
+ArkORM infers `imageable_type` and `imageable_id` using `naming.case`. You can
+override the type column, ID column, and related owner key with positional
+arguments:
+
+```ts
+return this.morphTo('imageable', 'imageable_type', 'imageable_id', 'id');
+```
+
+The second argument can instead be a model constructor. This keeps the
+conventional type column, narrows the relation result type, and allows that
+model to resolve without runtime registration:
+
+```ts
+return this.morphTo('imageable', User, 'imageable_id', 'id');
+```
+
+The value in the type column must match a registered model class name. ArkORM
+automatically registers exported model classes found in the configured
+`paths.models` directory and directories added with `loadModelsFrom()`. Register
+models directly when they live outside those paths or are bundled:
+
+```ts
+registerModels(User, Post);
 ```
 
 ### morphToMany

@@ -334,6 +334,10 @@ export class Image extends Model {
 export class Comment extends Model {
     protected static override table = 'comments'
 
+    public commentable () {
+        return this.morphTo<User | Post>('commentable')
+    }
+
     public user () {
         return this.belongsTo(User, 'commentableId', 'id')
     }

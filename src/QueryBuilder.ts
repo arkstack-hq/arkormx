@@ -2477,7 +2477,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
             for (const [relation, node] of nodes.entries()) {
                 const metadata = owner.getRelationMetadata(relation)
-                const relatedModel = metadata?.relatedModel
+                const relatedModel = metadata && 'relatedModel' in metadata
+                    ? metadata.relatedModel
+                    : undefined
                 if (!relatedModel)
                     return null
 
@@ -3437,7 +3439,10 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         if (!this.isSqlRelationFeatureMetadata(metadata))
             return null
 
-        const relatedQuery = metadata?.relatedModel.query()
+        if (!metadata || !('relatedModel' in metadata))
+            return null
+
+        const relatedQuery = metadata.relatedModel.query()
 
         if (!relatedQuery) {
             return null
