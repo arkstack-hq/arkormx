@@ -77,6 +77,10 @@ export class DbImage extends Model {
 
 export class DbComment extends Model {
     protected static override table = 'comments'
+
+    public commentable () {
+        return this.morphTo<DbUser | DbPost>('commentable')
+    }
 }
 
 export class DbTag extends Model {
