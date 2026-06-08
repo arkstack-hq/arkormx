@@ -161,6 +161,24 @@ describe('Model lifecycle and serialization', () => {
         ])
     })
 
+    it('persists attributes mutated by pre-save events', async () => {
+        User.saving(model => {
+            if (model.getAttribute('id') == null)
+                model.setAttribute('email', 'generated@example.com')
+            else
+                model.setAttribute('name', 'Updated by event')
+        })
+
+        const created = new User({ name: 'Generated', email: '', isActive: 1 })
+        await created.save()
+        expect(created.getAttribute('email')).toBe('generated@example.com')
+
+        const existing = await User.query().find(1)
+        expect(existing).not.toBeNull()
+        await existing?.save()
+        expect(existing?.getAttribute('name')).toBe('Updated by event')
+    })
+
     it('supports retrieved listeners for query hydration', async () => {
         const events: number[] = []
         User.retrieved(model => {

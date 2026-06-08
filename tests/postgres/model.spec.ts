@@ -131,6 +131,25 @@ describe('PostgreSQL model lifecycle', () => {
         ])
     })
 
+    it('persists attributes mutated by pre-save events', async () => {
+        DbUser.saving(model => {
+            if (model.getAttribute('id') == null)
+                model.setAttribute('email', 'generated-events@example.com')
+            else
+                model.setAttribute('name', 'Updated by event')
+        })
+
+        const created = new DbUser({ name: 'Generated', email: '', isActive: 1 })
+        await created.save()
+        expect(created.getAttribute('email')).toBe('generated-events@example.com')
+
+        created.setAttribute('name', 'Before event')
+        await created.save()
+
+        const persisted = await DbUser.query().find(created.getAttribute('id') as number)
+        expect(persisted?.getAttribute('name')).toBe('Updated by event')
+    })
+
     it('can update the model', async () => {
         const fetched = await DbUser.query().find(1)
         const name = fetched?.getAttribute('name')
