@@ -320,6 +320,10 @@ duplicating it across services and controllers.
 Arkorm dispatches events when a model is retrieved from storage and around the
 main write operations.
 
+Changes made to a model during `saving`, `creating`, or `updating` are included
+in the pending database write. Events registered with `created`, `updated`, or
+`saved` run after persistence.
+
 ### Registering listeners directly
 
 ```ts

@@ -837,12 +837,12 @@ export abstract class Model<
         const constructor = this.constructor as unknown as ModelStatic<this>
         const primaryKey = constructor.getPrimaryKey()
         const identifier = this.getAttribute(primaryKey) as string | number | undefined
-        const payload = this.getRawAttributes()
         const previousOriginal = this.getOriginal()
         if (identifier == null) {
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
 
+            const payload = this.getRawAttributes()
             const model = await constructor.query().create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
@@ -857,6 +857,7 @@ export abstract class Model<
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
 
+        const payload = this.getRawAttributes()
         const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
