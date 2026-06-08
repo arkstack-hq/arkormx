@@ -1400,83 +1400,124 @@ export abstract class Model<
      * Define a polymorphic one to one relationship.
      * 
      * @param related 
-     * @param morphName 
-     * @param localKey 
+     * @param morphName
+     * @param idColumn
+     * @param typeColumn
+     * @param localKey
      * @returns 
      */
     protected morphOne<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         morphName: string,
-        localKey?: string
+        idColumn?: string,
+        typeColumn?: string,
+        localKey?: string,
     ): MorphOneRelation<this, InstanceType<TRelatedClass>> {
         const constructor = this.constructor as unknown as typeof Model
+        const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
 
-        return new MorphOneRelation(this, related, morphName, localKey ?? constructor.getPrimaryKey())
+        return new MorphOneRelation(
+            this,
+            related,
+            morphName,
+            columns.idColumn,
+            columns.typeColumn,
+            localKey ?? constructor.getPrimaryKey(),
+        )
     }
 
     /**
      * Define a polymorphic one to many relationship.
      * 
      * @param related 
-     * @param morphName 
-     * @param localKey 
+     * @param morphName
+     * @param idColumn
+     * @param typeColumn
+     * @param localKey
      * @returns 
      */
     protected morphMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
         morphName: string,
-        localKey?: string
+        idColumn?: string,
+        typeColumn?: string,
+        localKey?: string,
     ): MorphManyRelation<this, InstanceType<TRelatedClass>> {
         const constructor = this.constructor as unknown as typeof Model
+        const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
 
-        return new MorphManyRelation(this, related, morphName, localKey ?? constructor.getPrimaryKey())
+        return new MorphManyRelation(
+            this,
+            related,
+            morphName,
+            columns.idColumn,
+            columns.typeColumn,
+            localKey ?? constructor.getPrimaryKey(),
+        )
     }
 
     /**
      * Define a polymorphic many to many relationship.
      * 
-     * @param related 
-     * @param throughTable
+     * @param related
      * @param morphName
+     * @param throughTable
+     * @param foreignPivotKey
+     * @param morphTypeColumn
      * @param relatedPivotKey
-     * @param parentKey 
-     * @param relatedKey 
+     * @param parentKey
+     * @param relatedKey
      * @returns 
      */
     protected morphToMany<TRelatedClass extends RelatedModelClass> (
         related: TRelatedClass,
-        throughTable: string,
-        morphName?: string,
+        morphName: string,
+        throughTable?: string,
+        foreignPivotKey?: string,
+        morphTypeColumn?: string,
         relatedPivotKey?: string,
         parentKey?: string,
-        relatedKey?: string
+        relatedKey?: string,
     ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
         const constructor = this.constructor as unknown as typeof Model
         const namingCase = Model.getNamingCase()
         const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
-        const resolvedMorphName = morphName ?? this.formatConventionName(
-            `${str(throughTable).singular()}`,
-            namingCase,
-        )
+        const resolvedTable = throughTable
+            ?? this.formatConventionName(`${str(morphName).plural()}`, namingCase)
         const resolvedRelatedPivotKey = relatedPivotKey
             ?? this.formatConventionName(
                 `${str(related.getTable()).singular()}_${resolvedRelatedKey}`,
                 namingCase,
             )
-        const morphIdColumn = this.formatConventionName(`${resolvedMorphName}_id`, namingCase)
-        const morphTypeColumn = this.formatConventionName(`${resolvedMorphName}_type`, namingCase)
+        const morphIdColumn = foreignPivotKey
+            ?? this.formatConventionName(`${morphName}_id`, namingCase)
+        const resolvedMorphTypeColumn = morphTypeColumn
+            ?? this.formatConventionName(`${morphName}_type`, namingCase)
 
         return new MorphToManyRelation(
             this,
             related,
-            throughTable,
-            resolvedMorphName,
+            resolvedTable,
+            morphName,
             morphIdColumn,
-            morphTypeColumn,
+            resolvedMorphTypeColumn,
             resolvedRelatedPivotKey,
             parentKey ?? constructor.getPrimaryKey(),
             resolvedRelatedKey,
         )
+    }
+
+    private resolveMorphColumns (
+        morphName: string,
+        idColumn?: string,
+        typeColumn?: string,
+    ): { idColumn: string; typeColumn: string } {
+        const namingCase = Model.getNamingCase()
+
+        return {
+            idColumn: idColumn ?? this.formatConventionName(`${morphName}_id`, namingCase),
+            typeColumn: typeColumn ?? this.formatConventionName(`${morphName}_type`, namingCase),
+        }
     }
 
     private formatConventionName (

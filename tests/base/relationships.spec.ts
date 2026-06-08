@@ -148,7 +148,7 @@ describe('Model relationships', () => {
 
         class SnakePost extends Model {
             public tags () {
-                return this.morphToMany(SnakeTag, 'taggables')
+                return this.morphToMany(SnakeTag, 'taggable')
             }
         }
 
@@ -164,6 +164,61 @@ describe('Model relationships', () => {
             morphIdColumn: 'taggable_id',
             morphTypeColumn: 'taggable_type',
             relatedPivotKey: 'tag_id',
+        })
+    })
+
+    it('supports explicit polymorphic column and key overrides', () => {
+        class CustomTag extends Model {
+            protected static override table = 'tags'
+        }
+
+        class CustomComment extends Model {
+            protected static override table = 'comments'
+        }
+
+        class CustomPost extends Model {
+            public primaryComment () {
+                return this.morphOne(CustomComment, 'commentable', 'ownerId', 'ownerType', 'uuid')
+            }
+
+            public comments () {
+                return this.morphMany(CustomComment, 'commentable', 'ownerId', 'ownerType', 'uuid')
+            }
+
+            public tags () {
+                return this.morphToMany(
+                    CustomTag,
+                    'taggable',
+                    'customTagLinks',
+                    'ownerId',
+                    'ownerType',
+                    'tagReferenceId',
+                    'uuid',
+                    'tagUuid',
+                )
+            }
+        }
+
+        expect(CustomPost.getRelationMetadata('primaryComment')).toMatchObject({
+            morphName: 'commentable',
+            morphIdColumn: 'ownerId',
+            morphTypeColumn: 'ownerType',
+            localKey: 'uuid',
+        })
+        expect(CustomPost.getRelationMetadata('comments')).toMatchObject({
+            morphName: 'commentable',
+            morphIdColumn: 'ownerId',
+            morphTypeColumn: 'ownerType',
+            localKey: 'uuid',
+        })
+        expect(CustomPost.getRelationMetadata('tags')).toMatchObject({
+            morphName: 'taggable',
+            throughTable: 'customTagLinks',
+            morphIdColumn: 'ownerId',
+            morphTypeColumn: 'ownerType',
+            relatedPivotKey: 'tagReferenceId',
+            parentKey: 'uuid',
+            relatedKey: 'tagUuid',
         })
     })
 

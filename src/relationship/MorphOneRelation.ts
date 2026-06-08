@@ -14,6 +14,8 @@ export class MorphOneRelation<TParent, TRelated> extends SingleResultRelation<TP
         parent: TParent & { getAttribute: (key: string) => unknown },
         related: RelatedModelClass<TRelated>,
         private readonly morphName: string,
+        private readonly morphIdColumn: string,
+        private readonly morphTypeColumn: string,
         private readonly localKey: string,
     ) {
         super(parent, related)
@@ -26,15 +28,18 @@ export class MorphOneRelation<TParent, TRelated> extends SingleResultRelation<TP
      */
     public async getQuery (): Promise<QueryBuilder<TRelated>> {
         const id = this.parent.getAttribute(this.localKey)
-        const type = (this.parent as { constructor: { name: string } }).constructor.name
+        const type = this.parent.constructor.name
 
-        return this.applyConstraint(this.related.query().where({ [`${this.morphName}Id`]: id, [`${this.morphName}Type`]: type }))
+        return this.applyConstraint(this.related.query().where({
+            [this.morphIdColumn]: id,
+            [this.morphTypeColumn]: type,
+        }))
     }
 
     protected override getCreationAttributes (): Record<string, unknown> {
         return {
-            [`${this.morphName}Id`]: this.parent.getAttribute(this.localKey),
-            [`${this.morphName}Type`]: (this.parent as { constructor: { name: string } }).constructor.name,
+            [this.morphIdColumn]: this.parent.getAttribute(this.localKey),
+            [this.morphTypeColumn]: this.parent.constructor.name,
         }
     }
 
@@ -43,8 +48,8 @@ export class MorphOneRelation<TParent, TRelated> extends SingleResultRelation<TP
             type: 'morphOne',
             relatedModel: this.related,
             morphName: this.morphName,
-            morphIdColumn: `${this.morphName}Id`,
-            morphTypeColumn: `${this.morphName}Type`,
+            morphIdColumn: this.morphIdColumn,
+            morphTypeColumn: this.morphTypeColumn,
             localKey: this.localKey,
         }
     }
