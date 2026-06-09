@@ -307,7 +307,7 @@ export interface PrismaLikeInclude {
     }
 }
 
-export type EagerLoadConstraint = (query: unknown) => unknown
+export type EagerLoadConstraint<TQuery = unknown> = (query: TQuery) => unknown
 
 export type EagerLoadMap = Record<string, EagerLoadConstraint | undefined>
 

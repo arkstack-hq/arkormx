@@ -41,7 +41,13 @@ import type {
     UpsertSpec,
 } from './types'
 import { LengthAwarePaginator, Paginator } from './Paginator'
-import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
+import type {
+    ModelAttributes,
+    ModelCreateData,
+    ModelRelationshipKey,
+    ModelUpdateData,
+    QuerySchemaForModelInstance,
+} from './types/model'
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -56,6 +62,29 @@ import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
 import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
 import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
 import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
+
+type RelatedModelFromResult<TResult> =
+    TResult extends ArkormCollection<infer TRelated>
+    ? TRelated
+    : Exclude<TResult, null | undefined>
+
+type RelatedModelForRelationship<
+    TModel,
+    TKey extends ModelRelationshipKey<TModel>,
+> = TModel[TKey] extends (...args: any[]) => infer TRelation
+    ? TRelation extends { getResults: (...args: any[]) => Promise<infer TResult> }
+    ? RelatedModelFromResult<TResult>
+    : never
+    : never
+
+export type EagerLoadRelations<TModel> = {
+    [TKey in ModelRelationshipKey<TModel>]?: true | EagerLoadConstraint<
+        QueryBuilder<
+            RelatedModelForRelationship<TModel, TKey>,
+            QuerySchemaForModelInstance<RelatedModelForRelationship<TModel, TKey>>
+        >
+    >
+}
 
 /**
  * The QueryBuilder class provides a fluent interface for building and 
@@ -907,7 +936,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @param relations 
      * @returns 
      */
-    public with (relations: string | string[] | Record<string, true | EagerLoadConstraint | undefined>): this {
+    public with (relations: string | string[] | EagerLoadRelations<TModel>): this {
         const relationMap = this.normalizeWith(relations)
 
         Object.entries(relationMap).forEach(([name, constraint]) => {
@@ -2497,7 +2526,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      * @returns 
      */
     private normalizeWith (
-        relations: string | string[] | Record<string, true | EagerLoadConstraint | undefined>
+        relations: string | string[] | EagerLoadRelations<TModel>
     ): EagerLoadMap {
         if (typeof relations === 'string')
             return { [relations]: undefined }
@@ -2510,7 +2539,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             }, {})
         }
 
-        return Object.entries(relations).reduce<EagerLoadMap>((normalized, [relation, constraint]) => {
+        const relationEntries = Object.entries(
+            relations as Record<string, true | EagerLoadConstraint | undefined>
+        )
+
+        return relationEntries.reduce<EagerLoadMap>((normalized, [relation, constraint]) => {
             normalized[relation] = constraint === true ? undefined : constraint
 
             return normalized

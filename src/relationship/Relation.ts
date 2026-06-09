@@ -1,6 +1,5 @@
 import type {
     DatabaseAdapter,
-    EagerLoadConstraint,
     ModelAttributes,
     ModelOrderByInput,
     ModelWhereInput,
@@ -15,6 +14,7 @@ import type { LengthAwarePaginator, Paginator } from '../Paginator'
 
 import { ArkormCollection } from '../Collection'
 import { QueryBuilder } from '../QueryBuilder'
+import type { EagerLoadRelations } from '../QueryBuilder'
 import type { RelationConstraint } from '../types/relationship'
 import { RelationTableLoader } from './RelationTableLoader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
@@ -641,7 +641,7 @@ export abstract class Relation<TModel> {
      * @returns
      */
     public with (
-        relations: string | string[] | Record<string, true | EagerLoadConstraint | undefined>
+        relations: string | string[] | EagerLoadRelations<TModel>
     ): this {
         return this.constrain(query => query.with(relations))
     }
