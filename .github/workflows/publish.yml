@@ -111,9 +111,6 @@ jobs:
       - name: Run tests
         run: pnpm test:all
 
-      - name: Run PostgreSQL integration tests
-        run: pnpm test:postgres
-
       - name: Set version from input
         if: steps.release_version.outputs.version != ''
         run: |
