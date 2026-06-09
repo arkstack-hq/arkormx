@@ -40,7 +40,7 @@ import {
 import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
-import { QueryBuilder } from './QueryBuilder'
+import { QueryBuilder, type EagerLoadRelations } from './QueryBuilder'
 import { ArkormCollection } from './Collection'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
@@ -1018,7 +1018,7 @@ export abstract class Model<
      * @param relations 
      * @returns 
      */
-    public async load (relations: string | string[] | EagerLoadMap | Record<string, true | ((query: unknown) => unknown) | undefined>): Promise<this> {
+    public async load (relations: string | string[] | EagerLoadRelations<this>): Promise<this> {
         const relationMap = this.normalizeRelationMap(relations)
         const constructor = this.constructor as typeof Model
         const query = constructor.query().with(relationMap) as unknown as QueryBuilder<this, QuerySchemaForModel<TSchema, TAttributes>>
@@ -1058,7 +1058,7 @@ export abstract class Model<
      * @param relations
      * @returns
      */
-    public async loadMissing (relations: string | string[] | Record<string, true | ((query: unknown) => unknown) | undefined>): Promise<this> {
+    public async loadMissing (relations: string | string[] | EagerLoadRelations<this>): Promise<this> {
         const relationMap = this.normalizeRelationMap(relations)
         const missing = Object.entries(relationMap).reduce<EagerLoadMap>((all, [relation, constraint]) => {
             const root = relation.split('.')[0]
@@ -1071,7 +1071,7 @@ export abstract class Model<
         if (Object.keys(missing).length === 0)
             return this
 
-        return this.load(missing)
+        return this.load(missing as EagerLoadRelations<this>)
     }
 
     /**
@@ -2043,7 +2043,7 @@ export abstract class Model<
      * @returns 
      */
     private normalizeRelationMap (
-        relations: string | string[] | EagerLoadMap | Record<string, true | ((query: unknown) => unknown) | undefined>
+        relations: string | string[] | EagerLoadMap | EagerLoadRelations<this>
     ): EagerLoadMap {
         if (typeof relations === 'string')
             return { [relations]: undefined }

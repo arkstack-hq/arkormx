@@ -79,6 +79,46 @@ describe('adapter-first typing', () => {
         user.setAttribute('posts', new ArkormCollection<TypedPost>([]))
     })
 
+    it('infers eager-load constraint builders from relationship methods', () => {
+        DeclaredUserWithRelations.query().with({
+            profile: query => {
+                expectTypeOf<ReturnType<typeof query.first>>().toEqualTypeOf<Promise<TypedProfile | null>>()
+
+                return query.whereKey('userId', 1)
+            },
+            posts: query => {
+                expectTypeOf<ReturnType<typeof query.first>>().toEqualTypeOf<Promise<TypedPost | null>>()
+
+                return query.latest().limit(5)
+            },
+        })
+
+        // @ts-expect-error Eager-load keys must reference a relationship method.
+        DeclaredUserWithRelations.query().with({ missing: true })
+
+        type LoadInput = Parameters<DeclaredUserWithRelations['load']>[0]
+        type LoadMissingInput = Parameters<DeclaredUserWithRelations['loadMissing']>[0]
+
+        const loadRelations: LoadInput = {
+            profile: query => query.whereKey('userId', 1),
+            posts: query => {
+                expectTypeOf<ReturnType<typeof query.first>>().toEqualTypeOf<Promise<TypedPost | null>>()
+
+                return query.latest().limit(5)
+            },
+        }
+        const missingRelations: LoadMissingInput = {
+            profile: query => {
+                expectTypeOf<ReturnType<typeof query.first>>().toEqualTypeOf<Promise<TypedProfile | null>>()
+
+                return query.whereKey('userId', 1)
+            },
+        }
+
+        expectTypeOf(loadRelations).toMatchTypeOf<LoadInput>()
+        expectTypeOf(missingRelations).toMatchTypeOf<LoadMissingInput>()
+    })
+
     it('preserves related model query types on relation methods', () => {
         const relation = new DeclaredUserWithRelations().posts()
 
