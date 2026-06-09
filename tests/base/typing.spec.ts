@@ -3,6 +3,8 @@ import { describe, expectTypeOf, it } from 'vitest'
 import { ArkormCollection, Model } from '../../src'
 import type { AttributeCreateInput, AttributeUpdateInput } from '../../src/types'
 
+type IsAny<TValue> = 0 extends (1 & TValue) ? true : false
+
 type ProductAttributes = {
     id: number
     name: string
@@ -74,6 +76,46 @@ describe('adapter-first typing', () => {
 
         user.setAttribute('profile', new TypedProfile())
         user.setAttribute('posts', new ArkormCollection<TypedPost>([]))
+    })
+
+    it('preserves related model query types on relation methods', () => {
+        const relation = new DeclaredUserWithRelations().posts()
+
+        type WhereInput = Parameters<typeof relation.where>[0]
+        type OrderByInput = Parameters<typeof relation.orderBy>[0]
+        type IncludeInput = Parameters<typeof relation.include>[0]
+        type SelectInput = Parameters<typeof relation.select>[0]
+
+        expectTypeOf<IsAny<WhereInput>>().toEqualTypeOf<false>()
+        expectTypeOf<IsAny<OrderByInput>>().toEqualTypeOf<false>()
+        expectTypeOf<IsAny<IncludeInput>>().toEqualTypeOf<false>()
+        expectTypeOf<IsAny<SelectInput>>().toEqualTypeOf<false>()
+
+        relation
+            .where({ title: { contains: 'ArkORM' } })
+            .orWhere({ authorId: 1 })
+            .whereNot({ title: 'Draft' })
+            .whereNull('title')
+            .whereBetween('id', [1, 10])
+            .whereKey('authorId', 1)
+            .whereKeyNot('authorId', 2)
+            .whereIn('id', [1, 2])
+            .whereNotIn('id', [3])
+            .orderBy({ title: 'asc' })
+            .select({ id: true, title: true })
+            .addSelect('authorId')
+            .offset(5)
+            .limit(10)
+            .forPage(2, 10)
+
+        // @ts-expect-error Related model keys must be suggested and validated.
+        relation.whereKey('missing', 1)
+        // @ts-expect-error Related model attribute values must be validated.
+        relation.whereKey('authorId', '1')
+        // @ts-expect-error Unknown related model fields are rejected.
+        relation.where({ missing: true })
+        // @ts-expect-error Unknown related model order fields are rejected.
+        relation.orderBy({ missing: 'asc' })
     })
 
     it('infers query helper payloads from the model generic', () => {
