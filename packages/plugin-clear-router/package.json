@@ -17,11 +17,11 @@
     "license": "MIT",
     "homepage": "https://arkorm.toneflix.net/plugins/plugin-clear-router",
     "bugs": {
-        "url": "https://github.com/arkstack-tmp/arkormx/issues"
+        "url": "https://github.com/arkstack-hq/arkormx/issues"
     },
     "repository": {
         "type": "git",
-        "url": "git+https://github.com/arkstack-tmp/arkormx.git",
+        "url": "git+https://github.com/arkstack-hq/arkormx.git",
         "directory": "packages/plugin-clear-router"
     },
     "type": "module",
