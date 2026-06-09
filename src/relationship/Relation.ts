@@ -5,6 +5,7 @@ import type {
     ModelOrderByInput,
     ModelWhereInput,
     PaginationOptions,
+    QueryScalarComparisonOperator,
     QuerySchemaForModelInstance,
     QuerySchemaInclude,
     QuerySchemaSelect,
@@ -224,6 +225,227 @@ export abstract class Relation<TModel> {
         year: number
     ): this {
         return this.constrain(query => query.whereYear(key, year))
+    }
+
+    /**
+     * Adds a time clause for a date-like key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereTime<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Date | string
+    ): this
+    /**
+     * Adds a time clause for a date-like key.
+     *
+     * @param key
+     * @param operator
+     * @param value
+     * @returns
+     */
+    public whereTime<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operator: QueryScalarComparisonOperator,
+        value: Date | string
+    ): this
+    public whereTime<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operatorOrValue: QueryScalarComparisonOperator | Date | string,
+        maybeValue?: Date | string
+    ): this {
+        return this.constrain(query => maybeValue === undefined
+            ? query.whereTime(key, operatorOrValue as Date | string)
+            : query.whereTime(key, operatorOrValue as QueryScalarComparisonOperator, maybeValue)
+        )
+    }
+
+    /**
+     * Adds a day clause for a date-like key.
+     *
+     * @param key
+     * @param day
+     * @returns
+     */
+    public whereDay<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        day: number
+    ): this
+    /**
+     * Adds a day clause for a date-like key.
+     *
+     * @param key
+     * @param operator
+     * @param day
+     * @returns
+     */
+    public whereDay<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operator: QueryScalarComparisonOperator,
+        day: number
+    ): this
+    public whereDay<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operatorOrDay: QueryScalarComparisonOperator | number,
+        maybeDay?: number
+    ): this {
+        return this.constrain(query => maybeDay === undefined
+            ? query.whereDay(key, operatorOrDay as number)
+            : query.whereDay(key, operatorOrDay as QueryScalarComparisonOperator, maybeDay)
+        )
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the past
+     * 
+     * @param key 
+     * @returns 
+     */
+    public wherePast<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.wherePast(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the future
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereFuture<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereFuture(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the past, inclusive of the current date and time
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereNowOrPast<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereNowOrPast(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the future, inclusive of the current date and time
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereNowOrFuture<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereNowOrFuture(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereToday<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereToday(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is before today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereBeforeToday<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereBeforeToday(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is after today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereAfterToday<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereAfterToday(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is today or before today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereTodayOrBefore<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereTodayOrBefore(key))
+    }
+
+    /**
+     * Adds clause to determine if a column's value is today or after today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereTodayOrAfter<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereTodayOrAfter(key))
+    }
+
+    /**
+     * Adds clause to verify that two columns are equal
+     * 
+     * @param left 
+     * @param right 
+     */
+    public whereColumn<
+        TLeft extends keyof ModelAttributes<TModel> & string,
+        TRight extends keyof ModelAttributes<TModel> & string,
+    > (left: TLeft, right: TRight): this
+    /**
+     * Adds clause to verify that two columns are equal
+     * 
+     * @param left 
+     * @param operator 
+     * @param right 
+     */
+    public whereColumn<
+        TLeft extends keyof ModelAttributes<TModel> & string,
+        TRight extends keyof ModelAttributes<TModel> & string,
+    > (left: TLeft, operator: QueryScalarComparisonOperator, right: TRight): this
+    public whereColumn (
+        left: keyof ModelAttributes<TModel> & string,
+        operatorOrRight: QueryScalarComparisonOperator | (keyof ModelAttributes<TModel> & string),
+        maybeRight?: keyof ModelAttributes<TModel> & string
+    ): this {
+        return this.constrain(query => maybeRight === undefined
+            ? query.whereColumn(left, operatorOrRight as keyof ModelAttributes<TModel> & string)
+            : query.whereColumn(left, operatorOrRight as QueryScalarComparisonOperator, maybeRight)
+        )
+    }
+
+    /**
+     * Adds "where exists" SQL clauses.
+     * 
+     * @param queryOrCallback 
+     * @returns 
+     */
+    public whereExists (
+        queryOrCallback: QueryBuilder<any, any>
+            | ((query: QueryBuilder<TModel>) => QueryBuilder<any, any> | void)
+    ): this {
+        return this.constrain(query => query.whereExists(queryOrCallback))
+    }
+
+    /**
+     * Adds a fulltext clause for columns that have full text indexes.
+     *
+     * @param columns
+     * @param value
+     * @param options
+     * @returns
+     */
+    public whereFullText<TKey extends keyof ModelAttributes<TModel> & string> (
+        columns: TKey | TKey[],
+        value: string,
+        options: { language?: string } = {}
+    ): this {
+        return this.constrain(query => query.whereFullText(columns, value, options))
     }
 
     /**

@@ -626,6 +626,42 @@ describe('QueryBuilder', () => {
         expect(pipedCount).toBe(2)
     })
 
+    it('supports relative date where helpers', async () => {
+        vi.useFakeTimers()
+
+        try {
+            vi.setSystemTime(new Date('2026-03-05T00:00:00.000Z'))
+            expect((await User.query().wherePast('createdAt').get()).all()).toHaveLength(2)
+            expect((await User.query().whereNowOrPast('createdAt').get()).all()).toHaveLength(2)
+            expect((await User.query().whereBeforeToday('createdAt').get()).all()).toHaveLength(2)
+            expect((await User.query().whereTodayOrBefore('createdAt').get()).all()).toHaveLength(2)
+
+            vi.setSystemTime(new Date('2026-03-03T00:00:00.000Z'))
+            expect((await User.query().whereFuture('createdAt').get()).all()).toHaveLength(2)
+            expect((await User.query().whereNowOrFuture('createdAt').get()).all()).toHaveLength(2)
+            expect((await User.query().whereAfterToday('createdAt').get()).all()).toHaveLength(2)
+            expect((await User.query().whereTodayOrAfter('createdAt').get()).all()).toHaveLength(2)
+
+            vi.setSystemTime(new Date('2026-03-04T18:00:00.000Z'))
+            expect((await User.query().whereToday('createdAt').get()).all()).toHaveLength(2)
+        } finally {
+            vi.useRealTimers()
+        }
+    })
+
+    it('reports SQL-only structured where helpers on Prisma compatibility', async () => {
+        await expect(User.query().whereTime('createdAt', '12:00').get())
+            .rejects.toThrow('Where condition [time] is not supported')
+        await expect(User.query().whereDay('createdAt', 4).get())
+            .rejects.toThrow('Where condition [day] is not supported')
+        await expect(User.query().whereColumn('name', 'email').get())
+            .rejects.toThrow('Where condition [column-comparison] is not supported')
+        await expect(User.query().whereFullText('name', 'Jane').get())
+            .rejects.toThrow('Where condition [full-text] is not supported')
+        await expect(User.query().whereExists(User.query().whereKey('id', 1)).get())
+            .rejects.toThrow('Where condition [exists] is not supported')
+    })
+
     it('rejects non-normalizable top-level select and order clauses', () => {
         expect(() => User.query().select({
             posts: {

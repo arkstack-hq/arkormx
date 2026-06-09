@@ -30,6 +30,7 @@ class TypedPost extends Model {
     declare id: number
     declare authorId: number
     declare title: string
+    declare createdAt: Date
 }
 
 class DeclaredUserWithRelations extends Model {
@@ -101,6 +102,13 @@ describe('adapter-first typing', () => {
             .whereKeyNot('authorId', 2)
             .whereIn('id', [1, 2])
             .whereNotIn('id', [3])
+            .whereTime('createdAt', '>=', '09:30')
+            .whereDay('createdAt', 9)
+            .wherePast('createdAt')
+            .whereToday('createdAt')
+            .whereColumn('id', '>', 'authorId')
+            .whereFullText('title', 'ArkORM')
+            .whereExists(query => query.whereColumn('id', 'authorId'))
             .orderBy({ title: 'asc' })
             .select({ id: true, title: true })
             .addSelect('authorId')

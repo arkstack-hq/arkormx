@@ -15,11 +15,16 @@ import type {
     InsertManySpec,
     InsertSpec,
     QueryComparisonCondition,
+    QueryColumnComparisonCondition,
     QueryCondition,
+    QueryDayCondition,
+    QueryExistsCondition,
+    QueryFullTextCondition,
     QueryGroupCondition,
     QueryNotCondition,
     QueryOrderBy,
     QueryRawCondition,
+    QueryTimeCondition,
     QuerySelectColumn,
     QueryTarget,
     RawQuerySpec,
@@ -747,12 +752,78 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return sql<boolean>`${sql.join(parts, sql``)}`
     }
 
+    private buildColumnComparisonCondition (
+        target: QueryTarget<any>,
+        condition: QueryColumnComparisonCondition,
+    ): RawBuilder<boolean> {
+        const left = sql.ref(this.mapColumn(target, condition.leftColumn))
+        const right = sql.ref(this.mapColumn(target, condition.rightColumn))
+
+        return sql<boolean>`${left} ${sql.raw(condition.operator)} ${right}`
+    }
+
+    private buildTimeCondition (
+        target: QueryTarget<any>,
+        condition: QueryTimeCondition,
+    ): RawBuilder<boolean> {
+        const column = sql.ref(this.mapColumn(target, condition.column))
+
+        return sql<boolean>`${column}::time ${sql.raw(condition.operator)} ${condition.value}::time`
+    }
+
+    private buildDayCondition (
+        target: QueryTarget<any>,
+        condition: QueryDayCondition,
+    ): RawBuilder<boolean> {
+        const column = sql.ref(this.mapColumn(target, condition.column))
+
+        return sql<boolean>`extract(day from ${column}) ${sql.raw(condition.operator)} ${condition.value}`
+    }
+
+    private buildExistsCondition (condition: QueryExistsCondition): RawBuilder<boolean> {
+        const target = condition.query.target
+        const where = this.buildWhereClause(target, condition.query.where)
+
+        return sql<boolean>`exists (
+            select 1
+            from ${sql.table(this.resolveTable(target))}
+            ${where}
+        )`
+    }
+
+    private buildFullTextCondition (
+        target: QueryTarget<any>,
+        condition: QueryFullTextCondition,
+    ): RawBuilder<boolean> {
+        const language = sql.raw(`'${condition.language ?? 'simple'}'`)
+        const document = sql.join(condition.columns.map((column) => {
+            return sql`coalesce(${sql.ref(this.mapColumn(target, column))}::text, '')`
+        }), sql` || ' ' || `)
+
+        return sql<boolean>`to_tsvector(${language}, ${document}) @@ plainto_tsquery(${language}, ${condition.value})`
+    }
+
     private buildWhereCondition (target: QueryTarget<any>, condition?: QueryCondition): RawBuilder<boolean> {
         if (!condition)
             return sql<boolean>`1 = 1`
 
         if (condition.type === 'comparison')
             return this.buildComparisonCondition(target, condition)
+
+        if (condition.type === 'column-comparison')
+            return this.buildColumnComparisonCondition(target, condition)
+
+        if (condition.type === 'time')
+            return this.buildTimeCondition(target, condition)
+
+        if (condition.type === 'day')
+            return this.buildDayCondition(target, condition)
+
+        if (condition.type === 'exists')
+            return this.buildExistsCondition(condition)
+
+        if (condition.type === 'full-text')
+            return this.buildFullTextCondition(target, condition)
 
         if (condition.type === 'group') {
             const group = condition as QueryGroupCondition

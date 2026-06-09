@@ -372,6 +372,35 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('LOWER("email") = $1 OR LOWER("email") LIKE $2')
     })
 
+    it('compiles advanced structured where helpers', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const inspection = DbUser.query()
+            .whereTime('createdAt', '>=', '09:30')
+            .whereDay('createdAt', 9)
+            .whereColumn('name', '!=', 'email')
+            .whereFullText(['name', 'email'], 'Jane')
+            .whereExists(DbPost.query().where({ title: 'A' }))
+            .inspect()
+        const normalizedSql = inspection?.sql?.replace(/\s+/g, ' ')
+
+        expect(normalizedSql).toContain('"createdAt"::time >= $1::time')
+        expect(normalizedSql).toContain('extract(day from "createdAt") = $2')
+        expect(normalizedSql).toContain('"name" != "email"')
+        expect(normalizedSql).toContain('to_tsvector')
+        expect(normalizedSql).toContain('plainto_tsquery')
+        expect(normalizedSql).toContain('exists ( select 1 from "posts"')
+        expect(inspection?.parameters).toEqual(expect.arrayContaining(['09:30:00', 9, 'Jane', 'A']))
+
+        const callbackInspection = DbUser.query()
+            .whereExists(query => query.whereColumn('id', 'id'))
+            .inspect()
+
+        expect(callbackInspection?.sql?.replace(/\s+/g, ' ')).toContain(
+            'exists ( select 1 from "users" where "id" = "id" )',
+        )
+    })
+
     it('supports SQL-backed direct relation filters and aggregates through QueryBuilder', async () => {
         setPostgresModelAdapter(kyselyAdapter)
 

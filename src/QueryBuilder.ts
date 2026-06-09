@@ -16,6 +16,7 @@ import type {
     QueryCondition,
     QueryOrderBy,
     QueryRawCondition,
+    QueryScalarComparisonOperator,
     QuerySchemaCreateData,
     QuerySchemaInclude,
     QuerySchemaOrderBy,
@@ -254,6 +255,301 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Adds a time clause for a date-like key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereTime<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Date | string
+    ): this
+    /**
+     * Adds a time clause for a date-like key.
+     *
+     * @param key
+     * @param operator
+     * @param value
+     * @returns
+     */
+    public whereTime<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operator: QueryScalarComparisonOperator,
+        value: Date | string
+    ): this
+    public whereTime<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operatorOrValue: QueryScalarComparisonOperator | Date | string,
+        maybeValue?: Date | string
+    ): this {
+        const hasOperator = maybeValue !== undefined
+        const operator = (hasOperator ? operatorOrValue : '=') as QueryScalarComparisonOperator
+        const value = hasOperator ? maybeValue : operatorOrValue
+
+        this.appendQueryCondition('AND', {
+            type: 'time',
+            column: key,
+            operator,
+            value: this.normalizeTimeValue(value as Date | string),
+        })
+
+        return this
+    }
+
+    /**
+     * Adds a day clause for a date-like key.
+     *
+     * @param key
+     * @param day
+     * @returns
+     */
+    public whereDay<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        day: number
+    ): this
+    /**
+     * Adds a day clause for a date-like key.
+     *
+     * @param key
+     * @param operator
+     * @param day
+     * @returns
+     */
+    public whereDay<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operator: QueryScalarComparisonOperator,
+        day: number
+    ): this
+    public whereDay<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        operatorOrDay: QueryScalarComparisonOperator | number,
+        maybeDay?: number
+    ): this {
+        const hasOperator = maybeDay !== undefined
+        const operator = (hasOperator ? operatorOrDay : '=') as QueryScalarComparisonOperator
+        const day = Number(hasOperator ? maybeDay : operatorOrDay)
+        if (!Number.isInteger(day) || day < 1 || day > 31)
+            throw new ArkormException('whereDay() expects an integer between 1 and 31.')
+
+        this.appendQueryCondition('AND', {
+            type: 'day',
+            column: key,
+            operator,
+            value: day,
+        })
+
+        return this
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the past
+     * 
+     * @param key 
+     * @returns 
+     */
+    public wherePast<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.where({ [key]: { lt: new Date() } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the future
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereFuture<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.where({ [key]: { gt: new Date() } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the past, inclusive of the current date and time
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereNowOrPast<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.where({ [key]: { lte: new Date() } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is in the future, inclusive of the current date and time
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereNowOrFuture<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.where({ [key]: { gte: new Date() } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereToday<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        const [start, end] = this.getUtcDayBounds()
+
+        return this.where({ [key]: { gte: start, lt: end } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is before today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereBeforeToday<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        const [start] = this.getUtcDayBounds()
+
+        return this.where({ [key]: { lt: start } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is after today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereAfterToday<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        const [, end] = this.getUtcDayBounds()
+
+        return this.where({ [key]: { gte: end } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is today or before today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereTodayOrBefore<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        const [, end] = this.getUtcDayBounds()
+
+        return this.where({ [key]: { lt: end } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to determine if a column's value is today or after today
+     * 
+     * @param key 
+     * @returns 
+     */
+    public whereTodayOrAfter<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        const [start] = this.getUtcDayBounds()
+
+        return this.where({ [key]: { gte: start } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds clause to verify that two columns are equal
+     * 
+     * @param left 
+     * @param right 
+     */
+    public whereColumn<
+        TLeft extends keyof ModelAttributes<TModel> & string,
+        TRight extends keyof ModelAttributes<TModel> & string,
+    > (left: TLeft, right: TRight): this
+    /**
+     * Adds clause to verify that two columns are equal
+     * 
+     * @param left 
+     * @param operator 
+     * @param right 
+     */
+    public whereColumn<
+        TLeft extends keyof ModelAttributes<TModel> & string,
+        TRight extends keyof ModelAttributes<TModel> & string,
+    > (left: TLeft, operator: QueryScalarComparisonOperator, right: TRight): this
+    public whereColumn (
+        left: string,
+        operatorOrRight: QueryScalarComparisonOperator | string,
+        maybeRight?: string
+    ): this {
+        this.appendQueryCondition('AND', {
+            type: 'column-comparison',
+            leftColumn: left,
+            operator: (maybeRight === undefined ? '=' : operatorOrRight) as QueryScalarComparisonOperator,
+            rightColumn: maybeRight ?? operatorOrRight,
+        })
+
+        return this
+    }
+
+    /**
+     * Adds "where exists" SQL clauses.
+     * 
+     * @param queryOrCallback 
+     * @returns 
+     */
+    public whereExists (
+        queryOrCallback: QueryBuilder<any, any>
+            | ((query: QueryBuilder<TModel, TDelegate>) => QueryBuilder<any, any> | void)
+    ): this {
+        const baseQuery = new QueryBuilder<TModel, TDelegate>(this.model, this.adapter)
+        const resolved = typeof queryOrCallback === 'function'
+            ? queryOrCallback(baseQuery) ?? baseQuery
+            : queryOrCallback
+        const existsQuery = resolved as QueryBuilder<any, any>
+        const spec = existsQuery.tryBuildSelectSpec(existsQuery.buildWhere() as never)
+        if (!spec) {
+            throw new UnsupportedAdapterFeatureException('Exists subquery could not be compiled.', {
+                operation: 'whereExists',
+                model: this.model.name,
+            })
+        }
+
+        this.appendQueryCondition('AND', {
+            type: 'exists',
+            query: {
+                ...spec,
+                columns: undefined,
+                orderBy: undefined,
+                limit: undefined,
+                offset: undefined,
+                relationLoads: undefined,
+                relationAggregates: undefined,
+                relationFilters: undefined,
+            },
+        })
+
+        return this
+    }
+
+    /**
+     * Adds a fulltext clause for columns that have full text indexes.
+     *
+     * @param columns
+     * @param value
+     * @param options
+     * @returns
+     */
+    public whereFullText<TKey extends keyof ModelAttributes<TModel> & string> (
+        columns: TKey | TKey[],
+        value: string,
+        options: { language?: string } = {}
+    ): this {
+        const normalizedColumns = Array.isArray(columns) ? columns : [columns]
+        if (normalizedColumns.length === 0)
+            throw new ArkormException('whereFullText() expects at least one column.')
+
+        const language = options.language ?? 'simple'
+        if (!/^[a-z][a-z0-9_]*$/i.test(language))
+            throw new ArkormException('whereFullText() language must be a valid PostgreSQL text search configuration name.')
+
+        this.appendQueryCondition('AND', {
+            type: 'full-text',
+            columns: normalizedColumns,
+            value,
+            language,
+        })
+
+        return this
+    }
+
+    /**
      * Adds a strongly-typed inequality where clause for a single attribute key.
      *
      * @param key
@@ -451,6 +747,39 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             throw new ArkormException('Invalid date value for date-based query helper.')
 
         return parsed
+    }
+
+    private normalizeTimeValue (value: Date | string): string {
+        if (value instanceof Date) {
+            if (Number.isNaN(value.getTime()))
+                throw new ArkormException('Invalid date value for whereTime().')
+
+            return value.toISOString().slice(11, 19)
+        }
+
+        const matched = value.match(/^(\d{2}):(\d{2})(?::(\d{2}))?$/)
+        if (!matched)
+            throw new ArkormException('whereTime() expects a Date or a time string in HH:mm[:ss] format.')
+
+        const hour = Number(matched[1])
+        const minute = Number(matched[2])
+        const second = Number(matched[3] ?? 0)
+        if (hour > 23 || minute > 59 || second > 59)
+            throw new ArkormException('whereTime() received an invalid time value.')
+
+        return `${matched[1]}:${matched[2]}:${String(second).padStart(2, '0')}`
+    }
+
+    private getUtcDayBounds (value = new Date()): [Date, Date] {
+        const start = new Date(Date.UTC(
+            value.getUTCFullYear(),
+            value.getUTCMonth(),
+            value.getUTCDate(),
+        ))
+        const end = new Date(start)
+        end.setUTCDate(end.getUTCDate() + 1)
+
+        return [start, end]
     }
 
     /**

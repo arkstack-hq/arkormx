@@ -201,7 +201,32 @@ Date helpers build UTC ranges:
 await User.query().whereDate('createdAt', '2026-03-01').get();
 await User.query().whereMonth('createdAt', 3, 2026).get();
 await User.query().whereYear('createdAt', 2026).get();
+await User.query().whereTime('createdAt', '>=', '09:30').get();
+await User.query().whereDay('createdAt', 15).get();
+await User.query().wherePast('expiresAt').get();
+await User.query().whereFuture('startsAt').get();
+await User.query().whereNowOrPast('publishedAt').get();
+await User.query().whereNowOrFuture('availableAt').get();
+await User.query().whereToday('createdAt').get();
+await User.query().whereBeforeToday('createdAt').get();
+await User.query().whereAfterToday('createdAt').get();
+await User.query().whereTodayOrBefore('createdAt').get();
+await User.query().whereTodayOrAfter('createdAt').get();
 ```
+
+Compare columns, add EXISTS subqueries, or perform PostgreSQL full-text search:
+
+```ts
+await User.query().whereColumn('firstName', 'lastName').get();
+await User.query().whereColumn('updatedAt', '>', 'createdAt').get();
+await User.query().whereExists(Post.query().where({ published: true })).get();
+await User.query().whereExists(query => query.whereColumn('id', 'managerId')).get();
+await User.query().whereFullText(['name', 'bio'], 'database engineer').get();
+```
+
+`whereTime`, `whereDay`, `whereColumn`, `whereExists`, and `whereFullText`
+require a SQL-backed adapter. Relative date helpers use UTC day boundaries and
+work with structured compatibility adapters.
 
 ## Raw predicates and queries
 
