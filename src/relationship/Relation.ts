@@ -1,4 +1,15 @@
-import type { DatabaseAdapter, ModelAttributes, PaginationOptions, RelationMetadata } from '../types'
+import type {
+    DatabaseAdapter,
+    EagerLoadConstraint,
+    ModelAttributes,
+    ModelOrderByInput,
+    ModelWhereInput,
+    PaginationOptions,
+    QuerySchemaForModelInstance,
+    QuerySchemaInclude,
+    QuerySchemaSelect,
+    RelationMetadata,
+} from '../types'
 import type { LengthAwarePaginator, Paginator } from '../Paginator'
 
 import { ArkormCollection } from '../Collection'
@@ -118,8 +129,101 @@ export abstract class Relation<TModel> {
      * @param where
      * @returns
      */
-    public where (where: Parameters<QueryBuilder<TModel>['where']>[0]): this {
-        return this.constrain(query => query.where(where))
+    public where (where: ModelWhereInput<TModel>): this {
+        return this.constrain(query => query.where(where as never))
+    }
+
+    /**
+     * Adds an OR where clause to the query.
+     *
+     * @param where
+     * @returns
+     */
+    public orWhere (where: ModelWhereInput<TModel>): this {
+        return this.constrain(query => query.orWhere(where as never))
+    }
+
+    /**
+     * Adds a NOT where clause to the query.
+     *
+     * @param where
+     * @returns
+     */
+    public whereNot (where: ModelWhereInput<TModel>): this {
+        return this.constrain(query => query.whereNot(where as never))
+    }
+
+    /**
+     * Adds an OR NOT where clause to the query.
+     *
+     * @param where
+     * @returns
+     */
+    public orWhereNot (where: ModelWhereInput<TModel>): this {
+        return this.constrain(query => query.orWhereNot(where as never))
+    }
+
+    /**
+     * Adds a null check for a key.
+     *
+     * @param key
+     * @returns
+     */
+    public whereNull<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereNull(key))
+    }
+
+    /**
+     * Adds a not-null check for a key.
+     *
+     * @param key
+     * @returns
+     */
+    public whereNotNull<TKey extends keyof ModelAttributes<TModel> & string> (key: TKey): this {
+        return this.constrain(query => query.whereNotNull(key))
+    }
+
+    /**
+     * Adds a between range clause for a key.
+     *
+     * @param key
+     * @param range
+     * @returns
+     */
+    public whereBetween<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        range: [ModelAttributes<TModel>[TKey], ModelAttributes<TModel>[TKey]]
+    ): this {
+        return this.constrain(query => query.whereBetween(key, range))
+    }
+
+    /**
+     * Adds a date-only equality clause for a date-like key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereDate<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Date | string
+    ): this {
+        return this.constrain(query => query.whereDate(key, value))
+    }
+
+    public whereMonth<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        month: number,
+        year?: number
+    ): this {
+        return this.constrain(query => query.whereMonth(key, month, year))
+    }
+
+    public whereYear<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        year: number
+    ): this {
+        return this.constrain(query => query.whereYear(key, year))
     }
 
     /**
@@ -137,6 +241,20 @@ export abstract class Relation<TModel> {
     }
 
     /**
+     * Adds a strongly-typed inequality where clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereKeyNot<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: ModelAttributes<TModel>[TKey]
+    ): this {
+        return this.constrain(query => query.whereKeyNot(key, value))
+    }
+
+    /**
      * Add a strongly-typed where in clause to the relationship query.
      *
      * @param key
@@ -148,6 +266,48 @@ export abstract class Relation<TModel> {
         values: ModelAttributes<TModel>[TKey][]
     ): this {
         return this.constrain(query => query.whereIn(key, values))
+    }
+
+    /**
+     * Adds a strongly-typed OR IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public orWhereIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.constrain(query => query.orWhereIn(key, values))
+    }
+
+    /**
+     * Adds a strongly-typed NOT IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public whereNotIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.constrain(query => query.whereNotIn(key, values))
+    }
+
+    /**
+     * Adds a strongly-typed OR NOT IN where clause for a single attribute key.
+     *
+     * @param key
+     * @param values
+     * @returns
+     */
+    public orWhereNotIn<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        values: ModelAttributes<TModel>[TKey][]
+    ): this {
+        return this.constrain(query => query.orWhereNotIn(key, values))
     }
 
     /**
@@ -198,8 +358,48 @@ export abstract class Relation<TModel> {
      * @param orderBy
      * @returns
      */
-    public orderBy (orderBy: Parameters<QueryBuilder<TModel>['orderBy']>[0]): this {
-        return this.constrain(query => query.orderBy(orderBy))
+    public orderBy (orderBy: ModelOrderByInput<TModel>): this {
+        return this.constrain(query => query.orderBy(orderBy as never))
+    }
+
+    /**
+     * Puts the query results in random order.
+     *
+     * @returns
+     */
+    public inRandomOrder (): this {
+        return this.constrain(query => query.inRandomOrder())
+    }
+
+    /**
+     * Removes existing order clauses and optionally applies a new one.
+     *
+     * @param column
+     * @param direction
+     * @returns
+     */
+    public reorder (column?: string, direction: 'asc' | 'desc' = 'asc'): this {
+        return this.constrain(query => query.reorder(column, direction))
+    }
+
+    /**
+     * Adds an orderBy descending clause for a timestamp-like column.
+     *
+     * @param column
+     * @returns
+     */
+    public latest (column = 'createdAt'): this {
+        return this.constrain(query => query.latest(column))
+    }
+
+    /**
+     * Adds an orderBy ascending clause for a timestamp-like column.
+     *
+     * @param column
+     * @returns
+     */
+    public oldest (column = 'createdAt'): this {
+        return this.constrain(query => query.oldest(column))
     }
 
     /**
@@ -208,8 +408,8 @@ export abstract class Relation<TModel> {
      * @param include
      * @returns
      */
-    public include (include: Parameters<QueryBuilder<TModel>['include']>[0]): this {
-        return this.constrain(query => query.include(include))
+    public include (include: QuerySchemaInclude<QuerySchemaForModelInstance<TModel>>): this {
+        return this.constrain(query => query.include(include as never))
     }
 
     /**
@@ -218,7 +418,9 @@ export abstract class Relation<TModel> {
      * @param relations
      * @returns
      */
-    public with (relations: Parameters<QueryBuilder<TModel>['with']>[0]): this {
+    public with (
+        relations: string | string[] | Record<string, true | EagerLoadConstraint | undefined>
+    ): this {
         return this.constrain(query => query.with(relations))
     }
 
@@ -228,8 +430,12 @@ export abstract class Relation<TModel> {
      * @param select
      * @returns
      */
-    public select (select: Parameters<QueryBuilder<TModel>['select']>[0]): this {
-        return this.constrain(query => query.select(select))
+    public select (select: QuerySchemaSelect<QuerySchemaForModelInstance<TModel>>): this {
+        return this.constrain(query => query.select(select as never))
+    }
+
+    public addSelect (select: QuerySchemaSelect<QuerySchemaForModelInstance<TModel>>): this {
+        return this.constrain(query => query.addSelect(select as never))
     }
 
     /**
@@ -242,6 +448,10 @@ export abstract class Relation<TModel> {
         return this.constrain(query => query.skip(skip))
     }
 
+    public offset (value: number): this {
+        return this.constrain(query => query.offset(value))
+    }
+
     /**
      * Add a take clause to the relationship query.
      *
@@ -250,6 +460,49 @@ export abstract class Relation<TModel> {
      */
     public take (take: number): this {
         return this.constrain(query => query.take(take))
+    }
+
+    /**
+     * Alias for take.
+     *
+     * @param value
+     * @returns
+     */
+    public limit (value: number): this {
+        return this.constrain(query => query.limit(value))
+    }
+
+    /**
+     * Sets offset/limit for a 1-based page.
+     *
+     * @param page
+     * @param perPage
+     * @returns
+     */
+    public forPage (page: number, perPage = 15): this {
+        return this.constrain(query => query.forPage(page, perPage))
+    }
+
+    /**
+     * Adds a raw where clause when supported by the adapter.
+     *
+     * @param sql
+     * @param bindings
+     * @returns
+     */
+    public whereRaw (sql: string, bindings: unknown[] = []): this {
+        return this.constrain(query => query.whereRaw(sql, bindings))
+    }
+
+    /**
+     * Adds a raw OR where clause when supported by the adapter.
+     *
+     * @param sql
+     * @param bindings
+     * @returns
+     */
+    public orWhereRaw (sql: string, bindings: unknown[] = []): this {
+        return this.constrain(query => query.orWhereRaw(sql, bindings))
     }
 
     /**
@@ -384,8 +637,8 @@ export abstract class Relation<TModel> {
         const query = await this.getQuery()
 
         return maybeValue === undefined
-            ? query.firstWhere(key, operatorOrValue as never)
-            : query.firstWhere(key, operatorOrValue as never, maybeValue as never)
+            ? query.firstWhere(key as never, operatorOrValue as never)
+            : query.firstWhere(key as never, operatorOrValue as never, maybeValue as never)
     }
 
     /**

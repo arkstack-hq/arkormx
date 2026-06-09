@@ -116,6 +116,22 @@ describe('Model relationships', () => {
         expect(commentPost?.getAttribute('id')).toBe(100)
     })
 
+    it('forwards query builder constraints through relations', async () => {
+        const user = await User.query().findOrFail(1)
+        const posts = await user.posts()
+            .whereNot({ title: 'B' })
+            .whereNotIn('id', [999])
+            .orderBy({ id: 'asc' })
+            .select({ id: true })
+            .addSelect({ title: true })
+            .offset(0)
+            .limit(1)
+            .getResults()
+
+        expect(posts.all()).toHaveLength(1)
+        expect(posts.all()[0]?.getAttribute('title')).toBe('A')
+    })
+
     it('accepts a model constructor for morph-to resolution', async () => {
         const comment = await Comment.query().find(1000)
         expect(comment).not.toBeNull()

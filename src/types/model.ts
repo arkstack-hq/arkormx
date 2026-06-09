@@ -1,4 +1,4 @@
-import { ModelQuerySchemaLike, PrismaLikeInclude, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, QuerySchemaCreateData, QuerySchemaRow, QuerySchemaUpdateData, RelationshipModelStatic } from './core'
+import { ModelQuerySchemaLike, PrismaLikeInclude, PrismaLikeOrderBy, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, PrismaLikeWhereInput, QuerySchemaCreateData, QuerySchemaRow, QuerySchemaUpdateData, RelationshipModelStatic } from './core'
 
 import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
@@ -152,10 +152,6 @@ export type ModelAttributesOf<TSchema extends ModelQuerySchemaLike | Record<stri
     ? TSchema
     : Record<string, any>
 
-export type ModelAttributes<TModel> = TModel extends Model<any, infer TAttributes>
-    ? TAttributes
-    : Record<string, any>
-
 type BaseModelInstance = Model<any, any>
 
 export type ModelDeclaredAttributeKey<TModel> = {
@@ -165,6 +161,41 @@ export type ModelDeclaredAttributeKey<TModel> = {
     ? never
     : TKey
 }[keyof TModel & string]
+
+type ModelDeclaredAttributes<TModel> = {
+    [TKey in ModelDeclaredAttributeKey<TModel>]: TModel[TKey]
+}
+
+type ResolveModelAttributes<
+    TModel,
+    TAttributes extends Record<string, unknown>,
+> = [ModelDeclaredAttributeKey<TModel>] extends [never]
+    ? TAttributes
+    : string extends keyof TAttributes
+    ? ModelDeclaredAttributes<TModel>
+    : TAttributes & ModelDeclaredAttributes<TModel>
+
+export type ModelAttributes<TModel> =
+    TModel extends Model<any, infer TAttributes>
+    ? ResolveModelAttributes<TModel, TAttributes>
+    : Record<string, any>
+
+export type QuerySchemaForModelInstance<TModel> =
+    TModel extends Model<infer TSchema, infer TAttributes>
+    ? TSchema extends ModelQuerySchemaLike | string
+    ? QuerySchemaForModel<TSchema, TAttributes>
+    : AttributeQuerySchema<ResolveModelAttributes<TModel, TAttributes>>
+    : ModelQuerySchemaLike
+
+export type ModelWhereInput<TModel> =
+    string extends keyof ModelAttributes<TModel>
+    ? PrismaLikeWhereInput
+    : AttributeWhereInput<ModelAttributes<TModel>>
+
+export type ModelOrderByInput<TModel> =
+    string extends keyof ModelAttributes<TModel>
+    ? PrismaLikeOrderBy
+    : AttributeOrderBy<ModelAttributes<TModel>>
 
 type RelationshipResultProvider<TResult = unknown> = {
     getResults: (...args: any[]) => Promise<TResult>
