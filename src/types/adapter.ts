@@ -47,6 +47,8 @@ export type QueryComparisonOperator =
     | 'is-null'
     | 'is-not-null'
 
+export type QueryScalarComparisonOperator = '=' | '!=' | '>' | '>=' | '<' | '<='
+
 export type SortDirection = 'asc' | 'desc'
 
 export type AggregateOperation = 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max'
@@ -101,6 +103,39 @@ export interface QueryRawCondition {
     bindings?: DatabaseValue[]
 }
 
+export interface QueryColumnComparisonCondition {
+    type: 'column-comparison'
+    leftColumn: string
+    operator: QueryScalarComparisonOperator
+    rightColumn: string
+}
+
+export interface QueryTimeCondition {
+    type: 'time'
+    column: string
+    operator: QueryScalarComparisonOperator
+    value: string
+}
+
+export interface QueryDayCondition {
+    type: 'day'
+    column: string
+    operator: QueryScalarComparisonOperator
+    value: number
+}
+
+export interface QueryExistsCondition {
+    type: 'exists'
+    query: SelectSpec
+}
+
+export interface QueryFullTextCondition {
+    type: 'full-text'
+    columns: string[]
+    value: string
+    language?: string
+}
+
 export interface RawQuerySpec {
     sql: string
     bindings?: DatabaseValue[]
@@ -108,6 +143,11 @@ export interface RawQuerySpec {
 
 export type QueryCondition =
     | QueryComparisonCondition
+    | QueryColumnComparisonCondition
+    | QueryTimeCondition
+    | QueryDayCondition
+    | QueryExistsCondition
+    | QueryFullTextCondition
     | QueryGroupCondition
     | QueryNotCondition
     | QueryRawCondition

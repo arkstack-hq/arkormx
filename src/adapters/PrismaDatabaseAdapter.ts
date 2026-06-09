@@ -264,11 +264,20 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             return { NOT: nested }
         }
 
-        throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the Prisma compatibility adapter; use a SQL-backed adapter for raw SQL predicates.', {
+        if (condition.type === 'raw') {
+            throw new UnsupportedAdapterFeatureException('Raw where clauses are not supported by the Prisma compatibility adapter; use a SQL-backed adapter for raw SQL predicates.', {
+                operation: 'adapter.where',
+                meta: {
+                    feature: 'rawWhere',
+                    sql: (condition as QueryRawCondition).sql,
+                },
+            })
+        }
+
+        throw new UnsupportedAdapterFeatureException(`Where condition [${condition.type}] is not supported by the Prisma compatibility adapter; use a SQL-backed adapter.`, {
             operation: 'adapter.where',
             meta: {
-                feature: 'rawWhere',
-                sql: (condition as QueryRawCondition).sql,
+                feature: condition.type,
             },
         })
     }
