@@ -16,11 +16,11 @@
   ],
   "homepage": "https://arkormx.toneflix.net",
   "bugs": {
-    "url": "https://github.com/arkstack-tmp/arkormx/issues"
+    "url": "https://github.com/arkstack-hq/arkormx/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/arkstack-tmp/arkormx.git"
+    "url": "git+https://github.com/arkstack-hq/arkormx.git"
   },
   "license": "MIT",
   "author": "3m1n1nce <3m1n1nce@toneflix.net>",

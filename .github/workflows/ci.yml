@@ -157,4 +157,4 @@ jobs:
         with:
           directory: ./coverage
           token: ${{ secrets.CODECOV_TOKEN }}
-          slug: arkstack-tmp/arkormx
+          slug: arkstack-hq/arkormx
