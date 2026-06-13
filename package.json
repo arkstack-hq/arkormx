@@ -1,6 +1,6 @@
 {
   "name": "arkormx",
-  "version": "2.5.6",
+  "version": "2.5.7",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",
@@ -100,10 +100,10 @@
     "node": ">=20.0.0"
   },
   "dependencies": {
-    "@h3ravel/collect.js": "^5.3.6",
-    "@h3ravel/musket": "^0.10.1",
-    "@h3ravel/shared": "^0.27.13",
-    "@h3ravel/support": "^0.15.11",
+    "@h3ravel/collect.js": "^5.3.7",
+    "@h3ravel/musket": "^2.0.0",
+    "@h3ravel/shared": "^2.1.4",
+    "@h3ravel/support": "^2.1.4",
     "dotenv": "^17.3.1",
     "jiti": "^2.7.0",
     "kysely": "^0.28.15",
