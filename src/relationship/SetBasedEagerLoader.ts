@@ -109,6 +109,14 @@ export class SetBasedEagerLoader {
                 await this.loadMorphTo(name, metadata, constraint)
 
                 return
+            case 'morphOne':
+                await this.loadMorphOne(name, resolver, metadata, constraint)
+
+                return
+            case 'morphMany':
+                await this.loadMorphMany(name, metadata, constraint)
+
+                return
             default:
                 await this.loadIndividually(name, resolver, constraint)
         }
@@ -755,6 +763,122 @@ export class SetBasedEagerLoader {
 
             model.setLoadedRelation(name, relationValue)
         })
+    }
+
+    /**
+     * Loads a polymorphic one-to-one ("morph one") relationship for the set of
+     * models. See {@link loadMorphChildren} for the batching strategy.
+     *
+     * @param name
+     * @param resolver
+     * @param metadata
+     * @param constraint
+     */
+    private async loadMorphOne (
+        name: string,
+        resolver: RelationResolver,
+        metadata: Extract<RelationMetadata, { type: 'morphOne' }>,
+        constraint?: EagerLoadConstraint,
+    ): Promise<void> {
+        const relatedByKey = await this.loadMorphChildren(metadata, constraint)
+
+        this.models.forEach(model => {
+            const bucket = relatedByKey.get(this.morphParentKey(model, metadata.localKey))
+
+            model.setLoadedRelation(name, bucket?.[0] ?? this.resolveSingleDefault(resolver, model))
+        })
+    }
+
+    /**
+     * Loads a polymorphic one-to-many ("morph many") relationship for the set of
+     * models. See {@link loadMorphChildren} for the batching strategy.
+     *
+     * @param name
+     * @param metadata
+     * @param constraint
+     */
+    private async loadMorphMany (
+        name: string,
+        metadata: Extract<RelationMetadata, { type: 'morphMany' }>,
+        constraint?: EagerLoadConstraint,
+    ): Promise<void> {
+        const relatedByKey = await this.loadMorphChildren(metadata, constraint)
+
+        this.models.forEach(model => {
+            const bucket = relatedByKey.get(this.morphParentKey(model, metadata.localKey)) ?? []
+
+            model.setLoadedRelation(name, new ArkormCollection(bucket))
+        })
+    }
+
+    /**
+     * Batch-loads the children for a morphOne/morphMany relationship. Parents are
+     * grouped by their own morph type (constructor name), so each distinct type
+     * runs a single query constrained by `idColumn IN (...) AND typeColumn = type`
+     * instead of one query per parent row. This also supports a heterogeneous
+     * parent set (e.g. the result of a nested load after a morphTo).
+     *
+     * @param metadata
+     * @param constraint
+     * @returns A map of `"{type}:{localKey}" -> related[]`.
+     */
+    private async loadMorphChildren (
+        metadata: Extract<RelationMetadata, { type: 'morphOne' | 'morphMany' }>,
+        constraint?: EagerLoadConstraint,
+    ): Promise<Map<string, unknown[]>> {
+        const keysByType = new Map<string, unknown[]>()
+        const seenByType = new Map<string, Set<string>>()
+
+        this.models.forEach(model => {
+            const morphType = this.morphTypeOf(model)
+            const localValue = model.getAttribute(metadata.localKey)
+            if (morphType.length === 0 || localValue == null)
+                return
+
+            const keys = keysByType.get(morphType) ?? []
+            const seen = seenByType.get(morphType) ?? new Set<string>()
+            const lookupKey = this.toLookupKey(localValue)
+
+            if (!seen.has(lookupKey)) {
+                seen.add(lookupKey)
+                keys.push(localValue)
+            }
+
+            keysByType.set(morphType, keys)
+            seenByType.set(morphType, seen)
+        })
+
+        const relatedByKey = new Map<string, unknown[]>()
+
+        await Promise.all(Array.from(keysByType.entries()).map(async ([morphType, keys]) => {
+            let query = metadata.relatedModel.query()
+                .whereIn(metadata.morphIdColumn as never, keys as never[])
+                .where({ [metadata.morphTypeColumn]: morphType } as never)
+
+            query = this.applyConstraint(query, constraint)
+
+            const relatedModels = (await query.get()).all()
+            relatedModels.forEach(related => {
+                const value = this.readModelAttribute(related, metadata.morphIdColumn)
+                if (value == null)
+                    return
+
+                const key = `${morphType}:${this.toLookupKey(value)}`
+                const bucket = relatedByKey.get(key) ?? []
+                bucket.push(related)
+                relatedByKey.set(key, bucket)
+            })
+        }))
+
+        return relatedByKey
+    }
+
+    private morphParentKey (model: EagerLoadableModel, localKey: string): string {
+        return `${this.morphTypeOf(model)}:${this.toLookupKey(model.getAttribute(localKey))}`
+    }
+
+    private morphTypeOf (model: EagerLoadableModel): string {
+        return (model as { constructor?: { name?: string } }).constructor?.name ?? ''
     }
 
     /**

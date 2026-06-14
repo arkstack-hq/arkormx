@@ -242,6 +242,46 @@ describe('Model relationships', () => {
         }
     })
 
+    it('batches morph-many eager loading into a single query', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+
+        User.setAdapter(adapter)
+        Comment.setAdapter(adapter)
+
+        try {
+            const users = (await User.query().with('comments').orderBy({ id: 'asc' }).get()).all()
+            const first = users.find(user => user.getAttribute('id') === 1)
+            const second = users.find(user => user.getAttribute('id') === 2)
+
+            expect((first?.getAttribute('comments') as ArkormCollection<Comment>).all()
+                .map(comment => comment.getAttribute('id'))).toEqual([1000])
+            expect((second?.getAttribute('comments') as ArkormCollection<Comment>).all()).toEqual([])
+
+            const tableOf = (call: unknown[]) => (call[0] as { target?: { table?: string } }).target?.table
+            const commentSelects = selectSpy.mock.calls.filter(call => tableOf(call) === 'comments')
+
+            // Both users' comments load in one query (whereIn + type), not per row.
+            expect(commentSelects).toHaveLength(1)
+            expect(JSON.stringify(commentSelects[0]?.[0])).toContain('"in"')
+        } finally {
+            User.setAdapter(undefined)
+            Comment.setAdapter(undefined)
+        }
+    })
+
+    it('eager loads morph-one relations with a null default for misses', async () => {
+        registerModels(User, Post)
+
+        const users = (await User.query().with('primaryComment').orderBy({ id: 'asc' }).get()).all()
+
+        expect((users.find(user => user.getAttribute('id') === 1)
+            ?.getAttribute('primaryComment') as Comment)?.getAttribute('id')).toBe(1000)
+        expect(users.find(user => user.getAttribute('id') === 2)
+            ?.getAttribute('primaryComment')).toBeNull()
+    })
+
     it('uses naming.case for inferred morph-to-many pivot columns', () => {
         class SnakeTag extends Model {
             protected static override table = 'tags'
