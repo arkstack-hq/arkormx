@@ -1,4 +1,4 @@
-import type { MorphToRelationMetadata, RelatedModelClass } from '../types'
+import type { MorphToRelationMetadata, RelatedModelClass, RelationshipModelStatic } from '../types'
 
 import { RelationResolutionException } from '../Exceptions/RelationResolutionException'
 import type { QueryBuilder } from '../QueryBuilder'
@@ -57,6 +57,8 @@ export class MorphToRelation<TParent, TRelated> extends Relation<TRelated> {
             morphIdColumn: this.morphIdColumn,
             morphTypeColumn: this.morphTypeColumn,
             ownerKey: this.ownerKey,
+            resolveModel: (morphType: string) =>
+                this.resolveModelForType(morphType) as unknown as RelationshipModelStatic,
         }
     }
 
@@ -86,6 +88,16 @@ export class MorphToRelation<TParent, TRelated> extends Relation<TRelated> {
             )
         }
 
+        return this.resolveModelForType(morphType)
+    }
+
+    /**
+     * Resolve the related model class for an explicit morph type value, used by
+     * both single-record resolution and the set-based eager loader.
+     *
+     * @param morphType
+     */
+    private resolveModelForType (morphType: string): RelatedModelClass<TRelated> {
         const related = this.relatedModel?.name === morphType
             ? this.relatedModel
             : getRegisteredModels().find(model => model.name === morphType)
