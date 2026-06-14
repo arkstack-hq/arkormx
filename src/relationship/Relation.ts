@@ -661,6 +661,34 @@ export abstract class Relation<TModel> {
     }
 
     /**
+     * Apply or remove DISTINCT from the relationship query.
+     *
+     * @param enabled
+     * @returns
+     */
+    public distinct (enabled = true): this {
+        return this.constrain(query => query.distinct(enabled))
+    }
+
+    /**
+     * Group relationship results by one or more related-model attributes.
+     *
+     * @param columns
+     * @returns
+     */
+    public groupBy<TKey extends keyof ModelAttributes<TModel> & string> (
+        columns: TKey[]
+    ): this
+    public groupBy<TKey extends keyof ModelAttributes<TModel> & string> (
+        ...columns: TKey[]
+    ): this
+    public groupBy (...columns: Array<string | string[]>): this {
+        const normalized = (Array.isArray(columns[0]) ? columns[0] : columns) as string[]
+
+        return this.constrain(query => query.groupBy(...normalized as Array<keyof ModelAttributes<TModel> & string>))
+    }
+
+    /**
      * Add a skip clause to the relationship query.
      *
      * @param skip

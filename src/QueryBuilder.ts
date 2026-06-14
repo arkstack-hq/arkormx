@@ -100,6 +100,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     private queryRelationLoads?: RelationLoadPlan[]
     private queryOrderBy?: QueryOrderBy[]
     private querySelect?: QuerySelectColumn[]
+    private queryDistinct = false
+    private queryGroupBy?: string[]
     private offsetValue?: number
     private limitValue?: number
     private readonly eagerLoads: EagerLoadMap = {}
@@ -1367,6 +1369,43 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Apply or remove DISTINCT from the select query.
+     *
+     * @param enabled
+     * @returns
+     */
+    public distinct (enabled = true): this {
+        this.queryDistinct = enabled
+
+        return this
+    }
+
+    /**
+     * Group query results by one or more model attributes.
+     *
+     * @param columns
+     * @returns
+     */
+    public groupBy<TKey extends keyof ModelAttributes<TModel> & string> (
+        columns: TKey[]
+    ): this
+    public groupBy<TKey extends keyof ModelAttributes<TModel> & string> (
+        ...columns: TKey[]
+    ): this
+    public groupBy (...columns: Array<string | string[]>): this {
+        const normalized = (Array.isArray(columns[0]) ? columns[0] : columns) as string[]
+        if (normalized.length === 0)
+            throw new QueryConstraintException('groupBy requires at least one column.', {
+                operation: 'groupBy',
+                model: this.model.name,
+            })
+
+        this.queryGroupBy = [...normalized]
+
+        return this
+    }
+
+    /**
      * Adds a skip clause to the query for pagination. 
      * This will overwrite any existing skip clause.
      * 
@@ -2501,6 +2540,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             : undefined
         builder.queryOrderBy = this.queryOrderBy ? [...this.queryOrderBy] : undefined
         builder.querySelect = this.querySelect ? [...this.querySelect] : undefined
+        builder.queryDistinct = this.queryDistinct
+        builder.queryGroupBy = this.queryGroupBy ? [...this.queryGroupBy] : undefined
         builder.offsetValue = this.offsetValue
         builder.limitValue = this.limitValue
         builder.includeTrashed = this.includeTrashed
@@ -2685,6 +2726,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 limit: plan.limit,
                 offset: plan.offset,
                 columns: plan.columns ? [...plan.columns] : undefined,
+                distinct: plan.distinct,
+                groupBy: plan.groupBy ? [...plan.groupBy] : undefined,
                 relationLoads: plan.relationLoads
                     ? this.cloneRelationLoads(plan.relationLoads)
                     : undefined,
@@ -2712,6 +2755,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                         limit: plan.limit,
                         offset: plan.offset,
                         columns: plan.columns ? [...plan.columns] : undefined,
+                        distinct: plan.distinct,
+                        groupBy: plan.groupBy ? [...plan.groupBy] : undefined,
                         relationLoads: plan.relationLoads ? this.cloneRelationLoads(plan.relationLoads) : undefined,
                     })
 
@@ -2724,6 +2769,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 existing.limit = plan.limit ?? existing.limit
                 existing.offset = plan.offset ?? existing.offset
                 existing.columns = plan.columns ? [...plan.columns] : existing.columns
+                existing.distinct = plan.distinct ?? existing.distinct
+                existing.groupBy = plan.groupBy ? [...plan.groupBy] : existing.groupBy
                 existing.relationLoads = this.mergeRelationLoadPlans(existing.relationLoads, plan.relationLoads)
             })
         }
@@ -2780,6 +2827,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
         if (plan.columns)
             this.querySelect = [...plan.columns]
+
+        this.queryDistinct = plan.distinct ?? false
+        this.queryGroupBy = plan.groupBy ? [...plan.groupBy] : undefined
 
         if (plan.offset !== undefined)
             this.offsetValue = plan.offset
@@ -2880,6 +2930,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                     limit: normalizedQuery.limitValue,
                     offset: normalizedQuery.offsetValue,
                     columns: normalizedQuery.querySelect ? [...normalizedQuery.querySelect] : undefined,
+                    distinct: normalizedQuery.queryDistinct || undefined,
+                    groupBy: normalizedQuery.queryGroupBy ? [...normalizedQuery.queryGroupBy] : undefined,
                     relationLoads: this.mergeRelationLoadPlans(
                         normalizedQuery.queryRelationLoads ? this.cloneRelationLoads(normalizedQuery.queryRelationLoads) : undefined,
                         this.mergeRelationLoadPlans(callbackRelationLoads, childRelationLoads),
@@ -3307,6 +3359,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         return {
             target: this.buildQueryTarget(),
             columns,
+            distinct: this.queryDistinct || undefined,
+            groupBy: this.queryGroupBy ? [...this.queryGroupBy] : undefined,
             where: condition,
             orderBy,
             limit: this.limitValue,
@@ -3822,6 +3876,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             || relatedQuery.queryRelationLoads
             || relatedQuery.querySelect
             || relatedQuery.queryOrderBy
+            || relatedQuery.queryDistinct
+            || relatedQuery.queryGroupBy
             || relatedQuery.offsetValue !== undefined
             || relatedQuery.limitValue !== undefined
             || relatedQuery.randomOrderEnabled

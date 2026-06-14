@@ -171,9 +171,31 @@ describe('QueryBuilder', () => {
                     { column: '1 as "isActive"', raw: true },
                 ],
             }))
+
+            await User.query()
+                .select({ isActive: true })
+                .distinct()
+                .groupBy('isActive')
+                .get()
+            expect(select).toHaveBeenLastCalledWith(expect.objectContaining({
+                distinct: true,
+                groupBy: ['isActive'],
+            }))
         } finally {
             User.setAdapter(undefined)
         }
+    })
+
+    it('rejects distinct and group-by queries on Prisma compatibility', async () => {
+        await expect(User.query().distinct().get()).rejects.toMatchObject({
+            constructor: UnsupportedAdapterFeatureException,
+            meta: expect.objectContaining({ feature: 'distinct' }),
+        })
+
+        await expect(User.query().groupBy('isActive').get()).rejects.toMatchObject({
+            constructor: UnsupportedAdapterFeatureException,
+            meta: expect.objectContaining({ feature: 'groupBy' }),
+        })
     })
 
     it('rejects raw select expressions on Prisma compatibility', async () => {
