@@ -959,6 +959,24 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(inspection?.parameters).toContain(1)
     })
 
+    it('compiles distinct and group-by select clauses', () => {
+        const inspection = kyselyAdapter.inspectQuery?.({
+            operation: 'select',
+            spec: {
+                target: { table: 'users' },
+                columns: [{ column: 'isActive' }],
+                distinct: true,
+                groupBy: ['isActive'],
+                orderBy: [{ column: 'isActive', direction: 'asc' }],
+            },
+        })
+        const normalizedSql = inspection?.sql?.replace(/\s+/g, ' ')
+
+        expect(normalizedSql).toContain('select distinct "isActive"')
+        expect(normalizedSql).toContain('group by "isActive"')
+        expect(normalizedSql).toContain('order by "isActive" asc')
+    })
+
     it('wraps invalid column errors with compiled SQL context', async () => {
         const error = await kyselyAdapter.select({
             target: { table: 'users' },

@@ -60,6 +60,34 @@ user.getAttribute('email'); // selected value
 user.getAttribute('name'); // undefined
 ```
 
+### Distinct and grouping
+
+Use `distinct()` to remove duplicate selected rows and `groupBy()` to group
+results by one or more model attributes:
+
+```ts
+const statuses = await User.query()
+  .select({ isActive: true })
+  .distinct()
+  .groupBy('isActive')
+  .get();
+
+const totals = await Order.query()
+  .select(['customerId', 'count(*) as "orderCount"'])
+  .groupBy('customerId')
+  .get();
+```
+
+`groupBy()` accepts either separate attributes or an array:
+
+```ts
+query.groupBy('customerId', 'status');
+query.groupBy(['customerId', 'status']);
+```
+
+Both methods are also available on relationship queries. They require a
+SQL-backed adapter and are not supported by the Prisma compatibility adapter.
+
 Use an expression-to-alias entry for a computed projection:
 
 ```ts

@@ -82,6 +82,8 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             relationFilters: false,
             rawSelect: false,
             rawWhere: false,
+            distinct: false,
+            groupBy: false,
             returning: false,
         }
     }
@@ -290,6 +292,20 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
         skip?: number
         take?: number
     } {
+        if (spec.distinct) {
+            throw new UnsupportedAdapterFeatureException('Distinct queries are not supported by the Prisma compatibility adapter.', {
+                operation: 'adapter.select',
+                meta: { feature: 'distinct' },
+            })
+        }
+
+        if (spec.groupBy?.length) {
+            throw new UnsupportedAdapterFeatureException('Group-by queries are not supported by the Prisma compatibility adapter.', {
+                operation: 'adapter.select',
+                meta: { feature: 'groupBy' },
+            })
+        }
+
         return {
             include: this.toQueryInclude(spec.relationLoads),
             where: this.toQueryWhere(spec.where),

@@ -152,6 +152,8 @@ describe('adapter-first typing', () => {
             .orderBy({ title: 'asc' })
             .select({ id: true, title: true })
             .addSelect('authorId')
+            .distinct()
+            .groupBy('authorId', 'title')
             .offset(5)
             .limit(10)
             .forPage(2, 10)
@@ -164,6 +166,8 @@ describe('adapter-first typing', () => {
         relation.where({ missing: true })
         // @ts-expect-error Unknown related model order fields are rejected.
         relation.orderBy({ missing: 'asc' })
+        // @ts-expect-error Unknown related model group fields are rejected.
+        relation.groupBy('missing')
     })
 
     it('infers query helper payloads from the model generic', () => {

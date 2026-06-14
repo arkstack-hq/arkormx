@@ -94,6 +94,8 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         relationFilters: true,
         rawSelect: true,
         rawWhere: true,
+        distinct: true,
+        groupBy: true,
     }
 
     public constructor(
@@ -680,6 +682,16 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }), sql`, `)}`
     }
 
+    private buildGroupBy (target: QueryTarget<any>, groupBy?: string[]): RawBuilder<unknown> {
+        if (!groupBy || groupBy.length === 0)
+            return sql``
+
+        return sql` group by ${sql.join(
+            groupBy.map(column => sql.ref(this.mapColumn(target, column))),
+            sql`, `,
+        )}`
+    }
+
     private buildConditionValueList (value: DatabaseValue | DatabaseValue[] | undefined): unknown[] {
         if (Array.isArray(value))
             return value
@@ -1162,6 +1174,8 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             && relation.limit === undefined
             && relation.offset === undefined
             && !relation.columns
+            && !relation.distinct
+            && !relation.groupBy
             && !relation.relationLoads) {
             return undefined
         }
@@ -1193,10 +1207,11 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         spec: SelectSpec<TModel>
     ): RawBuilder<Record<string, unknown>> {
         return sql<Record<string, unknown>>`
-            select ${this.buildSelectList(spec.target, spec.columns)}
+            select ${spec.distinct ? sql`distinct ` : sql``}${this.buildSelectList(spec.target, spec.columns)}
             ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)}
             from ${sql.table(this.resolveTable(spec.target))}
             ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
+            ${this.buildGroupBy(spec.target, spec.groupBy)}
             ${this.buildOrderBy(spec.target, spec.orderBy)}
             ${this.buildPaginationClause(spec)}
         `
@@ -1216,6 +1231,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
                 select 1
                 from ${sql.table(this.resolveTable(spec.target))}
                 ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
+                ${this.buildGroupBy(spec.target, spec.groupBy)}
                 limit 1
             ) as exists
         `
@@ -1334,6 +1350,8 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             where: spec.where,
             relationFilters: spec.relationFilters,
             orderBy: spec.orderBy,
+            distinct: spec.distinct,
+            groupBy: spec.groupBy,
             limit: spec.limit,
             offset: spec.offset,
         })

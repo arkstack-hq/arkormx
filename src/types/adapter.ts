@@ -27,6 +27,8 @@ export type AdapterCapability =
     | 'relationFilters'
     | 'rawSelect'
     | 'rawWhere'
+    | 'distinct'
+    | 'groupBy'
 
 export type AdapterCapabilities = Partial<Record<AdapterCapability, boolean>>
 
@@ -182,12 +184,16 @@ export interface RelationLoadPlan {
     limit?: number
     offset?: number
     columns?: QuerySelectColumn[]
+    distinct?: boolean
+    groupBy?: string[]
     relationLoads?: RelationLoadPlan[]
 }
 
 export interface SelectSpec<TModel = unknown> {
     target: QueryTarget<TModel>
     columns?: QuerySelectColumn[]
+    distinct?: boolean
+    groupBy?: string[]
     where?: QueryCondition
     orderBy?: QueryOrderBy[]
     limit?: number
