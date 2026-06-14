@@ -109,6 +109,12 @@ export interface MorphToRelationMetadata {
     morphIdColumn: string
     morphTypeColumn: string
     ownerKey?: string
+    /**
+     * Resolve the related model class for a given morph type value, using the
+     * same registry lookup (and error) as single-record resolution. Lets the
+     * set-based eager loader resolve a model per distinct type.
+     */
+    resolveModel: (morphType: string) => RelationshipModelStatic
 }
 
 export interface MorphToManyRelationMetadata extends BaseRelationMetadata {

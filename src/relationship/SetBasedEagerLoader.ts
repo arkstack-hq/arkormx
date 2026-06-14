@@ -105,6 +105,10 @@ export class SetBasedEagerLoader {
                 await this.loadHasOneThrough(name, resolver, metadata, constraint)
 
                 return
+            case 'morphTo':
+                await this.loadMorphTo(name, metadata, constraint)
+
+                return
             default:
                 await this.loadIndividually(name, resolver, constraint)
         }
@@ -685,12 +689,81 @@ export class SetBasedEagerLoader {
     }
 
     /**
-     * Fallback method to load relationships individually for each model when the 
+     * Loads an inverse polymorphic ("morph to") relationship for the set of
+     * models. Parents are grouped by their morph type, so each distinct type
+     * runs a single batched query instead of one query per parent row.
+     *
+     * @param name
+     * @param metadata
+     * @param constraint
+     * @returns
+     */
+    private async loadMorphTo (
+        name: string,
+        metadata: Extract<RelationMetadata, { type: 'morphTo' }>,
+        constraint?: EagerLoadConstraint,
+    ): Promise<void> {
+        const idsByType = new Map<string, unknown[]>()
+        const seenByType = new Map<string, Set<string>>()
+
+        this.models.forEach(model => {
+            const morphType = model.getAttribute(metadata.morphTypeColumn)
+            const morphId = model.getAttribute(metadata.morphIdColumn)
+            if (typeof morphType !== 'string' || morphType.length === 0 || morphId == null)
+                return
+
+            const ids = idsByType.get(morphType) ?? []
+            const seen = seenByType.get(morphType) ?? new Set<string>()
+            const lookupKey = this.toLookupKey(morphId)
+
+            if (!seen.has(lookupKey)) {
+                seen.add(lookupKey)
+                ids.push(morphId)
+            }
+
+            idsByType.set(morphType, ids)
+            seenByType.set(morphType, seen)
+        })
+
+        const relatedByTypeAndKey = new Map<string, unknown>()
+
+        await Promise.all(Array.from(idsByType.entries()).map(async ([morphType, ids]) => {
+            const relatedModel = metadata.resolveModel(morphType)
+            const ownerKey = metadata.ownerKey ?? relatedModel.getPrimaryKey()
+
+            let query = relatedModel.query()
+                .whereIn(ownerKey as never, ids as never[])
+
+            query = this.applyConstraint(query, constraint)
+
+            const relatedModels = (await query.get()).all()
+            relatedModels.forEach(related => {
+                const value = this.readModelAttribute(related, ownerKey)
+                if (value == null)
+                    return
+
+                relatedByTypeAndKey.set(`${morphType}:${this.toLookupKey(value)}`, related)
+            })
+        }))
+
+        this.models.forEach(model => {
+            const morphType = model.getAttribute(metadata.morphTypeColumn)
+            const morphId = model.getAttribute(metadata.morphIdColumn)
+            const relationValue = (typeof morphType !== 'string' || morphId == null)
+                ? null
+                : relatedByTypeAndKey.get(`${morphType}:${this.toLookupKey(morphId)}`) ?? null
+
+            model.setLoadedRelation(name, relationValue)
+        })
+    }
+
+    /**
+     * Fallback method to load relationships individually for each model when the
      * relationship type is not supported for set-based loading.
-     * 
-     * @param name 
-     * @param resolver 
-     * @param constraint 
+     *
+     * @param name
+     * @param resolver
+     * @param constraint
      */
     private async loadIndividually (
         name: string,

@@ -206,6 +206,42 @@ describe('Model relationships', () => {
         expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
     })
 
+    it('batches morph-to eager loading into one query per type', async () => {
+        const prisma = createCoreClient()
+        const adapter = createPrismaDatabaseAdapter(prisma)
+        const selectSpy = vi.spyOn(adapter, 'select')
+
+        registerModels(User, Post)
+        Comment.setAdapter(adapter)
+        User.setAdapter(adapter)
+        Post.setAdapter(adapter)
+
+        try {
+            const loaded = (await Comment.query()
+                .with('commentable')
+                .orderBy({ id: 'asc' })
+                .get()).all()
+
+            expect(loaded[0]?.getAttribute('commentable')).toBeInstanceOf(User)
+            expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
+
+            const tableOf = (call: unknown[]) => (call[0] as { target?: { table?: string } }).target?.table
+            const usersSelects = selectSpy.mock.calls.filter(call => tableOf(call) === 'users')
+            const postsSelects = selectSpy.mock.calls.filter(call => tableOf(call) === 'posts')
+
+            // Set-based loading issues one batched `select` per distinct morph
+            // type. The old per-row fallback used `selectOne` per comment, so the
+            // `select` spy would not see these table reads at all.
+            expect(usersSelects).toHaveLength(1)
+            expect(postsSelects).toHaveLength(1)
+            expect(JSON.stringify(usersSelects[0]?.[0])).toContain('"in"')
+        } finally {
+            Comment.setAdapter(undefined)
+            User.setAdapter(undefined)
+            Post.setAdapter(undefined)
+        }
+    })
+
     it('uses naming.case for inferred morph-to-many pivot columns', () => {
         class SnakeTag extends Model {
             protected static override table = 'tags'
