@@ -242,14 +242,20 @@ const registerConfiguredModels = async (generation: number): Promise<void> => {
         .filter((directory, index, all) => all.indexOf(directory) === index)
 
     const files = directories.flatMap(collectRuntimeModelFiles)
-    const modules = await Promise.all(files.map(async (file) => {
-        try {
-            return await RuntimeModuleLoader.load<Record<string, unknown>>(file)
-        } catch {
-            return null
+    const loaded = await RuntimeModuleLoader.loadAll<Record<string, unknown>>(files)
+
+    loaded.forEach(({ file, error }) => {
+        if (error !== undefined) {
+            console.warn(
+                `[arkorm] Failed to load model file for registration: ${file}\n`
+                + `        ${error instanceof Error ? error.message : String(error)}\n`
+                + '        Models in this file will not be registered (morphTo resolution may fail). '
+                + 'This is often a circular import — avoid importing models at the top level of trait modules.',
+            )
         }
-    }))
-    const models = modules.flatMap(module => module
+    })
+
+    const models = loaded.flatMap(({ module }) => module
         ? Object.values(module).filter(isModelConstructor)
         : []
     )
