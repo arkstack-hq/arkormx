@@ -478,7 +478,8 @@ describe('PostgreSQL Kysely adapter', () => {
         const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
         expect(normalizedSql).toContain('select * from "users" order by "id" asc')
         expect(normalizedSql).toContain('select * from "posts" where "userId" in ($1, $2)')
-        expect(executedQueries.filter((query) => query.includes('from "comments"'))).toHaveLength(3)
+        // morphMany is set-based: all posts' comments load in one batched query.
+        expect(executedQueries.filter((query) => query.includes('from "comments"'))).toHaveLength(1)
     })
 
     it('supports constrained eager loading and model.load() through Arkorm relation load specs on the Kysely path', async () => {
@@ -565,7 +566,7 @@ describe('PostgreSQL Kysely adapter', () => {
 
         const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
         expect(normalizedSql).toContain('select * from "posts" where ("userId" in ($1) and "title" = $2) order by "id" desc limit $3')
-        expect(normalizedSql).toContain('select * from "comments" where ("commentableId" = $1 and "commentableType" = $2)')
+        expect(normalizedSql).toContain('select * from "comments" where ("commentableId" in ($1) and "commentableType" = $2)')
     })
 
     it('matches Prisma compatibility and Kysely adapter behavior for adapter-first relation filters and eager loading without delegate warnings', async () => {
