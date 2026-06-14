@@ -9,17 +9,17 @@ importers:
   .:
     dependencies:
       '@h3ravel/collect.js':
-        specifier: ^5.3.6
-        version: 5.3.6
+        specifier: ^5.3.7
+        version: 5.3.7
       '@h3ravel/musket':
-        specifier: ^0.10.1
-        version: 0.10.1(@types/node@25.6.2)
+        specifier: ^2.0.0
+        version: 2.0.0(@types/node@25.6.2)
       '@h3ravel/shared':
-        specifier: ^0.27.13
-        version: 0.27.13(@types/node@25.6.2)
+        specifier: ^2.1.4
+        version: 2.2.0(@types/node@25.6.2)
       '@h3ravel/support':
-        specifier: ^0.15.11
-        version: 0.15.11
+        specifier: ^2.1.4
+        version: 2.2.0(@types/node@25.6.2)
       dotenv:
         specifier: ^17.3.1
         version: 17.3.1
@@ -109,8 +109,8 @@ importers:
         specifier: workspace:^
         version: link:../..
       clear-router:
-        specifier: ^2.8.6
-        version: 2.8.6(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
+        specifier: ^2.8.8
+        version: 2.8.8(@h3ravel/support@2.2.0(@types/node@25.6.2))(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -401,21 +401,21 @@ packages:
     resolution: {integrity: sha512-rZAP3aVgB9ds9KOeUSL+zZ21hPmo8dh6fnIFwRQj5EAZl9gzR7wxYbYXYysAM8CTqGmUGyp2S4kUdV17MnGuWQ==}
     engines: {node: ^20.19.0 || ^22.13.0 || >=24}
 
-  '@h3ravel/collect.js@5.3.6':
-    resolution: {integrity: sha512-pMuQ6C+oa/O//RCzG2VJsBBhOh3IG5sUqZFYYtJT6mPzoq0cKpv+YSiQL27oG0yCvj4TZ8YHIKJ9GlB7BWWfuA==}
+  '@h3ravel/collect.js@5.3.7':
+    resolution: {integrity: sha512-qsdkxy4uLhKmQ1m7PMnGg3xRyWQleFv+tFuiRliLWdrQZaOsOZab/OGvzV+RXl09VY3O+tJDvc6nxrwsgVGtwA==}
 
-  '@h3ravel/musket@0.10.1':
-    resolution: {integrity: sha512-M5pwj7tv5pWTdQnw48EGOEaecPSAZ08CPwS76IRP1QSGCj0gb8gMmrUDZkXTmmDjhJlAfAEAygzLzwQwB6XdgQ==}
+  '@h3ravel/contracts@2.2.0':
+    resolution: {integrity: sha512-oDIuxoxtSFiI2wLFzdrm5M7LYrc39bnq9hc+pprZoMSw07Y3X/c2ficAO4bOfqUiy4OSM9x+K8N80EvyKM3A1A==}
+
+  '@h3ravel/musket@2.0.0':
+    resolution: {integrity: sha512-A9U1k/bw6DluXBlUAlkCOHZJds1Bc0kwMWB/tO/8BdWDHqj0poYKDFeRFqyrgmLUdiit3a74tPZPPdQxN6+IhA==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
-  '@h3ravel/shared@0.27.13':
-    resolution: {integrity: sha512-pkduIDZA89TccPG6FX8txwpdbbUrjSj/GXxsf2ZFTSLhWR7Qh5/R2kjSO1rkbLJv/lS+WtdE/WV2Rd+cSEcPMw==}
+  '@h3ravel/shared@2.2.0':
+    resolution: {integrity: sha512-c53qkEe5a80KN1esC6yZuXbhki6n4hvB8Uxh9GphLTO/tsCK56t4dIzyqtMNAX8BhAIzR4xJf0wcKy1mOKg8oQ==}
 
-  '@h3ravel/shared@0.30.3':
-    resolution: {integrity: sha512-Qf2GJb5IF8LvAIHH7af2Ze0DvV4IlW+ZEPhodCQtUVq+sZI1PzdSnqYcqsJ4p5pqlVyOShw8s8UFgYz5WoUjLw==}
-
-  '@h3ravel/support@0.15.11':
-    resolution: {integrity: sha512-0bGhGK1F1JDuQmT0qdPx8b7BOFPWvGONmdZduxlJleW/hwyCc9FhpvyTTW7V1BhVAguPzEp8P6RN6nIs+wR1Ew==}
+  '@h3ravel/support@2.2.0':
+    resolution: {integrity: sha512-5TGbRtPpNZofgqCZoqBD8MWxPNPtOcYX8gfkaEwFxBSHulOd8EyOBuhQWE5k7vF/YucSStYzevKSvr780d8obg==}
 
   '@hono/node-server@1.19.11':
     resolution: {integrity: sha512-dr8/3zEaB+p0D2n/IUrlPF1HZm586qgJNXK1a9fhg/PzdtkK7Ksd5l312tJX2yBuALqDYBlG20QEbayqPyxn+g==}
@@ -586,10 +586,6 @@ packages:
     peerDependenciesMeta:
       '@types/node':
         optional: true
-
-  '@isaacs/cliui@9.0.0':
-    resolution: {integrity: sha512-AokJm4tuBHillT+FpMtxQ60n8ObyXBatq7jD2/JA9dxbDDokKQm8KMht5ibGzLVU9IJDIKK4TPKgMHEYMn3lMg==}
-    engines: {node: '>=18'}
 
   '@jridgewell/gen-mapping@0.3.13':
     resolution: {integrity: sha512-2kkt/7niJ6MgEPxF0bYdQ6etZaA+fQvDcLKckhy1yIQOzaoKjBBjSj63/aLVjYE3qhRt5dvM+uUyfCg6UKCBbA==}
@@ -1620,11 +1616,11 @@ packages:
   citty@0.2.1:
     resolution: {integrity: sha512-kEV95lFBhQgtogAPlQfJJ0WGVSokvLr/UEoFPiKKOXF7pl98HfUVUD0ejsuTCld/9xH9vogSywZ5KqHzXrZpqg==}
 
-  clear-router@2.8.6:
-    resolution: {integrity: sha512-9NCCaS92fKvEESjNSXJVHUPxtThqdllrK6U/GWBJS/z/+9IubHUH2npB3Rifnlsh8LpKDq59bTJWwMHP0LH4gw==}
+  clear-router@2.8.8:
+    resolution: {integrity: sha512-dYSNcG6dLItQ0U99zoh1NQkv6i7s8KGy0Cz9sCfZMEKUk2cYxc1l4RXcjuro9nZ+LXfu9wvICweSFXsNMCFYgQ==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
-      '@h3ravel/support': ^0.15.11
+      '@h3ravel/support': ^2.1.4
       '@koa/router': ^15.0.0
       express: ^5.1.0
       fastify: ^5.0.0
@@ -2121,11 +2117,9 @@ packages:
     resolution: {integrity: sha512-XxwI8EOhVQgWp6iDL+3b0r86f4d6AX6zSU55HfB4ydCEuXLXc5FcYeOu+nnGftS4TEju/11rt4KJPTMgbfmv4A==}
     engines: {node: '>=10.13.0'}
 
-  glob@11.1.0:
-    resolution: {integrity: sha512-vuNwKSaKiqm7g0THUBu2x7ckSs3XJLXE+2ssL7/MfTGPLLcrJQ/4Uq1CjPTtO5cCIiRxqvN6Twy1qOwhL0Xjcw==}
-    engines: {node: 20 || >=22}
-    deprecated: Old versions of glob are not supported, and contain widely publicized security vulnerabilities, which have been fixed in the current version. Please update. Support for old versions may be purchased (at exorbitant rates) by contacting i@izs.me
-    hasBin: true
+  glob@13.0.6:
+    resolution: {integrity: sha512-Wjlyrolmm8uDpm/ogGyXZXb1Z+Ca2B8NbJwqBVg0axK9GbBeoS7yGV6vjXnYdGm6X53iehEuxxbyiKp8QmN4Vw==}
+    engines: {node: 18 || 20 || >=22}
 
   gopd@1.2.0:
     resolution: {integrity: sha512-ZUKRh6/kUFoAiTAtTYPZJ3hw9wNxx+BIBOijnlG9PnrJsCcSjs1wyyD6vJpaYtgnzDrKYRSqf3OO6Rfa93xsRg==}
@@ -2289,10 +2283,6 @@ packages:
   istanbul-reports@3.2.0:
     resolution: {integrity: sha512-HGYWWS/ehqTV3xN10i23tkPkpH46MLCIMFNCaaKNavAXTF1RkqxawEPtnjnGZ6XKSInBKkiOA5BKS+aZiY3AvA==}
     engines: {node: '>=8'}
-
-  jackspeak@4.2.3:
-    resolution: {integrity: sha512-ykkVRwrYvFm1nb2AJfKKYPr0emF6IiXDYUaFx4Zn9ZuIH7MrzEZ3sD5RlqGXNRpHtvUHJyOnCEFxOlNDtGo7wg==}
-    engines: {node: 20 || >=22}
 
   jiti@2.7.0:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
@@ -2749,9 +2739,6 @@ packages:
   p-try@2.2.0:
     resolution: {integrity: sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ==}
     engines: {node: '>=6'}
-
-  package-json-from-dist@1.0.1:
-    resolution: {integrity: sha512-UEZIS3/by4OC8vL3P2dTXRETpebLI2NiI5vIrjaD/5UtrkFX/tNbwjTSRAGC/+7CAo2pIcBaRgWmcBBHcsaCIw==}
 
   parasito@0.1.8:
     resolution: {integrity: sha512-j5WGH/7hz1URpRzi9lYffL/dX5ud91c+U59sS2Je4yHL1NnoZUrlUArGbLxpZuCwNd/Z/kRXdU9eWCa3hFyUdA==}
@@ -3724,16 +3711,22 @@ snapshots:
       '@eslint/core': 1.2.1
       levn: 0.4.1
 
-  '@h3ravel/collect.js@5.3.6': {}
+  '@h3ravel/collect.js@5.3.7': {}
 
-  '@h3ravel/musket@0.10.1(@types/node@25.6.2)':
+  '@h3ravel/contracts@2.2.0':
     dependencies:
-      '@h3ravel/shared': 0.30.3(@types/node@25.6.2)
+      h3: 2.0.1-rc.5
+    transitivePeerDependencies:
+      - crossws
+
+  '@h3ravel/musket@2.0.0(@types/node@25.6.2)':
+    dependencies:
+      '@h3ravel/shared': 2.2.0(@types/node@25.6.2)
       chalk: 5.6.2
       commander: 14.0.3
       dayjs: 1.11.19
       execa: 9.6.1
-      glob: 11.1.0
+      glob: 13.0.6
       preferred-pm: 4.1.1
       radashi: 12.7.2
       resolve-from: 5.0.0
@@ -3742,7 +3735,7 @@ snapshots:
       - '@types/node'
       - crossws
 
-  '@h3ravel/shared@0.27.13(@types/node@25.6.2)':
+  '@h3ravel/shared@2.2.0(@types/node@25.6.2)':
     dependencies:
       '@inquirer/prompts': 7.10.1(@types/node@25.6.2)
       chalk: 5.6.2
@@ -3750,29 +3743,23 @@ snapshots:
       escalade: 3.2.0
       h3: 2.0.1-rc.5
       inquirer-autocomplete-standalone: 0.8.1
-      preferred-pm: 4.1.1
-    transitivePeerDependencies:
-      - '@types/node'
-      - crossws
-
-  '@h3ravel/shared@0.30.3(@types/node@25.6.2)':
-    dependencies:
-      '@inquirer/prompts': 7.10.1(@types/node@25.6.2)
-      chalk: 5.6.2
-      edge.js: 6.5.0
-      escalade: 3.2.0
-      h3: 2.0.1-rc.5
-      inquirer-autocomplete-standalone: 0.8.1
+      jiti: 2.7.0
       ora: 9.3.0
       preferred-pm: 4.1.1
     transitivePeerDependencies:
       - '@types/node'
       - crossws
 
-  '@h3ravel/support@0.15.11':
+  '@h3ravel/support@2.2.0(@types/node@25.6.2)':
     dependencies:
+      '@h3ravel/collect.js': 5.3.7
+      '@h3ravel/contracts': 2.2.0
+      '@h3ravel/shared': 2.2.0(@types/node@25.6.2)
       dayjs: 1.11.19
       luxon: 3.7.2
+    transitivePeerDependencies:
+      - '@types/node'
+      - crossws
 
   '@hono/node-server@1.19.11(hono@4.12.10)':
     dependencies:
@@ -3939,8 +3926,6 @@ snapshots:
   '@inquirer/type@3.0.10(@types/node@25.6.2)':
     optionalDependencies:
       '@types/node': 25.6.2
-
-  '@isaacs/cliui@9.0.0': {}
 
   '@jridgewell/gen-mapping@0.3.13':
     dependencies:
@@ -4928,11 +4913,11 @@ snapshots:
 
   citty@0.2.1: {}
 
-  clear-router@2.8.6(@h3ravel/support@0.15.11)(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
+  clear-router@2.8.8(@h3ravel/support@2.2.0(@types/node@25.6.2))(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
     dependencies:
       jiti: 2.7.0
     optionalDependencies:
-      '@h3ravel/support': 0.15.11
+      '@h3ravel/support': 2.2.0(@types/node@25.6.2)
       express: 5.2.1
       hono: 4.12.10
       reflect-metadata: 0.2.2
@@ -5438,13 +5423,10 @@ snapshots:
     dependencies:
       is-glob: 4.0.3
 
-  glob@11.1.0:
+  glob@13.0.6:
     dependencies:
-      foreground-child: 3.3.1
-      jackspeak: 4.2.3
       minimatch: 10.2.4
       minipass: 7.1.3
-      package-json-from-dist: 1.0.1
       path-scurry: 2.0.2
 
   gopd@1.2.0: {}
@@ -5575,10 +5557,6 @@ snapshots:
     dependencies:
       html-escaper: 2.0.2
       istanbul-lib-report: 3.0.1
-
-  jackspeak@4.2.3:
-    dependencies:
-      '@isaacs/cliui': 9.0.0
 
   jiti@2.7.0: {}
 
@@ -6202,8 +6180,6 @@ snapshots:
       p-limit: 3.1.0
 
   p-try@2.2.0: {}
-
-  package-json-from-dist@1.0.1: {}
 
   parasito@0.1.8:
     dependencies:
