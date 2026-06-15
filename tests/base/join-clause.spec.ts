@@ -2,7 +2,7 @@ import { UnsupportedAdapterFeatureException, createPrismaDatabaseAdapter } from 
 import { User, createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
 import { describe, expect, it } from 'vitest'
 
-import { JoinClause } from 'src/JoinClause'
+import { JoinClause } from '../../src/JoinClause'
 
 describe('JoinClause', () => {
     it('builds column constraints with a default equality operator', () => {
