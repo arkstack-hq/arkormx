@@ -306,6 +306,13 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
             })
         }
 
+        if (spec.joins?.length) {
+            throw new UnsupportedAdapterFeatureException('Join clauses are not supported by the Prisma compatibility adapter; use a SQL-backed adapter or DB.raw().', {
+                operation: 'adapter.select',
+                meta: { feature: 'joins' },
+            })
+        }
+
         return {
             include: this.toQueryInclude(spec.relationLoads),
             where: this.toQueryWhere(spec.where),

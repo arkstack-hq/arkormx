@@ -1,9 +1,14 @@
-import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex, SchemaPrimaryKey, SchemaUniqueConstraint } from 'src/types'
+import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex, SchemaPrimaryKey, SchemaUniqueConstraint, TimestampNames, TimestampNaming } from 'src/types'
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
 
 const PRISMA_ENUM_MEMBER_REGEX = /^[A-Za-z][A-Za-z0-9_]*$/
+
+const defaultTimestampNames: TimestampNames = {
+    createdAt: 'createdAt',
+    updatedAt: 'updatedAt',
+}
 
 const normalizeEnumMember = (columnName: string, value: string): string => {
     const normalized = value.trim()
@@ -444,14 +449,66 @@ export class TableBuilder {
 
     /**
      * Defines both createdAt and updatedAt timestamp columns in the table.
-     * 
-     * @returns 
+     *
+     * The attribute casing (the names exposed on the model) is controlled by the
+     * first argument, while the optional second argument controls the casing used
+     * for the persisted database column names via `.map()`.
+     *
+     * @example
+     * table.timestamps()                       // createdAt / updatedAt
+     * table.timestamps('snake')                // created_at / updated_at
+     * table.timestamps('camel', 'snake')       // createdAt -> created_at (mapped)
+     * table.timestamps({ createdAt: 'createdOn' })
+     * table.timestamps('camel', { createdAt: 'created_on' })
+     *
+     * @param casing    The casing (or explicit names) used for the attribute names.
+     * @param mapCasing The casing (or explicit names) used for the mapped database columns.
+     * @returns
      */
-    public timestamps (): this {
-        this.timestamp('createdAt', { nullable: false, default: 'now()' })
-        this.timestamp('updatedAt', { nullable: false, updatedAt: true })
+    public timestamps (
+        casing: TimestampNaming = 'camel',
+        mapCasing?: TimestampNaming,
+    ): this {
+        const names = this.resolveTimestampNames(casing, defaultTimestampNames)
+        const maps = mapCasing === undefined
+            ? undefined
+            : this.resolveTimestampNames(mapCasing, names)
+
+        this.timestamp(names.createdAt, {
+            nullable: false,
+            default: 'now()',
+            ...(maps && maps.createdAt !== names.createdAt ? { map: maps.createdAt } : {}),
+        })
+        this.timestamp(names.updatedAt, {
+            nullable: false,
+            updatedAt: true,
+            ...(maps && maps.updatedAt !== names.updatedAt ? { map: maps.updatedAt } : {}),
+        })
 
         return this
+    }
+
+    /**
+     * Resolves a timestamp naming option into concrete createdAt / updatedAt names.
+     *
+     * @param naming    The casing keyword or explicit name overrides.
+     * @param fallback  The names used when an explicit override is omitted.
+     * @returns
+     */
+    private resolveTimestampNames (
+        naming: TimestampNaming,
+        fallback: TimestampNames,
+    ): TimestampNames {
+        if (naming === 'snake')
+            return { createdAt: 'created_at', updatedAt: 'updated_at' }
+
+        if (naming === 'camel')
+            return { createdAt: 'createdAt', updatedAt: 'updatedAt' }
+
+        return {
+            createdAt: naming.createdAt ?? fallback.createdAt,
+            updatedAt: naming.updatedAt ?? fallback.updatedAt,
+        }
     }
 
     /**

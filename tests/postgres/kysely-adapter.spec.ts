@@ -372,6 +372,87 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('LOWER("email") = $1 OR LOWER("email") LIKE $2')
     })
 
+    it('auto-quotes bare camelCase identifiers in raw where clauses', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const inspection = DbUser.query()
+            .whereRaw('createdAt < ? and users.updatedAt is not null and status = ?', [new Date('2020-01-01'), 'active'])
+            .inspect()
+        const normalizedSql = inspection?.sql?.replace(/\s+/g, ' ')
+
+        // camelCase identifiers are quoted, lower-case identifiers and keywords are left alone.
+        expect(normalizedSql).toContain('"createdAt" < $1')
+        expect(normalizedSql).toContain('users."updatedAt" is not null')
+        expect(normalizedSql).toContain('and status = $2')
+    })
+
+    it('compiles the join family into SQL', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const innerSql = DbUser.query()
+            .join('posts', 'users.id', '=', 'posts.userId')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(innerSql).toContain('inner join "posts" on "users"."id" = "posts"."userId"')
+
+        const leftSql = DbUser.query()
+            .leftJoin('posts', 'users.id', 'posts.userId')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(leftSql).toContain('left join "posts" on "users"."id" = "posts"."userId"')
+
+        const compoundSql = DbUser.query()
+            .join('posts', join => join.on('users.id', 'posts.userId').where('posts.published', '=', true))
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(compoundSql).toContain('inner join "posts" on "users"."id" = "posts"."userId" and "posts"."published" = $1')
+
+        const crossSql = DbUser.query()
+            .crossJoin('posts')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(crossSql).toContain('cross join "posts"')
+
+        const whereSql = DbUser.query()
+            .joinWhere('posts', 'posts.views', '>', 100)
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(whereSql).toContain('inner join "posts" on "posts"."views" > $1')
+    })
+
+    it('compiles subquery and lateral joins into SQL', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const subSql = DbUser.query()
+            .joinSub(DbPost.query().where({ userId: 1 }), 'p', 'users.id', '=', 'p.userId')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(subSql).toContain('inner join ( select * from "posts" where "userId" = $1 ) as "p" on "users"."id" = "p"."userId"')
+
+        const lateralSql = DbUser.query()
+            .joinLateral(DbPost.query(), 'p')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(lateralSql).toContain('inner join lateral ( select * from "posts" ) as "p" on true')
+    })
+
+    it('executes multi-statement raw SQL one statement at a time', async () => {
+        const tableName = `raw_multi_${Date.now()}`
+
+        await kyselyAdapter.rawQuery({
+            sql: `
+                create table if not exists "${tableName}" (id integer primary key, label text);
+                do $$
+                begin
+                    insert into "${tableName}" (id, label) values (1, 'one; still one');
+                end $$;
+                insert into "${tableName}" (id, label) values (2, 'two');
+            `,
+        })
+
+        const rows = await kyselyAdapter.rawQuery<{ id: number, label: string }>({
+            sql: `select id, label from "${tableName}" order by id`,
+        })
+
+        expect(rows.map(row => row.id)).toEqual([1, 2])
+        expect(rows[0]?.label).toBe('one; still one')
+
+        await kyselyAdapter.rawQuery({ sql: `drop table if exists "${tableName}"` })
+    })
+
     it('compiles advanced structured where helpers', () => {
         setPostgresModelAdapter(kyselyAdapter)
 

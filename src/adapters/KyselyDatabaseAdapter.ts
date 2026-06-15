@@ -21,6 +21,8 @@ import type {
     QueryExistsCondition,
     QueryFullTextCondition,
     QueryGroupCondition,
+    QueryJoin,
+    QueryJoinConstraint,
     QueryNotCondition,
     QueryOrderBy,
     QueryRawCondition,
@@ -96,6 +98,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         rawWhere: true,
         distinct: true,
         groupBy: true,
+        joins: true,
     }
 
     public constructor(
@@ -137,6 +140,107 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return `"${value.replace(/"/g, '""')}"`
     }
 
+    /**
+     * Wraps bare camelCase identifiers in a fragment of raw SQL with double quotes
+     * so PostgreSQL preserves their casing instead of folding them to lower case.
+     *
+     * Identifiers that are already quoted, string literals, dollar-quoted bodies,
+     * comments and function names (a camelCase token immediately followed by `(`)
+     * are left untouched. Lower-case identifiers are also left alone since
+     * PostgreSQL folds them to the same value with or without quotes.
+     *
+     * @param sql The raw SQL fragment to normalize.
+     * @returns
+     */
+    private quoteCamelCaseIdentifiers (sql: string): string {
+        let result = ''
+        let index = 0
+
+        const isIdentifierStart = (char: string): boolean => /[A-Za-z_]/.test(char)
+        const isIdentifierPart = (char: string): boolean => /[A-Za-z0-9_$]/.test(char)
+        // Only quote mixed-case identifiers (e.g. createdAt). All-upper tokens such
+        // as OR/AND/LIKE/NULL are SQL keywords and must be left untouched, and
+        // all-lower tokens fold to the same value with or without quotes.
+        const isMixedCase = (token: string): boolean => /[A-Z]/.test(token) && /[a-z]/.test(token)
+
+        while (index < sql.length) {
+            const char = sql[index]
+
+            // Preserve single-quoted string literals verbatim.
+            if (char === '\'') {
+                const start = index
+                index += 1
+                while (index < sql.length) {
+                    if (sql[index] === '\'' && sql[index + 1] === '\'') {
+                        index += 2
+                        continue
+                    }
+                    if (sql[index] === '\'') {
+                        index += 1
+                        break
+                    }
+                    index += 1
+                }
+                result += sql.slice(start, index)
+                continue
+            }
+
+            // Preserve already double-quoted identifiers verbatim.
+            if (char === '"') {
+                const start = index
+                index += 1
+                while (index < sql.length) {
+                    if (sql[index] === '"' && sql[index + 1] === '"') {
+                        index += 2
+                        continue
+                    }
+                    if (sql[index] === '"') {
+                        index += 1
+                        break
+                    }
+                    index += 1
+                }
+                result += sql.slice(start, index)
+                continue
+            }
+
+            // Preserve dollar-quoted string bodies ($$...$$ or $tag$...$tag$).
+            if (char === '$') {
+                const tagMatch = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(index))
+                if (tagMatch) {
+                    const tag = tagMatch[0]
+                    const closeIndex = sql.indexOf(tag, index + tag.length)
+                    const end = closeIndex === -1 ? sql.length : closeIndex + tag.length
+                    result += sql.slice(index, end)
+                    index = end
+                    continue
+                }
+            }
+
+            // Collect a bare identifier token and quote it when it is camelCase.
+            if (isIdentifierStart(char)) {
+                const start = index
+                while (index < sql.length && isIdentifierPart(sql[index]))
+                    index += 1
+
+                const token = sql.slice(start, index)
+                const isFunctionCall = sql[index] === '('
+
+                if (isMixedCase(token) && !isFunctionCall)
+                    result += this.quoteIdentifier(token)
+                else
+                    result += token
+
+                continue
+            }
+
+            result += char
+            index += 1
+        }
+
+        return result
+    }
+
     private quoteLiteral (value: unknown): string {
         if (value == null)
             return 'null'
@@ -171,11 +275,124 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         await sql.raw(statement).execute(executor)
     }
 
+    /**
+     * Splits a SQL script into individual top-level statements.
+     *
+     * The PostgreSQL wire protocol used by Kysely rejects scripts that contain
+     * more than one command, so multi-statement raw SQL (for example a migration
+     * that mixes `do $$ ... $$` blocks with `alter table` statements) must be
+     * executed one statement at a time. Semicolons inside single-quoted strings,
+     * double-quoted identifiers, dollar-quoted bodies and comments are ignored.
+     *
+     * @param sql The raw SQL script to split.
+     * @returns
+     */
+    private splitSqlStatements (sql: string): string[] {
+        const statements: string[] = []
+        let current = ''
+        let index = 0
+
+        while (index < sql.length) {
+            const char = sql[index]
+            const next = sql[index + 1]
+
+            // Line comment -- ... (consume to end of line).
+            if (char === '-' && next === '-') {
+                const end = sql.indexOf('\n', index)
+                const stop = end === -1 ? sql.length : end
+                current += sql.slice(index, stop)
+                index = stop
+                continue
+            }
+
+            // Block comment /* ... */ (consume to closing delimiter).
+            if (char === '/' && next === '*') {
+                const end = sql.indexOf('*/', index + 2)
+                const stop = end === -1 ? sql.length : end + 2
+                current += sql.slice(index, stop)
+                index = stop
+                continue
+            }
+
+            // Single-quoted string literal.
+            if (char === '\'') {
+                const start = index
+                index += 1
+                while (index < sql.length) {
+                    if (sql[index] === '\'' && sql[index + 1] === '\'') {
+                        index += 2
+                        continue
+                    }
+                    if (sql[index] === '\'') {
+                        index += 1
+                        break
+                    }
+                    index += 1
+                }
+                current += sql.slice(start, index)
+                continue
+            }
+
+            // Double-quoted identifier.
+            if (char === '"') {
+                const start = index
+                index += 1
+                while (index < sql.length) {
+                    if (sql[index] === '"' && sql[index + 1] === '"') {
+                        index += 2
+                        continue
+                    }
+                    if (sql[index] === '"') {
+                        index += 1
+                        break
+                    }
+                    index += 1
+                }
+                current += sql.slice(start, index)
+                continue
+            }
+
+            // Dollar-quoted body ($$...$$ or $tag$...$tag$).
+            if (char === '$') {
+                const tagMatch = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(index))
+                if (tagMatch) {
+                    const tag = tagMatch[0]
+                    const closeIndex = sql.indexOf(tag, index + tag.length)
+                    const end = closeIndex === -1 ? sql.length : closeIndex + tag.length
+                    current += sql.slice(index, end)
+                    index = end
+                    continue
+                }
+            }
+
+            // Statement terminator.
+            if (char === ';') {
+                if (current.trim().length > 0)
+                    statements.push(current.trim())
+                current = ''
+                index += 1
+                continue
+            }
+
+            current += char
+            index += 1
+        }
+
+        if (current.trim().length > 0)
+            statements.push(current.trim())
+
+        return statements
+    }
+
     public async rawQuery<_TRow = unknown> (spec: RawQuerySpec): Promise<DatabaseRows> {
         const statement = this.interpolateRawSql(spec.sql, spec.bindings)
+        const statements = this.splitSqlStatements(statement)
+
+        if (statements.length > 1)
+            return await this.runMultiStatementRawQuery(statements, statement)
 
         try {
-            const result = await sql.raw(statement).execute(this.db)
+            const result = await sql.raw(statements[0] ?? statement).execute(this.db)
 
             return (result.rows as DatabaseRows) ?? []
         } catch (error) {
@@ -186,6 +403,52 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
                 inspection: this.tryInspectRawQuery(statement),
                 meta: {
                     sql: statement,
+                },
+                cause: error,
+            })
+        }
+    }
+
+    /**
+     * Executes a multi-statement raw SQL script one statement at a time.
+     *
+     * Each statement is sent individually so the PostgreSQL extended protocol
+     * accepts it, and the rows of the last statement that returns any are used as
+     * the result. The script is wrapped in a transaction when the adapter is not
+     * already operating inside one so partial failures do not leave the database
+     * in a half-applied state.
+     *
+     * @param statements The individual statements to execute in order.
+     * @param fullScript The original (joined) script, used for error context.
+     * @returns
+     */
+    private async runMultiStatementRawQuery (statements: string[], fullScript: string): Promise<DatabaseRows> {
+        const execute = async (executor: KyselyExecutor): Promise<DatabaseRows> => {
+            let rows: DatabaseRows = []
+
+            for (const statement of statements) {
+                const result = await sql.raw(statement).execute(executor)
+                if (result.rows && result.rows.length > 0)
+                    rows = result.rows as DatabaseRows
+            }
+
+            return rows
+        }
+
+        try {
+            if (!this.db.isTransaction)
+                return await this.db.transaction().execute(transaction => execute(transaction))
+
+            return await execute(this.db)
+        } catch (error) {
+            throw new QueryExecutionException('Raw query execution failed for the Kysely adapter.', {
+                code: 'QUERY_EXECUTION_FAILED',
+                operation: 'adapter.rawQuery',
+                delegate: 'raw',
+                inspection: this.tryInspectRawQuery(fullScript),
+                meta: {
+                    sql: fullScript,
+                    statements,
                 },
                 cause: error,
             })
@@ -692,6 +955,127 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         )}`
     }
 
+    private buildJoinClause (target: QueryTarget<any>, joins?: QueryJoin[]): RawBuilder<unknown> {
+        if (!joins || joins.length === 0)
+            return sql``
+
+        return sql` ${sql.join(joins.map(join => this.buildSingleJoin(target, join)), sql` `)}`
+    }
+
+    private joinKeyword (join: QueryJoin): string {
+        const base = {
+            inner: 'inner join',
+            left: 'left join',
+            right: 'right join',
+            full: 'full join',
+            cross: 'cross join',
+        }[join.type]
+
+        return join.lateral ? `${base} lateral` : base
+    }
+
+    private buildJoinSource (join: QueryJoin): RawBuilder<unknown> {
+        if (join.subquery) {
+            const subquery = this.buildSelectStatement(join.subquery)
+
+            return join.alias
+                ? sql`(${subquery}) as ${sql.id(join.alias)}`
+                : sql`(${subquery})`
+        }
+
+        if (join.subquerySql) {
+            return join.alias
+                ? sql`(${sql.raw(join.subquerySql)}) as ${sql.id(join.alias)}`
+                : sql.raw(`(${join.subquerySql})`)
+        }
+
+        const table = this.resolveMappedTable(join.table ?? '')
+
+        return join.alias
+            ? sql`${sql.table(table)} as ${sql.id(join.alias)}`
+            : sql.table(table)
+    }
+
+    private buildSingleJoin (target: QueryTarget<any>, join: QueryJoin): RawBuilder<unknown> {
+        const keyword = sql.raw(this.joinKeyword(join))
+        const source = this.buildJoinSource(join)
+
+        if (join.type === 'cross')
+            return sql`${keyword} ${source}`
+
+        if (join.constraints.length === 0) {
+            // A lateral join still requires an ON clause; default it to true.
+            return join.lateral
+                ? sql`${keyword} ${source} on true`
+                : sql`${keyword} ${source}`
+        }
+
+        return sql`${keyword} ${source} on ${this.buildJoinConstraints(target, join.constraints)}`
+    }
+
+    private buildJoinConstraints (target: QueryTarget<any>, constraints: QueryJoinConstraint[]): RawBuilder<boolean> {
+        const parts: RawBuilder<unknown>[] = []
+
+        constraints.forEach((constraint, index) => {
+            if (index > 0)
+                parts.push(sql.raw(` ${constraint.boolean} `))
+
+            parts.push(this.buildJoinConstraint(target, constraint))
+        })
+
+        return sql<boolean>`${sql.join(parts, sql``)}`
+    }
+
+    private buildJoinConstraint (target: QueryTarget<any>, constraint: QueryJoinConstraint): RawBuilder<boolean> {
+        if (constraint.type === 'column') {
+            return sql<boolean>`${sql.ref(constraint.first)} ${sql.raw(constraint.operator)} ${sql.ref(constraint.second)}`
+        }
+
+        if (constraint.type === 'null') {
+            return constraint.not
+                ? sql<boolean>`${sql.ref(constraint.column)} is not null`
+                : sql<boolean>`${sql.ref(constraint.column)} is null`
+        }
+
+        if (constraint.type === 'raw')
+            return this.buildRawWhereCondition({ type: 'raw', sql: constraint.sql, bindings: constraint.bindings })
+
+        if (constraint.type === 'nested')
+            return sql<boolean>`(${this.buildJoinConstraints(target, constraint.constraints)})`
+
+        const column = sql.ref(constraint.column)
+        const operator = constraint.operator
+
+        if (operator === 'is-null')
+            return sql<boolean>`${column} is null`
+
+        if (operator === 'is-not-null')
+            return sql<boolean>`${column} is not null`
+
+        if (operator === 'in') {
+            const values = this.buildConditionValueList(constraint.value)
+
+            return values.length === 0 ? sql<boolean>`1 = 0` : sql<boolean>`${column} in (${sql.join(values)})`
+        }
+
+        if (operator === 'not-in') {
+            const values = this.buildConditionValueList(constraint.value)
+
+            return values.length === 0 ? sql<boolean>`1 = 1` : sql<boolean>`${column} not in (${sql.join(values)})`
+        }
+
+        if (operator === 'contains')
+            return sql<boolean>`${column} like ${`%${String(constraint.value ?? '')}%`}`
+
+        if (operator === 'starts-with')
+            return sql<boolean>`${column} like ${`${String(constraint.value ?? '')}%`}`
+
+        if (operator === 'ends-with')
+            return sql<boolean>`${column} like ${`%${String(constraint.value ?? '')}`}`
+
+        return sql<boolean>`${column} ${sql.raw(operator)} ${constraint.value}`
+    }
+
     private buildConditionValueList (value: DatabaseValue | DatabaseValue[] | undefined): unknown[] {
         if (Array.isArray(value))
             return value
@@ -752,7 +1136,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
         segments.forEach((segment, index) => {
             if (segment.length > 0)
-                parts.push(sql.raw(segment))
+                parts.push(sql.raw(this.quoteCamelCaseIdentifiers(segment)))
 
             if (index < bindings.length)
                 parts.push(sql`${bindings[index]}`)
@@ -1210,6 +1594,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             select ${spec.distinct ? sql`distinct ` : sql``}${this.buildSelectList(spec.target, spec.columns)}
             ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)}
             from ${sql.table(this.resolveTable(spec.target))}
+            ${this.buildJoinClause(spec.target, spec.joins)}
             ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
             ${this.buildGroupBy(spec.target, spec.groupBy)}
             ${this.buildOrderBy(spec.target, spec.orderBy)}
@@ -1221,6 +1606,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return sql<{ count: number | string }>`
             select count(*)::int as count
             from ${sql.table(this.resolveTable(spec.target))}
+            ${this.buildJoinClause(spec.target, spec.joins)}
             ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
         `
     }
@@ -1230,6 +1616,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             select exists(
                 select 1
                 from ${sql.table(this.resolveTable(spec.target))}
+                ${this.buildJoinClause(spec.target, spec.joins)}
                 ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
                 ${this.buildGroupBy(spec.target, spec.groupBy)}
                 limit 1

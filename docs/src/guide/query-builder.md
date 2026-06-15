@@ -272,6 +272,14 @@ const users = await User.query()
 They are supported by the Kysely adapter and intentionally unsupported by the
 Prisma compatibility adapter.
 
+**Identifier casing.** PostgreSQL folds *unquoted* identifiers to lower case, so
+a bare camelCase column in raw SQL (`createdAt < ?`) would resolve to a
+non-existent `createdat` column. The Kysely adapter automatically wraps bare
+mixed-case identifiers in double quotes, so `whereRaw('createdAt < ?', [before])`
+compiles to `"createdAt" < $1`. SQL keywords (`AND`, `OR`, `LIKE`), function
+names, string literals, and identifiers you already quoted are left untouched.
+You can still quote identifiers yourself if you prefer to be explicit.
+
 For a complete raw query, use `DB.raw()`:
 
 ```ts
@@ -283,6 +291,79 @@ const rows = await DB.raw<{ id: number; email: string }>(
 
 `DB.raw()` returns an `ArkormCollection` and requires an adapter that implements
 `rawQuery()`.
+
+### Multi-statement scripts
+
+`DB.raw()` also accepts scripts that contain more than one statement, including
+`do $$ … $$` blocks. The Kysely adapter splits the script into individual
+statements (semicolons inside string literals, dollar-quoted bodies, and
+comments are ignored) and runs them one at a time inside a transaction:
+
+```ts
+await DB.raw(`
+  do $$
+  begin
+    if not exists (
+      select 1 from pg_constraint
+      where conname = 'financial_transactions_amount_positive'
+    ) then
+      alter table financial_transactions
+        add constraint financial_transactions_amount_positive
+        check (amount > 0);
+    end if;
+  end $$;
+`);
+```
+
+The rows returned are those of the last statement that produces any.
+
+## Joins
+
+Join other tables with a Laravel-style join family. The `on` columns are treated
+as raw qualified identifiers (`table.column`), so their casing is preserved:
+
+```ts
+const rows = await User.query()
+  .join('posts', 'users.id', '=', 'posts.userId')
+  .leftJoin('profiles', 'users.id', 'profiles.userId')
+  .select(['users.id', 'posts.title'])
+  .get();
+```
+
+A two-argument `on` defaults the operator to `=`, so
+`leftJoin('posts', 'users.id', 'posts.userId')` is equivalent to the example
+above. Pass a closure to build a compound `on` condition through a
+`JoinClause`:
+
+```ts
+await User.query()
+  .join('posts', join =>
+    join
+      .on('users.id', 'posts.userId')
+      .where('posts.published', '=', true)
+      .whereNotNull('posts.publishedAt'),
+  )
+  .get();
+```
+
+The full family is available: `join` / `innerJoin`, `leftJoin`, `rightJoin`,
+`crossJoin`, the `joinWhere` / `leftJoinWhere` / `rightJoinWhere` value-comparison
+variants, the subquery joins `joinSub` / `leftJoinSub` / `rightJoinSub` /
+`crossJoinSub`, and the lateral joins `joinLateral` / `leftJoinLateral`.
+
+```ts
+const recent = Post.query().where({ status: 'published' });
+
+await User.query()
+  .joinSub(recent, 'recent_posts', 'users.id', '=', 'recent_posts.userId')
+  .get();
+```
+
+Joins require the adapter's `joins` capability. They are supported by the Kysely
+adapter and intentionally unsupported by the Prisma compatibility adapter. Join
+clauses use physical database table and column names; alias qualified
+mixed-case columns in `select()` when you need their casing preserved in the
+result set.
 
 ## Ordering and limits
 

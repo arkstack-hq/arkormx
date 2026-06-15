@@ -29,6 +29,7 @@ export type AdapterCapability =
     | 'rawWhere'
     | 'distinct'
     | 'groupBy'
+    | 'joins'
 
 export type AdapterCapabilities = Partial<Record<AdapterCapability, boolean>>
 
@@ -189,11 +190,69 @@ export interface RelationLoadPlan {
     relationLoads?: RelationLoadPlan[]
 }
 
+export type QueryJoinType = 'inner' | 'left' | 'right' | 'full' | 'cross'
+
+export type QueryJoinBoolean = 'and' | 'or'
+
+export interface QueryJoinColumnConstraint {
+    type: 'column'
+    boolean: QueryJoinBoolean
+    first: string
+    operator: QueryScalarComparisonOperator
+    second: string
+}
+
+export interface QueryJoinValueConstraint {
+    type: 'value'
+    boolean: QueryJoinBoolean
+    column: string
+    operator: QueryComparisonOperator
+    value?: DatabaseValue | DatabaseValue[]
+}
+
+export interface QueryJoinNullConstraint {
+    type: 'null'
+    boolean: QueryJoinBoolean
+    column: string
+    not: boolean
+}
+
+export interface QueryJoinRawConstraint {
+    type: 'raw'
+    boolean: QueryJoinBoolean
+    sql: string
+    bindings?: DatabaseValue[]
+}
+
+export interface QueryJoinNestedConstraint {
+    type: 'nested'
+    boolean: QueryJoinBoolean
+    constraints: QueryJoinConstraint[]
+}
+
+export type QueryJoinConstraint =
+    | QueryJoinColumnConstraint
+    | QueryJoinValueConstraint
+    | QueryJoinNullConstraint
+    | QueryJoinRawConstraint
+    | QueryJoinNestedConstraint
+
+export interface QueryJoin {
+    type: QueryJoinType
+    table?: string
+    alias?: string
+    subquery?: SelectSpec
+    subquerySql?: string
+    lateral?: boolean
+    constraints: QueryJoinConstraint[]
+}
+
 export interface SelectSpec<TModel = unknown> {
     target: QueryTarget<TModel>
     columns?: QuerySelectColumn[]
     distinct?: boolean
     groupBy?: string[]
+    joins?: QueryJoin[]
     where?: QueryCondition
     orderBy?: QueryOrderBy[]
     limit?: number
@@ -250,6 +309,7 @@ export interface DeleteManySpec<TModel = unknown> {
 
 export interface AggregateSpec<TModel = unknown> {
     target: QueryTarget<TModel>
+    joins?: QueryJoin[]
     where?: QueryCondition
     relationFilters?: RelationFilterSpec[]
     aggregate: AggregateSelection
