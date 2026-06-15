@@ -14,6 +14,10 @@ import type {
     PaginationOptions,
     QueryComparisonCondition,
     QueryCondition,
+    QueryComparisonOperator,
+    QueryJoin,
+    QueryJoinConstraint,
+    QueryJoinType,
     QueryOrderBy,
     QueryRawCondition,
     QueryScalarComparisonOperator,
@@ -51,6 +55,7 @@ import type {
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
+import { JoinClause } from './JoinClause'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
 import type { ModelStatic } from './types/ModelStatic'
 import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
@@ -77,6 +82,17 @@ type RelatedModelForRelationship<
     : never
     : never
 
+/**
+ * The left-hand argument accepted by the join helpers: either a column name or a
+ * closure that configures the join constraints through a {@link JoinClause}.
+ */
+export type JoinOn = string | ((join: JoinClause) => void)
+
+/**
+ * A subquery source accepted by the subquery/lateral join helpers.
+ */
+export type JoinSource = QueryBuilder<any, any> | string
+
 export type EagerLoadRelations<TModel> = {
     [TKey in ModelRelationshipKey<TModel>]?: true | EagerLoadConstraint<
         QueryBuilder<
@@ -102,6 +118,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     private querySelect?: QuerySelectColumn[]
     private queryDistinct = false
     private queryGroupBy?: string[]
+    private queryJoins?: QueryJoin[]
     private offsetValue?: number
     private limitValue?: number
     private readonly eagerLoads: EagerLoadMap = {}
@@ -1406,7 +1423,363 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
-     * Adds a skip clause to the query for pagination. 
+     * Adds a join clause to the query.
+     *
+     * The `first`/`second` arguments are treated as raw database identifiers, so
+     * qualify them as `table.column` when needed. Pass a closure as `first` to
+     * build a compound `on` condition through a {@link JoinClause}.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @param type     The join type (defaults to `inner`).
+     * @returns
+     */
+    public join (
+        table: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+        type: QueryJoinType = 'inner',
+    ): this {
+        return this.addJoin(type, table, first, operator, second)
+    }
+
+    /**
+     * Adds an inner join clause to the query.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @returns
+     */
+    public innerJoin (
+        table: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): this {
+        return this.addJoin('inner', table, first, operator, second)
+    }
+
+    /**
+     * Adds a left join clause to the query.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @returns
+     */
+    public leftJoin (
+        table: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): this {
+        return this.addJoin('left', table, first, operator, second)
+    }
+
+    /**
+     * Adds a right join clause to the query.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @returns
+     */
+    public rightJoin (
+        table: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): this {
+        return this.addJoin('right', table, first, operator, second)
+    }
+
+    /**
+     * Adds a cross join clause to the query.
+     *
+     * When a `first` column (or closure) is supplied the cross join is promoted
+     * to an inner join with the given constraints, mirroring Laravel's behaviour.
+     *
+     * @param table The table (or aliased table) to join.
+     * @param first Optional column or closure to constrain the join.
+     * @returns
+     */
+    public crossJoin (table: string, first?: JoinOn): this {
+        if (first === undefined)
+            return this.addJoin('cross', table)
+
+        return this.addJoin('inner', table, first)
+    }
+
+    /**
+     * Adds a join clause that compares a column to a value.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The column being compared.
+     * @param operator The comparison operator.
+     * @param value    The value to compare against.
+     * @param type     The join type (defaults to `inner`).
+     * @returns
+     */
+    public joinWhere (
+        table: string,
+        first: string,
+        operator: QueryComparisonOperator | string,
+        value: DatabaseValue,
+        type: QueryJoinType = 'inner',
+    ): this {
+        return this.addJoinWhere(type, table, first, operator, value)
+    }
+
+    /**
+     * Adds a left join clause that compares a column to a value.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The column being compared.
+     * @param operator The comparison operator.
+     * @param value    The value to compare against.
+     * @returns
+     */
+    public leftJoinWhere (
+        table: string,
+        first: string,
+        operator: QueryComparisonOperator | string,
+        value: DatabaseValue,
+    ): this {
+        return this.addJoinWhere('left', table, first, operator, value)
+    }
+
+    /**
+     * Adds a right join clause that compares a column to a value.
+     *
+     * @param table    The table (or aliased table) to join.
+     * @param first    The column being compared.
+     * @param operator The comparison operator.
+     * @param value    The value to compare against.
+     * @returns
+     */
+    public rightJoinWhere (
+        table: string,
+        first: string,
+        operator: QueryComparisonOperator | string,
+        value: DatabaseValue,
+    ): this {
+        return this.addJoinWhere('right', table, first, operator, value)
+    }
+
+    /**
+     * Adds a subquery join clause to the query.
+     *
+     * @param query    The subquery (a QueryBuilder instance or raw SQL string).
+     * @param alias    The alias assigned to the subquery.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @param type     The join type (defaults to `inner`).
+     * @returns
+     */
+    public joinSub (
+        query: JoinSource,
+        alias: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+        type: QueryJoinType = 'inner',
+    ): this {
+        return this.addJoinSub(type, query, alias, first, operator, second)
+    }
+
+    /**
+     * Adds a subquery left join clause to the query.
+     *
+     * @param query    The subquery (a QueryBuilder instance or raw SQL string).
+     * @param alias    The alias assigned to the subquery.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @returns
+     */
+    public leftJoinSub (
+        query: JoinSource,
+        alias: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): this {
+        return this.addJoinSub('left', query, alias, first, operator, second)
+    }
+
+    /**
+     * Adds a subquery right join clause to the query.
+     *
+     * @param query    The subquery (a QueryBuilder instance or raw SQL string).
+     * @param alias    The alias assigned to the subquery.
+     * @param first    The left-hand column or a closure receiving a JoinClause.
+     * @param operator The comparison operator (defaults to `=`).
+     * @param second   The right-hand column.
+     * @returns
+     */
+    public rightJoinSub (
+        query: JoinSource,
+        alias: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): this {
+        return this.addJoinSub('right', query, alias, first, operator, second)
+    }
+
+    /**
+     * Adds a cross subquery join clause to the query.
+     *
+     * @param query The subquery (a QueryBuilder instance or raw SQL string).
+     * @param alias The alias assigned to the subquery.
+     * @returns
+     */
+    public crossJoinSub (query: JoinSource, alias: string): this {
+        return this.addJoinSub('cross', query, alias)
+    }
+
+    /**
+     * Adds a lateral join clause to the query.
+     *
+     * @param query The subquery (a QueryBuilder instance or raw SQL string).
+     * @param alias The alias assigned to the subquery.
+     * @param type  The join type (defaults to `inner`).
+     * @returns
+     */
+    public joinLateral (query: JoinSource, alias: string, type: QueryJoinType = 'inner'): this {
+        return this.addJoinSub(type, query, alias, undefined, undefined, undefined, true)
+    }
+
+    /**
+     * Adds a lateral left join clause to the query.
+     *
+     * @param query The subquery (a QueryBuilder instance or raw SQL string).
+     * @param alias The alias assigned to the subquery.
+     * @returns
+     */
+    public leftJoinLateral (query: JoinSource, alias: string): this {
+        return this.addJoinSub('left', query, alias, undefined, undefined, undefined, true)
+    }
+
+    /**
+     * Builds a self-contained select specification used when this query is joined
+     * as a subquery by another query builder.
+     *
+     * @returns
+     */
+    private buildJoinSubquerySpec (): SelectSpec<TModel> {
+        const spec = this.tryBuildSelectSpec(this.buildWhere())
+        if (!spec)
+            throw new UnsupportedAdapterFeatureException('Subquery join could not be compiled into an Arkorm select specification.', {
+                operation: 'query.joinSub',
+                model: this.model.name,
+            })
+
+        return spec
+    }
+
+    private guardJoinSupport (): void {
+        if (!this.adapter?.capabilities?.joins)
+            throw new UnsupportedAdapterFeatureException('Join clauses are not supported by the current adapter.', {
+                operation: 'join',
+                model: this.model.name,
+                meta: {
+                    feature: 'joins',
+                },
+            })
+    }
+
+    private pushJoin (join: QueryJoin): void {
+        (this.queryJoins ??= []).push(join)
+    }
+
+    private resolveJoinConstraints (
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): QueryJoinConstraint[] {
+        if (first === undefined)
+            return []
+
+        const clause = new JoinClause()
+        if (typeof first === 'function')
+            first(clause)
+        else
+            clause.on(first, operator, second)
+
+        return clause.getConstraints()
+    }
+
+    private resolveJoinSource (query: JoinSource): Pick<QueryJoin, 'subquery' | 'subquerySql'> {
+        if (typeof query === 'string')
+            return { subquerySql: query }
+
+        return { subquery: query.buildJoinSubquerySpec() as SelectSpec }
+    }
+
+    private addJoin (
+        type: QueryJoinType,
+        table: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+    ): this {
+        this.guardJoinSupport()
+        this.pushJoin({
+            type,
+            table,
+            constraints: this.resolveJoinConstraints(first, operator, second),
+        })
+
+        return this
+    }
+
+    private addJoinWhere (
+        type: QueryJoinType,
+        table: string,
+        column: string,
+        operator: QueryComparisonOperator | string,
+        value: DatabaseValue,
+    ): this {
+        this.guardJoinSupport()
+        const clause = new JoinClause()
+        clause.where(column, operator, value)
+        this.pushJoin({ type, table, constraints: clause.getConstraints() })
+
+        return this
+    }
+
+    private addJoinSub (
+        type: QueryJoinType,
+        query: JoinSource,
+        alias: string,
+        first?: JoinOn,
+        operator?: QueryScalarComparisonOperator | string,
+        second?: string,
+        lateral = false,
+    ): this {
+        this.guardJoinSupport()
+        this.pushJoin({
+            type,
+            alias,
+            ...this.resolveJoinSource(query),
+            ...(lateral ? { lateral: true } : {}),
+            constraints: this.resolveJoinConstraints(first, operator, second),
+        })
+
+        return this
+    }
+
+    /**
+     * Adds a skip clause to the query for pagination.
      * This will overwrite any existing skip clause.
      * 
      * @param skip 
@@ -3361,6 +3734,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             columns,
             distinct: this.queryDistinct || undefined,
             groupBy: this.queryGroupBy ? [...this.queryGroupBy] : undefined,
+            joins: this.queryJoins ? [...this.queryJoins] : undefined,
             where: condition,
             orderBy,
             limit: this.limitValue,
@@ -3382,6 +3756,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
         return {
             target: this.buildQueryTarget(),
+            joins: this.queryJoins ? [...this.queryJoins] : undefined,
             where: condition,
             relationFilters: this.canExecuteRelationFiltersInAdapter() ? relationFilters ?? undefined : undefined,
             aggregate: { type: 'count' },

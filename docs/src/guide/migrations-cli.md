@@ -99,7 +99,7 @@ them against the database or apply them to Prisma schema text.
 | `json(name)`                                         | JSON column.                                           |
 | `date(name)` / `timestamp(name)`                     | Date and timestamp columns.                            |
 | `enum(name, valuesOrEnumName)`                       | Define or reuse an enum.                               |
-| `timestamps()`                                       | Add `createdAt` and `updatedAt`.                       |
+| `timestamps(casing?, mapCasing?)`                    | Add `createdAt` and `updatedAt` (casing configurable). |
 | `softDeletes(column?)`                               | Add a nullable soft-delete timestamp.                  |
 | `morphs(name)` / `nullableMorphs(name)`              | Add polymorphic type and id columns.                   |
 
@@ -179,6 +179,25 @@ table.index(['accountId', 'createdAt'], 'events_account_created_index');
 Use logical model attribute names in migrations. `.map()` records the physical
 database name while preserving logical names for queries and generated model
 declarations.
+
+### Timestamp columns
+
+`timestamps()` defines the `createdAt` and `updatedAt` columns. Both arguments
+are optional and accept a casing keyword (`'camel'` or `'snake'`) or an explicit
+`{ createdAt?, updatedAt? }` override. The first argument controls the logical
+attribute names; the second controls the physical database column names via
+`.map()`:
+
+```ts
+table.timestamps(); // createdAt / updatedAt
+table.timestamps('snake'); // created_at / updated_at
+table.timestamps('camel', 'snake'); // createdAt mapped to created_at column
+table.timestamps({ createdAt: 'createdOn' });
+table.timestamps('camel', { createdAt: 'created_on' });
+```
+
+When the second argument is omitted no `.map()` is applied, so the attribute
+name is also the physical column name.
 
 ## Sync model declarations
 

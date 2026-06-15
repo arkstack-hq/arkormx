@@ -174,14 +174,16 @@ readonly capabilities = {
   exists: true,
   rawSelect: true,
   rawWhere: true,
+  joins: true,
 };
 ```
 
 Capability flags and optional methods should agree. For example, an adapter
 that advertises `rawSelect` must compile `QuerySelectColumn` entries with
 `raw: true`, an adapter that advertises `rawWhere` must compile
-`QueryRawCondition`, and an adapter that advertises `relationLoads` must
-implement `loadRelations()`.
+`QueryRawCondition`, an adapter that advertises `joins` must compile the
+`QueryJoin` entries on a `SelectSpec`, and an adapter that advertises
+`relationLoads` must implement `loadRelations()`.
 
 ## Inspection and errors
 

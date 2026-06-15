@@ -157,3 +157,16 @@ export interface AppliedMigrationsState {
 }
 
 export type MigrationClass = new () => MigrationInstanceLike
+
+/**
+ * Concrete createdAt / updatedAt names used by the timestamp helper.
+ */
+export interface TimestampNames {
+    createdAt: string
+    updatedAt: string
+}
+
+/**
+ * Casing keyword or explicit name overrides accepted by `timestamps()`.
+ */
+export type TimestampNaming = 'camel' | 'snake' | Partial<TimestampNames>

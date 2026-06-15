@@ -114,6 +114,7 @@ Eloquent features a broad list of methods that make it a powerful ORM. For Arkor
 - [x] `avg(column)`
 - [x] `whereRaw(...)` / `orWhereRaw(...)` (adapter-gated)
 - [x] `existsOr(callback)` / `doesntExistOr(callback)`
+- [x] SQL join family: `join*` / `leftJoin*` / `rightJoin*` / `crossJoin*` / `joinSub*` / `joinLateral*` (adapter-gated)
 
 ### Phase 4.5 — Insert and upsert write parity
 
@@ -180,7 +181,6 @@ Final merge checklist status:
 Lower priority until global scopes, events, and transactions are stable:
 
 - Chunking/lazy/cursor APIs (`chunk`, `lazy`, `cursorPaginate`, etc.)
-- SQL-specific join family (`join*`, `crossJoin*`, lateral joins)
 - Macro system parity (`macro`, `mixin`, `flushMacros`)
 
 ## Status Legend
