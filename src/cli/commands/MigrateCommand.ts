@@ -4,7 +4,8 @@ import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, 
 import { existsSync, readdirSync } from 'node:fs'
 import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
-import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
+import { loadArkormConfig } from '../../helpers/runtime-config'
+import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
@@ -44,6 +45,12 @@ export class MigrateCommand extends Command<CliApp> {
      */
     async handle () {
         this.app.command = this
+        // Ensure the user configuration (and its database adapter) is applied
+        // before resolving the adapter. Consumers such as the Arkstack CLI invoke
+        // this handler with a freshly constructed CliApp that has not yet loaded
+        // the config, so without this the adapter is undefined and the command
+        // incorrectly falls back to the Prisma workflow.
+        await loadArkormConfig()
         const configuredMigrationsDir =
             this.app.getConfig('paths')?.migrations ??
             join(process.cwd(), 'database', 'migrations')
@@ -120,13 +127,12 @@ export class MigrateCommand extends Command<CliApp> {
             return
         }
 
-        if (useDatabaseMigrations) {
-            try {
-                await validatePersistedMetadataFeaturesForMigrations(pending, persistedFeatures)
-            } catch (error) {
-                return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-            }
-        }
+        // Persisted-metadata-feature validation is performed by
+        // syncPersistedColumnMappingsFromState after the migrations are applied.
+        // It must not run beforehand: building the migration plan executes each
+        // migration's up(), so any migration that issues raw SQL referencing a
+        // table created by an earlier migration would run before that table
+        // exists, breaking a from-zero migrate.
 
         for (const [MigrationClassItem] of pending) {
             if (useDatabaseMigrations) {
