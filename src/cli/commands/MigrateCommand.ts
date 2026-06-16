@@ -1,16 +1,16 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
 import { applyMigrationToDatabase, applyMigrationToPrismaSchema, getMigrationPlan, runPrismaCommand, supportsDatabaseCreation, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
+import { applyOperationsToPersistedColumnMappingsState, createEmptyPersistedColumnMappingsState, resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
-import { loadArkormConfig } from '../../helpers/runtime-config'
-import { applyOperationsToPersistedColumnMappingsState, createEmptyPersistedColumnMappingsState, resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 
 /**
  * The MigrateCommand class implements the CLI command for applying migration 
