@@ -1,10 +1,11 @@
 import { MigrationClass, MigrationInstanceLike } from 'src/types'
-import { applyMigrationToDatabase, applyMigrationToPrismaSchema, runPrismaCommand, supportsDatabaseCreation, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
+import { applyMigrationToDatabase, applyMigrationToPrismaSchema, getMigrationPlan, runPrismaCommand, supportsDatabaseCreation, supportsDatabaseMigrationExecution } from '../../helpers/migrations'
 import { buildMigrationIdentity, buildMigrationRunId, computeMigrationChecksum, findAppliedMigration, isMigrationApplied, markMigrationApplied, markMigrationRun, readAppliedMigrationsStateFromStore, resolveMigrationStateFilePath, writeAppliedMigrationsStateToStore } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
 import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
-import { resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState, validatePersistedMetadataFeaturesForMigrations } from '../../helpers/column-mappings'
+import { loadArkormConfig } from '../../helpers/runtime-config'
+import { applyOperationsToPersistedColumnMappingsState, createEmptyPersistedColumnMappingsState, resolvePersistedMetadataFeatures, syncPersistedColumnMappingsFromState } from '../../helpers/column-mappings'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
@@ -44,6 +45,12 @@ export class MigrateCommand extends Command<CliApp> {
      */
     async handle () {
         this.app.command = this
+        // Ensure the user configuration (and its database adapter) is applied
+        // before resolving the adapter. Consumers such as the Arkstack CLI invoke
+        // this handler with a freshly constructed CliApp that has not yet loaded
+        // the config, so without this the adapter is undefined and the command
+        // incorrectly falls back to the Prisma workflow.
+        await loadArkormConfig()
         const configuredMigrationsDir =
             this.app.getConfig('paths')?.migrations ??
             join(process.cwd(), 'database', 'migrations')
@@ -120,16 +127,27 @@ export class MigrateCommand extends Command<CliApp> {
             return
         }
 
-        if (useDatabaseMigrations) {
-            try {
-                await validatePersistedMetadataFeaturesForMigrations(pending, persistedFeatures)
-            } catch (error) {
-                return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
-            }
-        }
+        // Validate persisted-metadata features one migration at a time, in
+        // application order, immediately before each migration is applied. Building
+        // a migration's plan executes its up(); validating the whole batch up front
+        // would therefore run a later migration's raw SQL (e.g. a trigger or
+        // constraint referencing a table from an earlier migration) before that
+        // table exists, breaking a from-zero migrate. Per-migration validation still
+        // aborts before applying a migration that uses a disabled feature.
+        let columnMappingsState = createEmptyPersistedColumnMappingsState()
 
         for (const [MigrationClassItem] of pending) {
             if (useDatabaseMigrations) {
+                const planned = await this.runWithDatabaseCreationRetry(adapter, () => getMigrationPlan(MigrationClassItem, 'up'))
+                if (!planned.ok)
+                    return
+
+                try {
+                    columnMappingsState = applyOperationsToPersistedColumnMappingsState(columnMappingsState, planned.value, persistedFeatures)
+                } catch (error) {
+                    return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+                }
+
                 const applied = await this.runWithDatabaseCreationRetry(adapter, () => applyMigrationToDatabase(adapter, MigrationClassItem))
                 if (!applied.ok)
                     return
