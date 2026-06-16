@@ -21,6 +21,7 @@ import type {
     ModelQuerySchemaLike,
     ModelStatic,
     NamingCase,
+    QuerySchemaWhere,
     Serializable,
     SoftDeleteConfig,
     TransactionContext,
@@ -93,12 +94,27 @@ export abstract class Model<
     protected readonly attributes: Record<string, unknown>
     protected original: Record<string, unknown>
     protected changes: Record<string, unknown>
+    protected previous: Record<string, unknown>
     protected readonly touchedAttributes: Set<string>
+
+    /**
+     * Indicates whether the model corresponds to a row that exists in the
+     * database. Hydrated and freshly inserted models are marked as existing;
+     * models built with `new Model(...)` are not until they are saved.
+     */
+    public exists = false
+
+    /**
+     * Indicates whether the model was inserted during the current lifecycle
+     * (i.e. the last successful save performed a create rather than an update).
+     */
+    public wasRecentlyCreated = false
 
     public constructor(attributes: Record<string, unknown> = {}) {
         this.attributes = {}
         this.original = {}
         this.changes = {}
+        this.previous = {}
         this.touchedAttributes = new Set()
         this.fill(attributes)
 
@@ -631,6 +647,129 @@ export abstract class Model<
     }
 
     /**
+     * Start a query constrained by the given where clause.
+     *
+     * @param this
+     * @param where
+     * @returns
+     */
+    public static where<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
+    > (
+        this: TThis,
+        where: QuerySchemaWhere<TDelegate>
+    ): QueryBuilder<TModel, TDelegate> {
+        return (this as unknown as ModelStatic<TModel, TDelegate>).query().where(where) as QueryBuilder<TModel, TDelegate>
+    }
+
+    /**
+     * Retrieve all records for the model.
+     *
+     * @param this
+     * @returns
+     */
+    public static async all<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
+    > (
+        this: TThis
+    ): Promise<ArkormCollection<TModel>> {
+        return await (this as unknown as ModelStatic<TModel, TDelegate>).query().get()
+    }
+
+    /**
+     * Create and persist a new record, returning the hydrated model instance.
+     *
+     * @param this
+     * @param data
+     * @returns
+     */
+    public static async create<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
+    > (
+        this: TThis,
+        data: ModelCreateData<TModel, TDelegate>
+    ): Promise<TModel> {
+        return await (this as unknown as ModelStatic<TModel, TDelegate>).query().create(data)
+    }
+
+    /**
+     * Insert new records or update existing records by one or more unique keys.
+     *
+     * @param this
+     * @param values
+     * @param uniqueBy
+     * @param update
+     * @returns
+     */
+    public static async upsert<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
+    > (
+        this: TThis,
+        values: Array<Record<string, unknown>>,
+        uniqueBy: string | string[],
+        update: string[] | null = null
+    ): Promise<number> {
+        return await (this as unknown as ModelStatic<TModel, TDelegate>).query().upsert(values, uniqueBy, update)
+    }
+
+    /**
+     * Delete records by their primary key(s), dispatching model events for each
+     * matched record. Returns the number of records deleted.
+     *
+     * @param this
+     * @param ids
+     * @returns
+     */
+    public static async destroy<
+        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+        TModel extends Model<any, any> = InstanceType<TThis>,
+        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+        >
+    > (
+        this: TThis,
+        ids: string | number | Array<string | number>
+    ): Promise<number> {
+        const constructor = this as unknown as ModelStatic<TModel, TDelegate>
+        const identifiers = (Array.isArray(ids) ? ids : [ids])
+            .filter((identifier, index, all) => all.indexOf(identifier) === index)
+        const primaryKey = constructor.getPrimaryKey()
+
+        let deleted = 0
+        for (const identifier of identifiers) {
+            const model = await constructor.query().where({ [primaryKey]: identifier } as QuerySchemaWhere<TDelegate>).first()
+            if (!model)
+                continue
+
+            await (model as unknown as Model).delete()
+            deleted += 1
+        }
+
+        return deleted
+    }
+
+    /**
      * Get the soft delete configuration for the model, including whether 
      * soft deletes are enabled and the name of the deleted at column.
      * 
@@ -656,7 +795,8 @@ export abstract class Model<
     ): TModel {
         const model = new this(attributes);
         (model as unknown as Model).syncOriginal();
-        (model as unknown as Model).syncChanges({})
+        (model as unknown as Model).syncChanges({});
+        (model as unknown as Model).exists = true
 
         return model
     }
@@ -672,7 +812,9 @@ export abstract class Model<
         this: new (attributes: Record<string, unknown>) => TModel,
         attributes: Record<string, unknown>[]
     ): TModel[] {
-        return attributes.map(attribute => new this(attribute))
+        const constructor = this as unknown as { hydrate: (attributes: Record<string, unknown>) => TModel }
+
+        return attributes.map(attribute => constructor.hydrate(attribute))
     }
 
     /**
@@ -766,6 +908,27 @@ export abstract class Model<
     }
 
     /**
+     * Update the model and persist it within a transaction, rethrowing on
+     * failure. Unlike update(), errors are not swallowed.
+     *
+     * @param attributes
+     * @returns
+     */
+    public async updateOrFail (attributes: Partial<TAttributes>): Promise<this>
+    public async updateOrFail (attributes: Record<string, unknown>): Promise<this>
+    public async updateOrFail (attributes: Record<string, unknown>): Promise<this> {
+        const constructor = this.constructor as unknown as ModelStatic<this>
+        const primaryKey = constructor.getPrimaryKey()
+        const identifier = this.getAttribute(primaryKey)
+        if (identifier == null)
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot update a model without an id.'
+                : `Cannot update a model without a [${primaryKey}] value.`)
+
+        return await this.fill(attributes).saveOrFail()
+    }
+
+    /**
      * Get the value of an attribute, applying any get mutators or casts if defined.
      * 
      * @param key 
@@ -828,18 +991,19 @@ export abstract class Model<
     }
 
     /**
-     * Save the model to the database. 
-     * If the model has an identifier (id), it will perform an update. 
-     * Otherwise, it will perform a create.
-     * 
-     * @returns 
+     * Save the model to the database.
+     * If the model already exists in the database it performs an update;
+     * otherwise it performs an insert. Existence is tracked through the
+     * `exists` flag rather than the presence of a primary-key value, so a model
+     * built with an explicit primary key still inserts on its first save.
+     *
+     * @returns
      */
     public async save (): Promise<this> {
         const constructor = this.constructor as unknown as ModelStatic<this>
         const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey) as string | number | undefined
         const previousOriginal = this.getOriginal()
-        if (identifier == null) {
+        if (!this.exists) {
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
 
@@ -847,13 +1011,22 @@ export abstract class Model<
             const model = await constructor.query().create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
             this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
             this.syncChanges(previousOriginal)
+            this.syncPrevious(previousOriginal)
             this.syncOriginal()
+            this.exists = true
+            this.wasRecentlyCreated = true
 
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'created', this)
             await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
 
             return this
         }
+
+        const identifier = this.getAttribute(primaryKey) as string | number | undefined
+        if (identifier == null)
+            throw new ArkormException(primaryKey === 'id'
+                ? 'Cannot update an existing model without an id.'
+                : `Cannot update an existing model without a [${primaryKey}] value.`)
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
@@ -863,6 +1036,7 @@ export abstract class Model<
         const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
         this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
+        this.syncPrevious(previousOriginal)
         this.syncOriginal()
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'updated', this)
@@ -878,6 +1052,18 @@ export abstract class Model<
      */
     public async saveQuietly (): Promise<this> {
         return await Model.withoutEvents(() => this.save())
+    }
+
+    /**
+     * Save the model within a transaction, rolling back and rethrowing if the
+     * operation fails. Unlike update(), this never swallows errors.
+     *
+     * @returns
+     */
+    public async saveOrFail (): Promise<this> {
+        const constructor = this.constructor as unknown as typeof Model
+
+        return await constructor.transaction(async () => await this.save())
     }
 
     /**
@@ -917,6 +1103,7 @@ export abstract class Model<
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
+        this.exists = false
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
 
         return this
@@ -929,6 +1116,18 @@ export abstract class Model<
      */
     public async deleteQuietly (): Promise<this> {
         return await Model.withoutEvents(() => this.delete())
+    }
+
+    /**
+     * Delete the model within a transaction, rolling back and rethrowing if the
+     * operation fails.
+     *
+     * @returns
+     */
+    public async deleteOrFail (): Promise<this> {
+        const constructor = this.constructor as unknown as typeof Model
+
+        return await constructor.transaction(async () => await this.delete())
     }
 
     /**
@@ -954,6 +1153,7 @@ export abstract class Model<
         this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
         this.syncChanges(previousOriginal)
         this.syncOriginal()
+        this.exists = false
 
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
         await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
@@ -1174,6 +1374,42 @@ export abstract class Model<
             return Object.keys(this.changes).length > 0
 
         return keyList.some(key => Object.prototype.hasOwnProperty.call(this.changes, key))
+    }
+
+    /**
+     * Get the attributes that were changed during the last successful
+     * persistence operation.
+     *
+     * @returns
+     */
+    public getChanges (): Partial<TAttributes> {
+        return Object.entries(this.changes).reduce<Record<string, unknown>>((all, [key, value]) => {
+            all[key] = Model.cloneAttributeValue(value)
+
+            return all
+        }, {}) as Partial<TAttributes>
+    }
+
+    /**
+     * Get the attribute snapshot that was persisted before the last successful
+     * persistence operation.
+     *
+     * @returns
+     */
+    public getPrevious (): Partial<TAttributes>
+    /**
+     * @param key The attribute key to retrieve the previous value for.
+     */
+    public getPrevious<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey] | undefined
+    public getPrevious (key?: string): unknown {
+        if (typeof key === 'string')
+            return Model.cloneAttributeValue(this.previous[key])
+
+        return Object.entries(this.previous).reduce<Record<string, unknown>>((all, [previousKey, value]) => {
+            all[previousKey] = Model.cloneAttributeValue(value)
+
+            return all
+        }, {}) as Partial<TAttributes>
     }
 
     /**
@@ -1886,6 +2122,20 @@ export abstract class Model<
                 || !Model.areAttributeValuesEqual(value, previousOriginal[key])) {
                 all[key] = Model.cloneAttributeValue(value)
             }
+
+            return all
+        }, {})
+    }
+
+    /**
+     * Capture the attribute snapshot that was persisted before the most recent
+     * save so it can be read back via getPrevious().
+     *
+     * @param previousOriginal
+     */
+    private syncPrevious (previousOriginal: Record<string, unknown>): void {
+        this.previous = Object.entries(previousOriginal).reduce<Record<string, unknown>>((all, [key, value]) => {
+            all[key] = Model.cloneAttributeValue(value)
 
             return all
         }, {})

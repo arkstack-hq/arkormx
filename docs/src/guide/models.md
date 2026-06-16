@@ -92,9 +92,13 @@ user.fill({
 await user.save();
 ```
 
-`save()` inserts a model without a primary-key value and updates a model that
-already has one. It returns the same model instance with persisted values
-applied.
+`save()` inserts a model that does not yet exist in the database and updates
+one that does. Existence is tracked through the `exists` flag, not the presence
+of a primary-key value: a model built with `new Model(...)` starts with
+`exists === false` and inserts on its first save (even when you assign a primary
+key yourself), while models loaded from the database or returned by `create()`
+have `exists === true` and update. `save()` returns the same model instance with
+persisted values applied and sets `exists` to `true` after a successful insert.
 
 Use `update()` for a fill-and-save shortcut:
 
@@ -107,6 +111,59 @@ const updated = await user.update({
 Instance `update()` returns `false` when the model has no identifier or the
 operation fails. Use query-builder `update()` when you need the underlying
 exception rather than this boolean convenience contract.
+
+When you want failures to surface instead of being swallowed, use the
+`*OrFail` family. Each runs inside a transaction and rethrows on failure,
+returning the model instance on success:
+
+```ts
+await user.saveOrFail();
+await user.updateOrFail({ name: 'Jane Updated' });
+await user.deleteOrFail();
+```
+
+- `saveOrFail()`: like `save()`, but wrapped in a transaction that rolls back and rethrows on error.
+- `updateOrFail(attributes)`: fill-and-save like `update()`, but throws (instead of returning `false`) when the model has no identifier or the operation fails.
+- `deleteOrFail()`: like `delete()`, wrapped in a transaction that rolls back and rethrows on error.
+
+## Static query helpers
+
+Common queries are available directly on the model class as shortcuts over
+`Model.query()`:
+
+```ts
+const users = await User.all(); // ArkormCollection of every record
+const actives = await User.where({ isActive: 1 }).get();
+
+const created = await User.create({ name: 'Jane', email: 'jane@example.com' });
+const affected = await User.upsert(rows, 'email', ['name']);
+const deleted = await User.destroy([1, 2, 3]); // returns the number removed
+```
+
+- `Model.all()`: retrieve every record as a collection.
+- `Model.where(where)`: start a query builder constrained by `where`.
+- `Model.create(data)`: create and persist a record, returning the hydrated model.
+- `Model.upsert(values, uniqueBy, update?)`: insert or update by unique key(s), returning the affected count.
+- `Model.destroy(idOrIds)`: delete records by primary key, dispatching model events for each match, returning the number deleted.
+
+The query builder also exposes find-or-create helpers, reachable through
+`Model.query()` or `Model.where(...)`:
+
+```ts
+const user = await User.query().firstOrCreate(
+  { email: 'jane@example.com' }, // matched against existing records
+  { name: 'Jane' }, // merged in only when creating
+);
+
+const draft = await User.query().firstOrNew({ email: 'ghost@example.com' });
+const settled = await User.query().updateOrCreate({ email: 'jane@example.com' }, { name: 'Jane' });
+const result = await User.query().where({ email: 'x@example.com' }).firstOr(() => 'fallback');
+```
+
+- `firstOrCreate(attributes, values?)`: return the first match, otherwise create and persist a record with `{ ...attributes, ...values }`.
+- `firstOrNew(attributes, values?)`: return the first match, otherwise return an unpersisted model with `{ ...attributes, ...values }`.
+- `updateOrCreate(attributes, values?)`: update the first match with `values`, otherwise create a record with `{ ...attributes, ...values }`.
+- `firstOr(columns?, callback)`: return the first record, otherwise return the result of `callback`.
 
 ## Delete and restore models
 
@@ -140,6 +197,10 @@ Available helpers:
 - `isDirty(keyOrKeys?)`: check whether the model currently has unsaved changes.
 - `isClean(keyOrKeys?)`: inverse of `isDirty(...)`.
 - `wasChanged(keyOrKeys?)`: check whether the last successful persistence operation changed those attributes.
+- `getChanges()`: read the attributes that changed during the last successful persistence operation.
+- `getPrevious(key?)`: read the attribute snapshot that was persisted before the last successful operation.
+- `wasRecentlyCreated`: `true` when the last successful save inserted a new record (rather than updating an existing one).
+- `exists`: `true` when the model maps to a row in the database (loaded, or saved at least once); `false` for unsaved `new Model(...)` instances and after a hard delete.
 
 ```ts
 const user = await User.query().firstOrFail();
@@ -157,7 +218,10 @@ await user.save();
 
 user.isClean(); // true
 user.wasChanged('name'); // true
+user.getChanges(); // { name: 'Jane Updated' }
+user.getPrevious('name'); // previous persisted value
 user.getOriginal('name'); // 'Jane Updated'
+user.wasRecentlyCreated; // false for an update; true after an insert
 ```
 
 New models created with `new Model(...)` start dirty because they do not have a

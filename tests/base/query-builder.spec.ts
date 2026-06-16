@@ -486,7 +486,9 @@ describe('QueryBuilder', () => {
                 }),
             }))
 
-            const saved = new MetadataUser({ uuid: 'user-1', displayName: 'Updated' })
+            // A model loaded from the database exists, so save() updates it.
+            const saved = found as MetadataUser
+            saved.setAttribute('displayName', 'Updated')
             await saved.save()
             expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({
                 where: {
@@ -496,6 +498,14 @@ describe('QueryBuilder', () => {
                     value: 'user-1',
                 },
             }))
+
+            // A model built with new (even with a primary key) does not yet
+            // exist, so save() inserts instead of updating.
+            updateSpy.mockClear()
+            const fresh = new MetadataUser({ uuid: 'user-1', displayName: 'Fresh' })
+            await fresh.save()
+            expect(updateSpy).not.toHaveBeenCalled()
+            expect(insertSpy).toHaveBeenCalled()
 
             await saved.delete()
             expect(deleteSpy).toHaveBeenCalledWith(expect.objectContaining({
