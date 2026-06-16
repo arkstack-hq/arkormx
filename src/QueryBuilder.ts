@@ -1975,6 +1975,94 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Returns the first record matching the given attributes or instantiates a
+     * new, unpersisted model populated with the merged attributes and values.
+     *
+     * @param attributes
+     * @param values
+     * @returns
+     */
+    public async firstOrNew (
+        attributes: Record<string, unknown>,
+        values: Record<string, unknown> = {}
+    ): Promise<TModel> {
+        const existing = await this.clone()
+            .where(attributes as QuerySchemaWhere<TDelegate>)
+            .first()
+        if (existing)
+            return existing
+
+        const ModelConstructor = this.model as unknown as new (attrs: Record<string, unknown>) => TModel
+
+        return new ModelConstructor({
+            ...attributes,
+            ...values,
+        })
+    }
+
+    /**
+     * Returns the first record matching the given attributes or creates and
+     * persists a new record populated with the merged attributes and values.
+     *
+     * @param attributes
+     * @param values
+     * @returns
+     */
+    public async firstOrCreate (
+        attributes: Record<string, unknown>,
+        values: Record<string, unknown> = {}
+    ): Promise<TModel> {
+        const existing = await this.clone()
+            .where(attributes as QuerySchemaWhere<TDelegate>)
+            .first()
+        if (existing)
+            return existing
+
+        return await this.create({
+            ...attributes,
+            ...values,
+        } as ModelCreateData<TModel, TDelegate>)
+    }
+
+    /**
+     * Returns the first record matching the query, or the result of the
+     * fallback callback when no record exists. An optional column list narrows
+     * the selected columns before the lookup.
+     *
+     * @param columnsOrCallback
+     * @param maybeCallback
+     * @returns
+     */
+    public async firstOr<TResult> (callback: () => TResult | Promise<TResult>): Promise<TModel | TResult>
+    public async firstOr<TResult> (columns: string[], callback: () => TResult | Promise<TResult>): Promise<TModel | TResult>
+    public async firstOr<TResult> (
+        columnsOrCallback: string[] | (() => TResult | Promise<TResult>),
+        maybeCallback?: () => TResult | Promise<TResult>
+    ): Promise<TModel | TResult> {
+        const callback = typeof columnsOrCallback === 'function' ? columnsOrCallback : maybeCallback
+        if (!callback)
+            throw new QueryConstraintException('firstOr requires a fallback callback.', {
+                operation: 'firstOr',
+                model: this.model.name,
+            })
+
+        if (Array.isArray(columnsOrCallback) && columnsOrCallback.length > 0) {
+            const select = columnsOrCallback.reduce<Record<string, true>>((all, column) => {
+                all[column] = true
+
+                return all
+            }, {})
+            this.select(select as Parameters<this['select']>[0])
+        }
+
+        const found = await this.first()
+        if (found)
+            return found
+
+        return callback()
+    }
+
+    /**
      * Finds a record by a specific key and value. 
      * This is a convenience method that is equivalent to 
      * calling where({ [key]: value }).first(). 
@@ -2334,6 +2422,36 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         return updated != null
     }
 
+    /**
+     * Update the first record matching the given attributes, or create a new
+     * record populated with the merged attributes and values when none exists.
+     *
+     * @param attributes
+     * @param values
+     * @returns
+     */
+    public async updateOrCreate (
+        attributes: Record<string, unknown>,
+        values: Record<string, unknown> = {}
+    ): Promise<TModel> {
+        const existing = await this.clone()
+            .where(attributes as QuerySchemaWhere<TDelegate>)
+            .first()
+
+        if (!existing)
+            return await this.create({
+                ...attributes,
+                ...values,
+            } as ModelCreateData<TModel, TDelegate>)
+
+        if (Object.keys(values).length === 0)
+            return existing
+
+        return await this.clone()
+            .where(attributes as QuerySchemaWhere<TDelegate>)
+            .update(values as ModelUpdateData<TModel, TDelegate>)
+    }
+
     private shouldFallbackUpdateOrInsertUpsert (error: unknown): boolean {
         if (!(error instanceof QueryExecutionException))
             return false
@@ -2413,7 +2531,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             if (!deleted)
                 return null
 
-            return this.model.hydrate(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+            return this.hydrateDeleted(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
         }
 
         const uniqueWhere = await this.resolveUniqueWhere(where, false)
@@ -2424,7 +2542,21 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         if (!deleted)
             return null
 
-        return this.model.hydrate(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+        return this.hydrateDeleted(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+    }
+
+    /**
+     * Hydrate a row that was just deleted, marking the resulting model as no
+     * longer existing in the database.
+     *
+     * @param attributes
+     * @returns
+     */
+    private hydrateDeleted (attributes: Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0]): TModel {
+        const model = this.model.hydrate(attributes)
+        ;(model as unknown as { exists: boolean }).exists = false
+
+        return model
     }
 
     /**

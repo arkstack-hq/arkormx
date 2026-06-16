@@ -930,7 +930,13 @@ export abstract class Relation<TModel> {
      * @returns 
      */
     public make (attributes: Record<string, unknown> = {}): TModel {
-        return this.getRelatedModelConstructor().hydrate(this.mergeCreationAttributes(attributes))
+        const model = this.getRelatedModelConstructor().hydrate(this.mergeCreationAttributes(attributes))
+
+        // make() builds an unpersisted instance, so it must not be flagged as
+        // existing even though hydrate() marks rows loaded from the database.
+        ;(model as unknown as { exists: boolean }).exists = false
+
+        return model
     }
 
     /**
