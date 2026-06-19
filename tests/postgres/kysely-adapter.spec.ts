@@ -429,6 +429,81 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(lateralSql).toContain('inner join lateral ( select * from "posts" ) as "p" on true')
     })
 
+    it('compiles the JSON where family into SQL', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const containsSql = DbUser.query()
+            .whereJsonContains('meta', { tier: 'pro' })
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(containsSql).toContain('"meta"::jsonb @> $1::jsonb')
+
+        const doesntContainSql = DbUser.query()
+            .whereJsonDoesntContain('meta', { tier: 'pro' })
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(doesntContainSql).toContain('not ("meta"::jsonb @> $1::jsonb)')
+
+        const pathContainsSql = DbUser.query()
+            .whereJsonContains('meta->roles', ['admin'])
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(pathContainsSql).toContain('("meta"::jsonb #> $1::text[]) @> $2::jsonb')
+
+        const containsKeySql = DbUser.query()
+            .whereJsonContainsKey('meta->tier')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(containsKeySql).toContain('("meta"::jsonb #> $1::text[]) is not null')
+
+        const doesntContainKeySql = DbUser.query()
+            .whereJsonDoesntContainKey('meta->tier')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(doesntContainKeySql).toContain('("meta"::jsonb #> $1::text[]) is null')
+
+        const lengthSql = DbUser.query()
+            .whereJsonLength('meta', '>=', 2)
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(lengthSql).toContain('jsonb_array_length("meta"::jsonb) >= $1')
+
+        const overlapsSql = DbUser.query()
+            .whereJsonOverlaps('meta', ['a', 'b'])
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(overlapsSql).toContain('jsonb_array_elements("meta"::jsonb)')
+        expect(overlapsSql).toContain('jsonb_array_elements($1::jsonb)')
+    })
+
+    it('compiles the LIKE family and having into SQL', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const notLikeSql = DbUser.query()
+            .whereNotLike('email', 'jane')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(notLikeSql).toContain('not ("email" like $1)')
+
+        const orLikeSql = DbUser.query()
+            .where({ isActive: 1 })
+            .orWhereLike('email', 'jane')
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(orLikeSql).toContain('or "email" like $2')
+
+        const havingSql = DbUser.query()
+            .groupBy('isActive')
+            .having('isActive', '>=', 1)
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(havingSql).toContain('group by "isActive"')
+        expect(havingSql).toContain('having "isActive" >= $1')
+
+        const orHavingSql = DbUser.query()
+            .groupBy('isActive')
+            .having('isActive', '>=', 1)
+            .orHaving('isActive', 0)
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(orHavingSql).toContain('having ("isActive" >= $1 or "isActive" = $2)')
+
+        const havingRawSql = DbUser.query()
+            .groupBy('isActive')
+            .havingRaw('count(*) > ?', [5])
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+        expect(havingRawSql).toContain('having count(*) > $1')
+    })
+
     it('executes multi-statement raw SQL one statement at a time', async () => {
         const tableName = `raw_multi_${Date.now()}`
 

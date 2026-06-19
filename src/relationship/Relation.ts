@@ -1,5 +1,6 @@
 import type {
     DatabaseAdapter,
+    DatabaseValue,
     ModelAttributes,
     ModelOrderByInput,
     ModelWhereInput,
@@ -13,8 +14,8 @@ import type {
 import type { LengthAwarePaginator, Paginator } from '../Paginator'
 
 import { ArkormCollection } from '../Collection'
-import { QueryBuilder } from '../QueryBuilder'
 import type { EagerLoadRelations } from '../QueryBuilder'
+import { QueryBuilder } from '../QueryBuilder'
 import type { RelationConstraint } from '../types/relationship'
 import { RelationTableLoader } from './RelationTableLoader'
 import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
@@ -449,6 +450,22 @@ export abstract class Relation<TModel> {
     }
 
     /**
+     * Add an OR fulltext clause to the relationship query.
+     *
+     * @param columns
+     * @param value
+     * @param options
+     * @returns
+     */
+    public orWhereFullText<TKey extends keyof ModelAttributes<TModel> & string> (
+        columns: TKey | TKey[],
+        value: string,
+        options: { language?: string } = {}
+    ): this {
+        return this.constrain(query => query.orWhereFullText(columns, value, options))
+    }
+
+    /**
      * Add a strongly-typed where key clause to the relationship query.
      *
      * @param key
@@ -544,6 +561,220 @@ export abstract class Relation<TModel> {
         value: Extract<ModelAttributes<TModel>[TKey], string>
     ): this {
         return this.constrain(query => query.whereLike(key, value))
+    }
+
+    /**
+     * Add an OR string contains clause to the relationship query.
+     * 
+     * @param key 
+     * @param value 
+     * @returns 
+     */
+    public orWhereLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.orWhereLike(key, value))
+    }
+
+    /**
+     * Add a negated string contains (NOT LIKE) clause to the relationship query.
+     * 
+     * @param key 
+     * @param value 
+     * @returns 
+     */
+    public whereNotLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.whereNotLike(key, value))
+    }
+
+    /**
+     * Add an OR negated string contains (NOT LIKE) clause to the relationship query.
+     * 
+     * @param key 
+     * @param value 
+     * @returns 
+     */
+    public orWhereNotLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.constrain(query => query.orWhereNotLike(key, value))
+    }
+
+    /**
+     * Add a JSON containment clause to the relationship query.
+     * 
+     * @param key 
+     * @param value 
+     * @returns 
+     */
+    public whereJsonContains (column: string, value: DatabaseValue): this {
+        return this.constrain(query => query.whereJsonContains(column, value))
+    }
+
+    /**
+     * OR variant of whereJsonContains().
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public orWhereJsonContains (column: string, value: DatabaseValue): this {
+        return this.constrain(query => query.orWhereJsonContains(column, value))
+    }
+
+    /**
+     * Add a negated JSON containment clause to the relationship query.
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public whereJsonDoesntContain (column: string, value: DatabaseValue): this {
+        return this.constrain(query => query.whereJsonDoesntContain(column, value))
+    }
+
+    /**
+     * OR variant of whereJsonDoesntContain().
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public orWhereJsonDoesntContain (column: string, value: DatabaseValue): this {
+        return this.constrain(query => query.orWhereJsonDoesntContain(column, value))
+    }
+
+    /**
+     * Add a JSON key-existence clause to the relationship query.
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public whereJsonContainsKey (column: string): this {
+        return this.constrain(query => query.whereJsonContainsKey(column))
+    }
+
+    /**
+     * OR variant of whereJsonContainsKey().
+     * 
+     * @param column 
+     * @returns 
+     */
+    public orWhereJsonContainsKey (column: string): this {
+        return this.constrain(query => query.orWhereJsonContainsKey(column))
+    }
+
+    /**
+     * Add a negated JSON key-existence clause to the relationship query.
+     * 
+     * @param column 
+     * @returns 
+     */
+    public whereJsonDoesntContainKey (column: string): this {
+        return this.constrain(query => query.whereJsonDoesntContainKey(column))
+    }
+
+    /**
+     * OR variant of whereJsonDoesntContainKey().
+     * 
+     * @param column 
+     * @returns 
+     */
+    public orWhereJsonDoesntContainKey (column: string): this {
+        return this.constrain(query => query.orWhereJsonDoesntContainKey(column))
+    }
+
+    /**
+     * Add a JSON array-length clause to the relationship query.
+     * 
+     * @param column 
+     * @returns 
+     */
+    public whereJsonLength (column: string, value: number): this
+    public whereJsonLength (column: string, operator: QueryScalarComparisonOperator, value: number): this
+    public whereJsonLength (column: string, operatorOrValue: QueryScalarComparisonOperator | number, maybeValue?: number): this {
+        return this.constrain(query => maybeValue === undefined
+            ? query.whereJsonLength(column, operatorOrValue as number)
+            : query.whereJsonLength(column, operatorOrValue as QueryScalarComparisonOperator, maybeValue))
+    }
+
+    /**
+     * OR variant of whereJsonLength().
+     * 
+     * @param column 
+     * @param value 
+     */
+    public orWhereJsonLength (column: string, value: number): this
+    public orWhereJsonLength (column: string, operator: QueryScalarComparisonOperator, value: number): this
+    public orWhereJsonLength (column: string, operatorOrValue: QueryScalarComparisonOperator | number, maybeValue?: number): this {
+        return this.constrain(query => maybeValue === undefined
+            ? query.orWhereJsonLength(column, operatorOrValue as number)
+            : query.orWhereJsonLength(column, operatorOrValue as QueryScalarComparisonOperator, maybeValue))
+    }
+
+    /**
+     * Add a JSON array overlap clause to the relationship query.
+     * 
+     * @param column 
+     * @param value 
+     */
+    public whereJsonOverlaps (column: string, value: DatabaseValue): this {
+        return this.constrain(query => query.whereJsonOverlaps(column, value))
+    }
+
+    /**
+     * OR variant of whereJsonOverlaps().
+     * 
+     * @param column 
+     * @param value 
+     */
+    public orWhereJsonOverlaps (column: string, value: DatabaseValue): this {
+        return this.constrain(query => query.orWhereJsonOverlaps(column, value))
+    }
+
+    /**
+     * Add a HAVING clause to the relationship query.
+     * 
+     * @param column 
+     * @param value 
+     */
+    public having (column: string, value: DatabaseValue): this
+    public having (column: string, operator: QueryScalarComparisonOperator, value: DatabaseValue): this
+    public having (column: string, operatorOrValue: QueryScalarComparisonOperator | DatabaseValue, maybeValue?: DatabaseValue): this {
+        return this.constrain(query => maybeValue === undefined
+            ? query.having(column, operatorOrValue as DatabaseValue)
+            : query.having(column, operatorOrValue as QueryScalarComparisonOperator, maybeValue))
+    }
+
+    /**
+     * Add an OR HAVING clause to the relationship query.
+     */
+    public orHaving (column: string, value: DatabaseValue): this
+    public orHaving (column: string, operator: QueryScalarComparisonOperator, value: DatabaseValue): this
+    public orHaving (column: string, operatorOrValue: QueryScalarComparisonOperator | DatabaseValue, maybeValue?: DatabaseValue): this {
+        return this.constrain(query => maybeValue === undefined
+            ? query.orHaving(column, operatorOrValue as DatabaseValue)
+            : query.orHaving(column, operatorOrValue as QueryScalarComparisonOperator, maybeValue))
+    }
+
+    /**
+     * Add a raw HAVING clause to the relationship query.
+     */
+    public havingRaw (sql: string, bindings: unknown[] = []): this {
+        return this.constrain(query => query.havingRaw(sql, bindings))
+    }
+
+    /**
+     * Add a raw OR HAVING clause to the relationship query.
+     */
+    public orHavingRaw (sql: string, bindings: unknown[] = []): this {
+        return this.constrain(query => query.orHavingRaw(sql, bindings))
     }
 
     /**
@@ -932,9 +1163,9 @@ export abstract class Relation<TModel> {
     public make (attributes: Record<string, unknown> = {}): TModel {
         const model = this.getRelatedModelConstructor().hydrate(this.mergeCreationAttributes(attributes))
 
-        // make() builds an unpersisted instance, so it must not be flagged as
-        // existing even though hydrate() marks rows loaded from the database.
-        ;(model as unknown as { exists: boolean }).exists = false
+            // make() builds an unpersisted instance, so it must not be flagged as
+            // existing even though hydrate() marks rows loaded from the database.
+            ; (model as unknown as { exists: boolean }).exists = false
 
         return model
     }
