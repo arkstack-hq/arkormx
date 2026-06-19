@@ -45,14 +45,9 @@ import type {
     UpdateSpec,
     UpsertSpec,
 } from './types'
+import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/query-builder'
 import { LengthAwarePaginator, Paginator } from './Paginator'
-import type {
-    ModelAttributes,
-    ModelCreateData,
-    ModelRelationshipKey,
-    ModelUpdateData,
-    QuerySchemaForModelInstance,
-} from './types/model'
+import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -68,40 +63,6 @@ import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
 import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
 import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
 import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
-
-type RelatedModelFromResult<TResult> =
-    TResult extends ArkormCollection<infer TRelated>
-    ? TRelated
-    : Exclude<TResult, null | undefined>
-
-type RelatedModelForRelationship<
-    TModel,
-    TKey extends ModelRelationshipKey<TModel>,
-> = TModel[TKey] extends (...args: any[]) => infer TRelation
-    ? TRelation extends { getResults: (...args: any[]) => Promise<infer TResult> }
-    ? RelatedModelFromResult<TResult>
-    : never
-    : never
-
-/**
- * The left-hand argument accepted by the join helpers: either a column name or a
- * closure that configures the join constraints through a {@link JoinClause}.
- */
-export type JoinOn = string | ((join: JoinClause) => void)
-
-/**
- * A subquery source accepted by the subquery/lateral join helpers.
- */
-export type JoinSource = QueryBuilder<any, any> | string
-
-export type EagerLoadRelations<TModel> = {
-    [TKey in ModelRelationshipKey<TModel>]?: true | EagerLoadConstraint<
-        QueryBuilder<
-            RelatedModelForRelationship<TModel, TKey>,
-            QuerySchemaForModelInstance<RelatedModelForRelationship<TModel, TKey>>
-        >
-    >
-}
 
 /**
  * The QueryBuilder class provides a fluent interface for building and 
@@ -172,24 +133,70 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
-     * Adds a where clause to the query. Multiple calls to where will combine 
+     * Adds a where clause to the query. Multiple calls to where will combine
      * the clauses with AND logic.
-     * 
-     * @param where 
-     * @returns 
-     */
-    public where (where: QuerySchemaWhere<TDelegate>): this {
-        return this.addLogicalWhere('AND', where)
-    }
-
-    /**
-     * Adds an OR where clause to the query.
+     *
+     * Pass a callback to build a parenthesized group of nested conditions, e.g.
+     * `where(query => query.where({ a: 1 }).orWhere({ b: 2 }))` compiles to
+     * `(... or ...)`.
      *
      * @param where
      * @returns
      */
-    public orWhere (where: QuerySchemaWhere<TDelegate>): this {
-        return this.addLogicalWhere('OR', where)
+    public where (where: QuerySchemaWhere<TDelegate>): this
+    public where (callback: WhereCallback<TModel, TDelegate>): this
+    public where (whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate>): this {
+        if (typeof whereOrCallback === 'function')
+            return this.appendNestedWhere('AND', whereOrCallback)
+
+        return this.addLogicalWhere('AND', whereOrCallback)
+    }
+
+    /**
+     * Adds an OR where clause to the query. Pass a callback to build a
+     * parenthesized group of nested conditions.
+     *
+     * @param where
+     * @returns
+     */
+    public orWhere (where: QuerySchemaWhere<TDelegate>): this
+    public orWhere (callback: WhereCallback<TModel, TDelegate>): this
+    public orWhere (whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate>): this {
+        if (typeof whereOrCallback === 'function')
+            return this.appendNestedWhere('OR', whereOrCallback)
+
+        return this.addLogicalWhere('OR', whereOrCallback)
+    }
+
+    /**
+     * Resolve a callback into a parenthesized group condition and append it.
+     */
+    private appendNestedWhere (boolean: 'AND' | 'OR', callback: WhereCallback<TModel, TDelegate>): this {
+        const nested = new QueryBuilder<TModel, TDelegate>(this.model, this.adapter)
+        callback(nested)
+
+        const condition = nested.getNestedWhereCondition()
+        if (!condition)
+            return this
+
+        const grouped: QueryCondition = condition.type === 'group'
+            ? condition
+            : { type: 'group', operator: 'and', conditions: [condition] }
+
+        this.appendQueryCondition(boolean, grouped)
+
+        return this
+    }
+
+    /**
+     * Returns the user-authored where condition for nesting, excluding any
+     * soft-delete predicate (the parent query owns that).
+     */
+    private getNestedWhereCondition (): QueryCondition | undefined {
+        if (this.legacyWhere)
+            return this.tryBuildQueryCondition(this.legacyWhere) ?? undefined
+
+        return this.queryWhere
     }
 
     /**
