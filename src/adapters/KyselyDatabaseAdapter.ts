@@ -23,6 +23,7 @@ import type {
     QueryGroupCondition,
     QueryJoin,
     QueryJoinConstraint,
+    QueryJsonCondition,
     QueryNotCondition,
     QueryOrderBy,
     QueryRawCondition,
@@ -955,6 +956,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         )}`
     }
 
+    private buildHavingClause (target: QueryTarget<any>, having?: QueryCondition): RawBuilder<unknown> {
+        if (!having)
+            return sql``
+
+        return sql` having ${this.buildWhereCondition(target, having)}`
+    }
+
     private buildJoinClause (target: QueryTarget<any>, joins?: QueryJoin[]): RawBuilder<unknown> {
         if (!joins || joins.length === 0)
             return sql``
@@ -1199,6 +1207,46 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         return sql<boolean>`to_tsvector(${language}, ${document}) @@ plainto_tsquery(${language}, ${condition.value})`
     }
 
+    private buildJsonAccessor (target: QueryTarget<any>, column: string, path?: string[]): RawBuilder<unknown> {
+        const base = sql`${sql.ref(this.mapColumn(target, column))}::jsonb`
+        if (!path || path.length === 0)
+            return base
+
+        const pathLiteral = `{${path.join(',')}}`
+
+        return sql`(${base} #> ${pathLiteral}::text[])`
+    }
+
+    private buildJsonCondition (target: QueryTarget<any>, condition: QueryJsonCondition): RawBuilder<boolean> {
+        const accessor = this.buildJsonAccessor(target, condition.column, condition.path)
+
+        if (condition.kind === 'contains-key') {
+            return condition.not
+                ? sql<boolean>`${accessor} is null`
+                : sql<boolean>`${accessor} is not null`
+        }
+
+        if (condition.kind === 'length') {
+            const operator = sql.raw(condition.operator ?? '=')
+
+            return sql<boolean>`jsonb_array_length(${accessor}) ${operator} ${condition.value}`
+        }
+
+        const jsonValue = JSON.stringify(condition.value ?? null)
+
+        if (condition.kind === 'overlaps') {
+            return sql<boolean>`exists (
+                select 1
+                from jsonb_array_elements(${accessor}) as _arkorm_overlap
+                where _arkorm_overlap in (select jsonb_array_elements(${jsonValue}::jsonb))
+            )`
+        }
+
+        const contains = sql<boolean>`${accessor} @> ${jsonValue}::jsonb`
+
+        return condition.not ? sql<boolean>`not (${contains})` : contains
+    }
+
     private buildWhereCondition (target: QueryTarget<any>, condition?: QueryCondition): RawBuilder<boolean> {
         if (!condition)
             return sql<boolean>`1 = 1`
@@ -1220,6 +1268,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
         if (condition.type === 'full-text')
             return this.buildFullTextCondition(target, condition)
+
+        if (condition.type === 'json')
+            return this.buildJsonCondition(target, condition)
 
         if (condition.type === 'group') {
             const group = condition as QueryGroupCondition
@@ -1597,6 +1648,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             ${this.buildJoinClause(spec.target, spec.joins)}
             ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
             ${this.buildGroupBy(spec.target, spec.groupBy)}
+            ${this.buildHavingClause(spec.target, spec.having)}
             ${this.buildOrderBy(spec.target, spec.orderBy)}
             ${this.buildPaginationClause(spec)}
         `
