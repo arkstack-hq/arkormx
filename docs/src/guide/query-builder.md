@@ -219,6 +219,18 @@ await User.query()
   .get();
 ```
 
+Pass a callback to `where()` or `orWhere()` to build a parenthesized group of
+nested conditions. This controls precedence — the group binds before the
+surrounding `AND`/`OR`:
+
+```ts
+// isActive = true AND (role = 'admin' OR role = 'editor')
+await User.query()
+  .where({ isActive: true })
+  .where(query => query.where({ role: 'admin' }).orWhere({ role: 'editor' }))
+  .get();
+```
+
 Common helpers:
 
 ```ts
