@@ -372,6 +372,17 @@ describe('PostgreSQL Kysely adapter', () => {
         expect(normalizedSql).toContain('LOWER("email") = $1 OR LOWER("email") LIKE $2')
     })
 
+    it('compiles a where callback into a parenthesized group', () => {
+        setPostgresModelAdapter(kyselyAdapter)
+
+        const sqlText = DbUser.query()
+            .where({ isActive: 1 })
+            .where(query => query.where({ id: 1 }).orWhere({ id: 2 }))
+            .inspect()?.sql?.replace(/\s+/g, ' ')
+
+        expect(sqlText).toContain('"isActive" = $1 and ("id" = $2 or "id" = $3)')
+    })
+
     it('auto-quotes bare camelCase identifiers in raw where clauses', () => {
         setPostgresModelAdapter(kyselyAdapter)
 

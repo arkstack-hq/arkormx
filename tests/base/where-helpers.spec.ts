@@ -61,6 +61,36 @@ describe('where helpers', () => {
         })
     })
 
+    describe('callback (nested grouping)', () => {
+        it('wraps a where callback into a parenthesized group', async () => {
+            const users = await User.query()
+                .where(query => query.where({ id: 1 }).orWhere({ id: 2 }))
+                .get()
+
+            expect(users.all().map(user => user.getAttribute('id')).sort()).toEqual([1, 2])
+        })
+
+        it('preserves precedence so the group binds before the outer AND', async () => {
+            // isActive = 0 AND (id = 1 OR id = 2) -> only John (id 2, isActive 0).
+            // Without grouping this would read as isActive = 0 AND id = 1 OR id = 2.
+            const users = await User.query()
+                .where({ isActive: 0 })
+                .where(query => query.where({ id: 1 }).orWhere({ id: 2 }))
+                .get()
+
+            expect(users.all().map(user => user.getAttribute('id'))).toEqual([2])
+        })
+
+        it('supports a callback passed to orWhere', async () => {
+            const users = await User.query()
+                .where({ isActive: 1 })
+                .orWhere(query => query.where({ email: 'john@example.com' }))
+                .get()
+
+            expect(users.all().map(user => user.getAttribute('id')).sort()).toEqual([1, 2])
+        })
+    })
+
     describe('argument validation', () => {
         it('whereJsonLength rejects non-integer lengths', () => {
             expect(() => User.query().whereJsonLength('meta', 1.5)).toThrow()
