@@ -85,7 +85,26 @@ query.groupBy('customerId', 'status');
 query.groupBy(['customerId', 'status']);
 ```
 
-Both methods are also available on relationship queries. They require a
+Filter grouped rows with `having()`. It accepts either `having(column, value)`
+(defaulting to equality) or `having(column, operator, value)`, and multiple
+calls combine with AND. Use `orHaving()` to combine with OR, and `havingRaw()` /
+`orHavingRaw()` to filter on aggregate expressions such as `count(*)`:
+
+```ts
+const activeGroups = await User.query()
+  .groupBy('isActive')
+  .having('isActive', '>=', 1)
+  .get();
+
+const popularCustomers = await Order.query()
+  .select(['customerId'])
+  .groupBy('customerId')
+  .havingRaw('count(*) > ?', [10])
+  .get();
+```
+
+`distinct()`, `groupBy()`, `having()`, `orHaving()`, `havingRaw()`, and
+`orHavingRaw()` are also available on relationship queries. They require a
 SQL-backed adapter and are not supported by the Prisma compatibility adapter.
 
 Use an expression-to-alias entry for a computed projection:
@@ -217,11 +236,17 @@ String matching helpers are available on model, table, and relation queries:
 
 ```ts
 await User.query().whereLike('email', '@example.com').get();
+await User.query().orWhereLike('email', '@example.org').get();
+await User.query().whereNotLike('email', '@spam.test').get();
+await User.query().orWhereNotLike('email', '@spam.test').get();
 await User.query().whereStartsWith('email', 'jane').get();
 await User.query().whereEndsWith('email', '@example.com').get();
 
 await user.posts().whereStartsWith('title', 'Ann').getResults();
 ```
+
+The `whereLike`/`whereNotLike` family is portable: it works on the Kysely
+adapter and the Prisma compatibility adapter.
 
 Date helpers build UTC ranges:
 
@@ -250,11 +275,37 @@ await User.query().whereColumn('updatedAt', '>', 'createdAt').get();
 await User.query().whereExists(Post.query().where({ published: true })).get();
 await User.query().whereExists(query => query.whereColumn('id', 'managerId')).get();
 await User.query().whereFullText(['name', 'bio'], 'database engineer').get();
+await User.query().orWhereFullText(['name', 'bio'], 'data scientist').get();
 ```
 
-`whereTime`, `whereDay`, `whereColumn`, `whereExists`, and `whereFullText`
-require a SQL-backed adapter. Relative date helpers use UTC day boundaries and
-work with structured compatibility adapters.
+`whereTime`, `whereDay`, `whereColumn`, `whereExists`, `whereFullText`, and
+`orWhereFullText` require a SQL-backed adapter. Relative date helpers use UTC
+day boundaries and work with structured compatibility adapters.
+
+### JSON predicates
+
+PostgreSQL JSON/JSONB columns can be filtered with the JSON where family. The
+column accepts a `->`-delimited path to address nested keys
+(`'meta->preferences->theme'`). All variants have `orWhere…` counterparts and
+are available on model, table, and relation queries.
+
+```ts
+// Containment (@>)
+await User.query().whereJsonContains('meta', { tier: 'pro' }).get();
+await User.query().whereJsonContains('meta->roles', ['admin']).get();
+await User.query().whereJsonDoesntContain('meta', { tier: 'free' }).get();
+
+// Key / path existence
+await User.query().whereJsonContainsKey('meta->tier').get();
+await User.query().whereJsonDoesntContainKey('meta->legacyFlag').get();
+
+// Array length and overlap
+await User.query().whereJsonLength('meta->roles', '>=', 2).get();
+await User.query().whereJsonOverlaps('meta->roles', ['admin', 'editor']).get();
+```
+
+The JSON predicates compile to PostgreSQL JSONB operators and require a
+SQL-backed adapter; the Prisma compatibility adapter rejects them.
 
 ## Raw predicates and queries
 

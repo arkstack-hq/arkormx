@@ -139,6 +139,22 @@ export interface QueryFullTextCondition {
     language?: string
 }
 
+export type QueryJsonConditionKind = 'contains' | 'contains-key' | 'length' | 'overlaps'
+
+export interface QueryJsonCondition {
+    type: 'json'
+    kind: QueryJsonConditionKind
+    column: string
+    /** Nested JSON path segments below the base column (e.g. `data->meta->lang`). */
+    path?: string[]
+    /** Negates the predicate (doesntContain / doesntContainKey). */
+    not?: boolean
+    /** JSON value for `contains`/`overlaps`, or the integer length for `length`. */
+    value?: DatabaseValue
+    /** Comparison operator used by the `length` kind. */
+    operator?: QueryScalarComparisonOperator
+}
+
 export interface RawQuerySpec {
     sql: string
     bindings?: DatabaseValue[]
@@ -151,6 +167,7 @@ export type QueryCondition =
     | QueryDayCondition
     | QueryExistsCondition
     | QueryFullTextCondition
+    | QueryJsonCondition
     | QueryGroupCondition
     | QueryNotCondition
     | QueryRawCondition
@@ -252,6 +269,7 @@ export interface SelectSpec<TModel = unknown> {
     columns?: QuerySelectColumn[]
     distinct?: boolean
     groupBy?: string[]
+    having?: QueryCondition
     joins?: QueryJoin[]
     where?: QueryCondition
     orderBy?: QueryOrderBy[]

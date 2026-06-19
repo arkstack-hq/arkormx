@@ -13,11 +13,12 @@ import type {
     ModelQuerySchemaLike,
     PaginationOptions,
     QueryComparisonCondition,
-    QueryCondition,
     QueryComparisonOperator,
+    QueryCondition,
     QueryJoin,
     QueryJoinConstraint,
     QueryJoinType,
+    QueryJsonConditionKind,
     QueryOrderBy,
     QueryRawCondition,
     QueryScalarComparisonOperator,
@@ -118,6 +119,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     private querySelect?: QuerySelectColumn[]
     private queryDistinct = false
     private queryGroupBy?: string[]
+    private queryHaving?: QueryCondition
     private queryJoins?: QueryJoin[]
     private offsetValue?: number
     private limitValue?: number
@@ -598,6 +600,37 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     /**
+     * Adds an OR fulltext clause for columns that have full text indexes.
+     *
+     * @param columns
+     * @param value
+     * @param options
+     * @returns
+     */
+    public orWhereFullText<TKey extends keyof ModelAttributes<TModel> & string> (
+        columns: TKey | TKey[],
+        value: string,
+        options: { language?: string } = {}
+    ): this {
+        const normalizedColumns = Array.isArray(columns) ? columns : [columns]
+        if (normalizedColumns.length === 0)
+            throw new ArkormException('orWhereFullText() expects at least one column.')
+
+        const language = options.language ?? 'simple'
+        if (!/^[a-z][a-z0-9_]*$/i.test(language))
+            throw new ArkormException('orWhereFullText() language must be a valid PostgreSQL text search configuration name.')
+
+        this.appendQueryCondition('OR', {
+            type: 'full-text',
+            columns: normalizedColumns,
+            value,
+            language,
+        })
+
+        return this
+    }
+
+    /**
      * Adds a strongly-typed inequality where clause for a single attribute key.
      *
      * @param key
@@ -651,6 +684,232 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         value: Extract<ModelAttributes<TModel>[TKey], string>
     ): this {
         return this.where({ [key]: { contains: value } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds an OR string contains clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public orWhereLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.orWhere({ [key]: { contains: value } } as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds a negated string contains (NOT LIKE) clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public whereNotLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.where({ NOT: { [key]: { contains: value } } } as unknown as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Adds an OR negated string contains (NOT LIKE) clause for a single attribute key.
+     *
+     * @param key
+     * @param value
+     * @returns
+     */
+    public orWhereNotLike<TKey extends keyof ModelAttributes<TModel> & string> (
+        key: TKey,
+        value: Extract<ModelAttributes<TModel>[TKey], string>
+    ): this {
+        return this.orWhere({ NOT: { [key]: { contains: value } } } as unknown as QuerySchemaWhere<TDelegate>)
+    }
+
+    /**
+     * Append a structured JSON predicate, splitting a `column->path->key`
+     * expression into its base column and nested path segments.
+     * 
+     * @param boolean 
+     * @param kind 
+     * @param column 
+     * @param options 
+     * @returns 
+     */
+    private appendJsonCondition (
+        boolean: 'AND' | 'OR',
+        kind: QueryJsonConditionKind,
+        column: string,
+        options: { not?: boolean, value?: DatabaseValue, operator?: QueryScalarComparisonOperator } = {}
+    ): this {
+        const [base, ...path] = column.split('->').map(segment => segment.trim())
+        if (!base)
+            throw new ArkormException('JSON where clauses require a column name.')
+
+        this.appendQueryCondition(boolean, {
+            type: 'json',
+            kind,
+            column: base,
+            path: path.length > 0 ? path : undefined,
+            not: options.not,
+            value: options.value,
+            operator: options.operator,
+        })
+
+        return this
+    }
+
+    /**
+     * Adds a clause asserting the JSON column contains the given value
+     * (PostgreSQL `@>` containment).
+     *
+     * @param column
+     * @param value
+     * @returns
+     */
+    public whereJsonContains (column: string, value: DatabaseValue): this {
+        return this.appendJsonCondition('AND', 'contains', column, { value })
+    }
+
+    /**
+     * OR variant of whereJsonContains().
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public orWhereJsonContains (column: string, value: DatabaseValue): this {
+        return this.appendJsonCondition('OR', 'contains', column, { value })
+    }
+
+    /**
+     * Adds a clause asserting the JSON column does not contain the given value.
+     *
+     * @param column
+     * @param value
+     * @returns
+     */
+    public whereJsonDoesntContain (column: string, value: DatabaseValue): this {
+        return this.appendJsonCondition('AND', 'contains', column, { value, not: true })
+    }
+
+    /**
+     * OR variant of whereJsonDoesntContain().
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public orWhereJsonDoesntContain (column: string, value: DatabaseValue): this {
+        return this.appendJsonCondition('OR', 'contains', column, { value, not: true })
+    }
+
+    /**
+     * Adds a clause asserting the JSON document contains the given key/path.
+     *
+     * @param column
+     * @returns
+     */
+    public whereJsonContainsKey (column: string): this {
+        return this.appendJsonCondition('AND', 'contains-key', column)
+    }
+
+    /**
+     * OR variant of whereJsonContainsKey().
+     * 
+     * @param column 
+     * @returns 
+     */
+    public orWhereJsonContainsKey (column: string): this {
+        return this.appendJsonCondition('OR', 'contains-key', column)
+    }
+
+    /**
+     * Adds a clause asserting the JSON document does not contain the given key/path.
+     *
+     * @param column
+     * @returns
+     */
+    public whereJsonDoesntContainKey (column: string): this {
+        return this.appendJsonCondition('AND', 'contains-key', column, { not: true })
+    }
+
+    /**
+     * OR variant of whereJsonDoesntContainKey().
+     * 
+     * @param column 
+     * @returns 
+     */
+    public orWhereJsonDoesntContainKey (column: string): this {
+        return this.appendJsonCondition('OR', 'contains-key', column, { not: true })
+    }
+
+    /**
+     * Adds a clause comparing the length of a JSON array column.
+     *
+     * @param column
+     * @param operatorOrValue
+     * @param maybeValue
+     * @returns
+     */
+    public whereJsonLength (column: string, value: number): this
+    public whereJsonLength (column: string, operator: QueryScalarComparisonOperator, value: number): this
+    public whereJsonLength (column: string, operatorOrValue: QueryScalarComparisonOperator | number, maybeValue?: number): this {
+        const { operator, value } = this.resolveJsonLengthArgs(operatorOrValue, maybeValue)
+
+        return this.appendJsonCondition('AND', 'length', column, { operator, value })
+    }
+
+    /**
+     * OR variant of whereJsonLength().
+     * 
+     * @param column 
+     * @param value 
+     */
+    public orWhereJsonLength (column: string, value: number): this
+    public orWhereJsonLength (column: string, operator: QueryScalarComparisonOperator, value: number): this
+    public orWhereJsonLength (column: string, operatorOrValue: QueryScalarComparisonOperator | number, maybeValue?: number): this {
+        const { operator, value } = this.resolveJsonLengthArgs(operatorOrValue, maybeValue)
+
+        return this.appendJsonCondition('OR', 'length', column, { operator, value })
+    }
+
+    private resolveJsonLengthArgs (
+        operatorOrValue: QueryScalarComparisonOperator | number,
+        maybeValue?: number
+    ): { operator: QueryScalarComparisonOperator, value: number } {
+        const hasOperator = maybeValue !== undefined
+        const operator = (hasOperator ? operatorOrValue : '=') as QueryScalarComparisonOperator
+        const value = (hasOperator ? maybeValue : operatorOrValue) as number
+        if (!Number.isInteger(value) || value < 0)
+            throw new ArkormException('whereJsonLength() expects a non-negative integer length.')
+
+        return { operator, value }
+    }
+
+    /**
+     * Adds a clause asserting the JSON array column overlaps with the given
+     * array (shares at least one element).
+     *
+     * @param column
+     * @param value
+     * @returns
+     */
+    public whereJsonOverlaps (column: string, value: DatabaseValue): this {
+        return this.appendJsonCondition('AND', 'overlaps', column, { value })
+    }
+
+    /**
+     * OR variant of whereJsonOverlaps().
+     * 
+     * @param column 
+     * @param value 
+     * @returns 
+     */
+    public orWhereJsonOverlaps (column: string, value: DatabaseValue): this {
+        return this.appendJsonCondition('OR', 'overlaps', column, { value })
     }
 
     /**
@@ -1418,6 +1677,109 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             })
 
         this.queryGroupBy = [...normalized]
+
+        return this
+    }
+
+    private appendHavingCondition (boolean: 'AND' | 'OR', condition: QueryCondition): void {
+        if (!this.queryHaving) {
+            this.queryHaving = condition
+
+            return
+        }
+
+        this.queryHaving = {
+            type: 'group',
+            operator: boolean === 'AND' ? 'and' : 'or',
+            conditions: [this.queryHaving, condition],
+        }
+    }
+
+    private buildHavingComparison (
+        operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+        maybeValue: DatabaseValue | undefined,
+        column: string,
+    ): QueryComparisonCondition {
+        const hasOperator = maybeValue !== undefined
+        const operator = (hasOperator ? operatorOrValue : '=') as QueryScalarComparisonOperator
+        const value = (hasOperator ? maybeValue : operatorOrValue) as DatabaseValue
+
+        return { type: 'comparison', column, operator, value }
+    }
+
+    /**
+     * Adds a HAVING clause to filter grouped rows. Accepts either
+     * `having(column, value)` (defaulting to equality) or
+     * `having(column, operator, value)`. Multiple calls combine with AND.
+     *
+     * @param column
+     * @param operatorOrValue
+     * @param maybeValue
+     * @returns
+     */
+    public having (column: string, value: DatabaseValue): this
+    public having (column: string, operator: QueryScalarComparisonOperator, value: DatabaseValue): this
+    public having (
+        column: string,
+        operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+        maybeValue?: DatabaseValue
+    ): this {
+        this.appendHavingCondition('AND', this.buildHavingComparison(operatorOrValue, maybeValue, column))
+
+        return this
+    }
+
+    /**
+     * Adds an OR HAVING clause to filter grouped rows.
+     *
+     * @param column
+     * @param operatorOrValue
+     * @param maybeValue
+     * @returns
+     */
+    public orHaving (column: string, value: DatabaseValue): this
+    public orHaving (column: string, operator: QueryScalarComparisonOperator, value: DatabaseValue): this
+    public orHaving (
+        column: string,
+        operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+        maybeValue?: DatabaseValue
+    ): this {
+        this.appendHavingCondition('OR', this.buildHavingComparison(operatorOrValue, maybeValue, column))
+
+        return this
+    }
+
+    /**
+     * Adds a raw HAVING clause, useful for filtering on aggregate expressions
+     * such as `count(*)`. Combines with previous HAVING clauses using AND.
+     *
+     * @param sql
+     * @param bindings
+     * @returns
+     */
+    public havingRaw (sql: string, bindings: unknown[] = []): this {
+        this.appendHavingCondition('AND', {
+            type: 'raw',
+            sql,
+            bindings: bindings as DatabaseValue[],
+        })
+
+        return this
+    }
+
+    /**
+     * Adds a raw OR HAVING clause.
+     *
+     * @param sql
+     * @param bindings
+     * @returns
+     */
+    public orHavingRaw (sql: string, bindings: unknown[] = []): this {
+        this.appendHavingCondition('OR', {
+            type: 'raw',
+            sql,
+            bindings: bindings as DatabaseValue[],
+        })
 
         return this
     }
@@ -2554,7 +2916,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
      */
     private hydrateDeleted (attributes: Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0]): TModel {
         const model = this.model.hydrate(attributes)
-        ;(model as unknown as { exists: boolean }).exists = false
+            ; (model as unknown as { exists: boolean }).exists = false
 
         return model
     }
@@ -3047,6 +3409,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         builder.querySelect = this.querySelect ? [...this.querySelect] : undefined
         builder.queryDistinct = this.queryDistinct
         builder.queryGroupBy = this.queryGroupBy ? [...this.queryGroupBy] : undefined
+        builder.queryHaving = this.queryHaving
         builder.offsetValue = this.offsetValue
         builder.limitValue = this.limitValue
         builder.includeTrashed = this.includeTrashed
@@ -3866,6 +4229,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
             columns,
             distinct: this.queryDistinct || undefined,
             groupBy: this.queryGroupBy ? [...this.queryGroupBy] : undefined,
+            having: this.queryHaving,
             joins: this.queryJoins ? [...this.queryJoins] : undefined,
             where: condition,
             orderBy,
