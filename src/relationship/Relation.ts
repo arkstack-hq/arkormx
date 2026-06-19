@@ -14,7 +14,7 @@ import type {
 import type { LengthAwarePaginator, Paginator } from '../Paginator'
 
 import { ArkormCollection } from '../Collection'
-import type { EagerLoadRelations } from '../QueryBuilder'
+import type { EagerLoadRelations } from '../types/query-builder'
 import { QueryBuilder } from '../QueryBuilder'
 import type { RelationConstraint } from '../types/relationship'
 import { RelationTableLoader } from './RelationTableLoader'

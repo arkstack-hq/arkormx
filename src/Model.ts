@@ -41,11 +41,12 @@ import {
 import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, RelationMetadata } from './types'
 import { Attribute } from './Attribute'
 import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
-import { QueryBuilder, type EagerLoadRelations } from './QueryBuilder'
+import { QueryBuilder } from './QueryBuilder'
 import { ArkormCollection } from './Collection'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
+import type { EagerLoadRelations } from './types/query-builder'
 
 /**
  * Base model class that all models should extend. 
