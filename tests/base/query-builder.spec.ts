@@ -299,8 +299,8 @@ describe('QueryBuilder', () => {
             selectOne: async () => null,
             insert: async (spec) => {
                 captured = spec as unknown as { values: Record<string, unknown> }
-                
-return { id: 1, ...(spec as unknown as { values: Record<string, unknown> }).values }
+
+                return { id: 1, ...(spec as unknown as { values: Record<string, unknown> }).values }
             },
             insertMany: async () => 0,
             update: async () => null,
