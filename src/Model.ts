@@ -61,6 +61,7 @@ export abstract class Model<
     TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
 > {
     private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
+    private static readonly castMapCache = new WeakMap<object, CastMap>()
     private static readonly emittedDeprecationWarnings = new Set<string>()
     private static eventsSuppressed = 0
 
@@ -261,6 +262,43 @@ export abstract class Model<
                 : undefined,
             timestampColumns: persistedMetadata.timestampColumns?.map(column => ({ ...column })),
         }
+    }
+
+    /**
+     * The model's cast map. Resolved from a throwaway instance (casts are an
+     * instance field) and cached per model class.
+     */
+    public static getCasts (): CastMap {
+        const cached = Model.castMapCache.get(this)
+        if (cached)
+            return cached
+
+        const instance = new (this as unknown as new (attributes?: Record<string, unknown>) => Model)({})
+        const casts: CastMap = { ...instance.casts }
+        Model.castMapCache.set(this, casts)
+
+        return casts
+    }
+
+    /**
+     * Apply built-in persistence casts (currently `json` serialisation) to a raw
+     * attribute payload, without re-running arbitrary custom setters. Used by
+     * both instance `save()` and the query-builder insert/update paths so a JS
+     * object/array destined for a `json`/`jsonb` column is serialised to a string
+     * rather than bound as a Postgres array.
+     */
+    public static castAttributesForPersistence (
+        attributes: Record<string, unknown>,
+    ): Record<string, unknown> {
+        const casts = this.getCasts()
+
+        return Object.entries(attributes).reduce<Record<string, unknown>>((normalized, [key, value]) => {
+            normalized[key] = casts[key] === 'json'
+                ? resolveCast('json').set(value)
+                : value
+
+            return normalized
+        }, {})
     }
 
     public static getRelationMetadata (name: string): RelationMetadata | null {
@@ -1871,14 +1909,7 @@ export abstract class Model<
     private normalizePersistenceAttributes (
         attributes: Record<string, unknown>,
     ): Record<string, unknown> {
-        return Object.entries(attributes)
-            .reduce<Record<string, unknown>>((normalized, [key, value]) => {
-                normalized[key] = this.casts[key] === 'json'
-                    ? resolveCast('json').set(value)
-                    : value
-
-                return normalized
-            }, {})
+        return (this.constructor as typeof Model).castAttributesForPersistence(attributes)
     }
 
     /**

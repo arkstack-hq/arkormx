@@ -1,8 +1,24 @@
 import { describe, expect, it } from 'vitest'
 
 import { resolveCast } from '../../src/casts'
+import { User } from './helpers/core-fixtures'
 
 describe('Casts', () => {
+    it('serialises json casts for persistence, including arrays', () => {
+        expect(User.getCasts().meta).toBe('json')
+
+        // Arrays must be JSON-serialised (otherwise bound as a Postgres array).
+        const fromArray = User.castAttributesForPersistence({ meta: ['a', 'b'], name: 'keep' })
+        expect(fromArray.meta).toBe('["a","b"]')
+        expect(fromArray.name).toBe('keep')
+
+        // Objects too, and non-json attributes pass through untouched.
+        expect(User.castAttributesForPersistence({ meta: { k: 1 } }).meta).toBe('{"k":1}')
+
+        // Already-serialised values are left as-is (no double encoding).
+        expect(User.castAttributesForPersistence({ meta: '["x"]' }).meta).toBe('["x"]')
+    })
+
     it('resolves string cast get/set', () => {
         const cast = resolveCast('string')
 

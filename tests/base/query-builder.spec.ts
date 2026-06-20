@@ -288,6 +288,45 @@ describe('QueryBuilder', () => {
         }
     })
 
+    it('serialises json-cast arrays through the create() insert path', async () => {
+        let captured: { values: Record<string, unknown> } | undefined
+        const transaction: DatabaseAdapter['transaction'] = async <TResult> (
+            callback: (nextAdapter: DatabaseAdapter) => TResult | Promise<TResult>,
+        ): Promise<TResult> => await callback(adapter)
+        const adapter: DatabaseAdapter = {
+            capabilities: {},
+            select: async () => [],
+            selectOne: async () => null,
+            insert: async (spec) => {
+                captured = spec as unknown as { values: Record<string, unknown> }
+                return { id: 1, ...(spec as unknown as { values: Record<string, unknown> }).values }
+            },
+            insertMany: async () => 0,
+            update: async () => null,
+            updateMany: async () => 0,
+            delete: async () => null,
+            deleteMany: async () => 0,
+            count: async () => 0,
+            exists: async () => false,
+            transaction,
+        }
+
+        User.setAdapter(adapter)
+
+        try {
+            await User.query().create({
+                id: 1,
+                name: 'Json User',
+                email: 'json@example.com',
+                meta: ['a', 'b'],
+            } as never)
+
+            expect(captured?.values.meta).toBe('["a","b"]')
+        } finally {
+            User.setAdapter(undefined)
+        }
+    })
+
     it('routes duplicate-ignore inserts through the configured adapter seam', async () => {
         const prisma = createCoreClient()
         const adapter = createPrismaDatabaseAdapter(prisma)
