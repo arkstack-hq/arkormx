@@ -3081,8 +3081,24 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                     nextPayload[column.column] = now
             }
 
-            return nextPayload as QuerySchemaCreateData<TDelegate>
+            // Serialise json casts here too: Model.create() / query().create() do
+            // not route through instance save(), so without this a JS array bound
+            // for a json/jsonb column is sent as a Postgres array and rejected.
+            // (The model-less DB facade has no cast map — pass through unchanged.)
+            return this.castForPersistence(nextPayload) as QuerySchemaCreateData<TDelegate>
         })
+    }
+
+    /** 
+     * Apply the model's persistence casts when a real model backs the query. 
+     * 
+     * @param payload 
+     * @returns 
+     */
+    private castForPersistence (payload: Record<string, unknown>): Record<string, unknown> {
+        return typeof this.model.castAttributesForPersistence === 'function'
+            ? this.model.castAttributesForPersistence(payload)
+            : payload
     }
 
     private normalizeUpdatePayload (values: QuerySchemaUpdateData<TDelegate>): QuerySchemaUpdateData<TDelegate> {
@@ -3095,7 +3111,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
                 nextPayload[column.column] = now
         }
 
-        return nextPayload as QuerySchemaUpdateData<TDelegate>
+        return this.castForPersistence(nextPayload) as QuerySchemaUpdateData<TDelegate>
     }
 
     private resolveAffectedCount (result: unknown, fallback: number): number {
