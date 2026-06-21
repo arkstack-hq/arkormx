@@ -87,6 +87,14 @@ them against the database or apply them to Prisma schema text.
 - `alterTable(name, callback)`
 - `dropTable(name)`
 
+It also exposes static helpers for temporarily disabling foreign-key
+constraint enforcement (see [Toggling foreign-key
+constraints](#toggling-foreign-key-constraints)):
+
+- `SchemaBuilder.disableForeignKeyConstraints()`
+- `SchemaBuilder.enableForeignKeyConstraints()`
+- `SchemaBuilder.withoutForeignKeyConstraints(callback)`
+
 `TableBuilder` column methods:
 
 | Method                                               | Purpose                                                |
@@ -198,6 +206,54 @@ table.timestamps('camel', { createdAt: 'created_on' });
 
 When the second argument is omitted no `.map()` is applied, so the attribute
 name is also the physical column name.
+
+## Toggling foreign-key constraints
+
+When seeding interdependent data — or inserting rows in an order that would
+otherwise violate foreign keys — you can temporarily disable foreign-key
+enforcement. On PostgreSQL, Arkorm does this by switching the connection's
+`session_replication_role` to `replica`, which suppresses the triggers that
+enforce foreign keys, and back to `origin` to restore them.
+
+The recommended entry point is `withoutForeignKeyConstraints()`. It wraps the
+work in a transaction so the disable, the work, and the re-enable all run on the
+**same connection** (the setting is connection-scoped) and roll back together on
+failure:
+
+```ts
+import { SchemaBuilder } from 'arkormx';
+
+await SchemaBuilder.withoutForeignKeyConstraints(async () => {
+  await User.factory()
+    .hasAttached(
+      Tenant.factory().has(Project.factory(3)),
+      { status: 'active', roleId: roleBySlug.get('owner')!.id },
+      'tenantMemberships',
+    )
+    .create();
+});
+```
+
+Constraints are restored automatically even if the callback throws.
+
+The disable/enable steps are also available directly for finer control. Because
+the setting is connection-scoped, run them inside a single transaction so they
+share a connection with the work in between:
+
+```ts
+await DB.transaction(async () => {
+  await SchemaBuilder.disableForeignKeyConstraints();
+  // ... seed data ...
+  await SchemaBuilder.enableForeignKeyConstraints();
+});
+```
+
+::: warning
+This requires a SQL-backed adapter and a database role permitted to set
+`session_replication_role` (typically superuser or a role with the
+`rds_superuser`/replication privilege on managed PostgreSQL). The Prisma
+compatibility adapter does not support it.
+:::
 
 ## Sync model declarations
 

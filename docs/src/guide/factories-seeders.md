@@ -233,6 +233,34 @@ npx arkorm seed DatabaseSeeder
 npx arkorm seed --all
 ```
 
+### Seeding with foreign-key constraints disabled
+
+When seeding interdependent records you may need to insert rows in an order that
+would otherwise violate foreign keys. Wrap the work in
+`SchemaBuilder.withoutForeignKeyConstraints()` to disable enforcement for the
+duration (and restore it afterwards, even on failure):
+
+```ts
+import { SchemaBuilder } from 'arkormx';
+
+export class DatabaseSeeder extends Seeder {
+  async run(): Promise<void> {
+    await SchemaBuilder.withoutForeignKeyConstraints(async () => {
+      await User.factory()
+        .hasAttached(
+          Tenant.factory().has(Project.factory(3)),
+          { status: 'active', roleId: roleBySlug.get('owner')!.id },
+          'tenantMemberships',
+        )
+        .create();
+    });
+  }
+}
+```
+
+See [Toggling foreign-key constraints](/guide/migrations-cli#toggling-foreign-key-constraints)
+for details and caveats.
+
 ## Package and plugin discovery
 
 Packages can add their own discovery paths without replacing the application's
