@@ -10,175 +10,179 @@ export type RegisteredModel = RuntimeConstructor
 export type RegisteredFactory = RuntimeConstructor | object
 
 interface RuntimeRegistry {
-    paths: Record<RuntimePathKey, string[]>
-    migrations: MigrationClass[]
-    seeders: SeederConstructor[]
-    models: RegisteredModel[]
-    factories: RegisteredFactory[]
+  paths: Record<RuntimePathKey, string[]>
+  migrations: MigrationClass[]
+  seeders: SeederConstructor[]
+  models: RegisteredModel[]
+  factories: RegisteredFactory[]
 }
 
 const createEmptyRegistry = (): RuntimeRegistry => ({
-    paths: {
-        models: [],
-        seeders: [],
-        migrations: [],
-        factories: [],
-    },
-    migrations: [],
-    seeders: [],
+  paths: {
     models: [],
+    seeders: [],
+    migrations: [],
     factories: [],
+  },
+  migrations: [],
+  seeders: [],
+  models: [],
+  factories: [],
 })
 
 const registry = createEmptyRegistry()
 
-const pushUnique = <T> (items: T[], values: T[]): void => {
-    values.forEach((value) => {
-        if (!items.includes(value))
-            items.push(value)
-    })
+const pushUnique = <T>(items: T[], values: T[]): void => {
+  values.forEach((value) => {
+    if (!items.includes(value)) items.push(value)
+  })
 }
 
 const normalizePathInput = (paths: RuntimePathInput | undefined): string[] => {
-    if (paths === undefined)
-        return []
+  if (paths === undefined) return []
 
-    return (Array.isArray(paths) ? paths : [paths])
-        .filter(path => typeof path === 'string' && path.trim().length > 0)
+  return (Array.isArray(paths) ? paths : [paths]).filter(
+    (path) => typeof path === 'string' && path.trim().length > 0,
+  )
 }
 
-const normalizeConstructors = <T> (items: T[]): T[] => items
-    .flatMap(item => Array.isArray(item) ? item : [item])
-    .filter(Boolean)
+const normalizeConstructors = <T>(items: T[]): T[] =>
+  items.flatMap((item) => (Array.isArray(item) ? item : [item])).filter(Boolean)
 
 /**
  * Register additional runtime discovery paths without replacing configured paths.
- * 
- * @param paths 
+ *
+ * @param paths
  */
 export const registerPaths = (paths: RuntimePathMap): void => {
-    Object.entries(paths).forEach(([key, value]) => {
-        pushUnique(
-            registry.paths[key as RuntimePathKey],
-            normalizePathInput(value)
-        )
-    })
+  Object.entries(paths).forEach(([key, value]) => {
+    pushUnique(registry.paths[key as RuntimePathKey], normalizePathInput(value))
+  })
 }
 
 /**
  * Register additional runtime discovery paths for migrations without replacing configured paths.
- * 
- * @param paths 
- * @returns 
+ *
+ * @param paths
+ * @returns
  */
-export const loadMigrationsFrom = (paths: RuntimePathInput): void => registerPaths({ migrations: paths })
+export const loadMigrationsFrom = (paths: RuntimePathInput): void =>
+  registerPaths({ migrations: paths })
 /**
  * Register additional runtime discovery paths for seeders without replacing configured paths.
- * 
- * @param paths 
- * @returns 
+ *
+ * @param paths
+ * @returns
  */
 export const loadSeedersFrom = (paths: RuntimePathInput): void => registerPaths({ seeders: paths })
 /**
  * Register additional runtime discovery paths for models without replacing configured paths.
- * 
- * @param paths 
- * @returns 
+ *
+ * @param paths
+ * @returns
  */
 export const loadModelsFrom = (paths: RuntimePathInput): void => registerPaths({ models: paths })
 /**
  * Register additional runtime discovery paths for factories without replacing configured paths.
- * 
- * @param paths 
- * @returns 
+ *
+ * @param paths
+ * @returns
  */
-export const loadFactoriesFrom = (paths: RuntimePathInput): void => registerPaths({ factories: paths })
+export const loadFactoriesFrom = (paths: RuntimePathInput): void =>
+  registerPaths({ factories: paths })
 
 /**
  * Register migration constructors directly without relying on runtime discovery.
- * 
- * @param migrations 
+ *
+ * @param migrations
  */
-export const registerMigrations = (...migrations: Array<MigrationClass | MigrationClass[]>): void => {
-    pushUnique(registry.migrations, normalizeConstructors(migrations) as MigrationClass[])
+export const registerMigrations = (
+  ...migrations: Array<MigrationClass | MigrationClass[]>
+): void => {
+  pushUnique(registry.migrations, normalizeConstructors(migrations) as MigrationClass[])
 }
 
 /**
  * Register seeder constructors directly without relying on runtime discovery.
- * 
- * @param seeders 
+ *
+ * @param seeders
  */
-export const registerSeeders = (...seeders: Array<SeederConstructor | SeederConstructor[]>): void => {
-    pushUnique(registry.seeders, normalizeConstructors(seeders) as SeederConstructor[])
+export const registerSeeders = (
+  ...seeders: Array<SeederConstructor | SeederConstructor[]>
+): void => {
+  pushUnique(registry.seeders, normalizeConstructors(seeders) as SeederConstructor[])
 }
 
 /**
  * Register model constructors directly without relying on runtime discovery.
- * 
- * @param models 
+ *
+ * @param models
  */
 export const registerModels = (...models: Array<RegisteredModel | RegisteredModel[]>): void => {
-    pushUnique(registry.models, normalizeConstructors(models) as RegisteredModel[])
+  pushUnique(registry.models, normalizeConstructors(models) as RegisteredModel[])
 }
 
 /**
  * Register factory constructors or instances directly without relying on runtime discovery.
- * 
- * @param factories 
+ *
+ * @param factories
  */
-export const registerFactories = (...factories: Array<RegisteredFactory | RegisteredFactory[]>): void => {
-    pushUnique(registry.factories, normalizeConstructors(factories) as RegisteredFactory[])
+export const registerFactories = (
+  ...factories: Array<RegisteredFactory | RegisteredFactory[]>
+): void => {
+  pushUnique(registry.factories, normalizeConstructors(factories) as RegisteredFactory[])
 }
 
 /**
  * Get registered runtime discovery paths or registered constructors for a specific type.
- * 
- * @param key 
- * @returns 
+ *
+ * @param key
+ * @returns
  */
-export const getRegisteredPaths = (key?: RuntimePathKey): string[] | Record<RuntimePathKey, string[]> => {
-    if (key)
-        return [...registry.paths[key]]
+export const getRegisteredPaths = (
+  key?: RuntimePathKey,
+): string[] | Record<RuntimePathKey, string[]> => {
+  if (key) return [...registry.paths[key]]
 
-    return {
-        models: [...registry.paths.models],
-        seeders: [...registry.paths.seeders],
-        migrations: [...registry.paths.migrations],
-        factories: [...registry.paths.factories],
-    }
+  return {
+    models: [...registry.paths.models],
+    seeders: [...registry.paths.seeders],
+    migrations: [...registry.paths.migrations],
+    factories: [...registry.paths.factories],
+  }
 }
 
 /**
  * Get registered migration constructors instances.
- * 
- * @returns 
+ *
+ * @returns
  */
 export const getRegisteredMigrations = (): MigrationClass[] => [...registry.migrations]
 /**
  * Get registered seeder constructors instances.
- * 
- * @returns 
+ *
+ * @returns
  */
 export const getRegisteredSeeders = (): SeederConstructor[] => [...registry.seeders]
 /**
  * Get registered model constructors instances.
- * 
- * @returns 
+ *
+ * @returns
  */
 export const getRegisteredModels = (): RegisteredModel[] => [...registry.models]
 /**
  * Get registered factory constructors or instances.
- * 
- * @returns 
+ *
+ * @returns
  */
 export const getRegisteredFactories = (): RegisteredFactory[] => [...registry.factories]
 
 export const resetRuntimeRegistryForTests = (): void => {
-    const empty = createEmptyRegistry()
+  const empty = createEmptyRegistry()
 
-    registry.paths = empty.paths
-    registry.migrations = empty.migrations
-    registry.seeders = empty.seeders
-    registry.models = empty.models
-    registry.factories = empty.factories
+  registry.paths = empty.paths
+  registry.migrations = empty.migrations
+  registry.seeders = empty.seeders
+  registry.models = empty.models
+  registry.factories = empty.factories
 }

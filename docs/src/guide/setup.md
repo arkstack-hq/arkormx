@@ -9,9 +9,9 @@ and Prisma-backed transaction helpers on the supported 2.x compatibility path.
 ## 1. Create `arkormx.config.ts`
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 export default defineConfig({
   adapter: createKyselyAdapter(
@@ -32,7 +32,7 @@ export default defineConfig({
     buildOutput: './dist',
   },
   outputExt: 'ts',
-});
+})
 ```
 
 This is the default 2.x setup. Arkorm applies the configured adapter
@@ -44,12 +44,12 @@ You can also use the Arkorm CLI to generate this config file by running the init
 ## 2. Define models
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {}
 
 export class Article extends Model {
-  protected static override softDeletes = true;
+  protected static override softDeletes = true
 }
 ```
 
@@ -63,21 +63,21 @@ With a global adapter configured, Arkorm queries work without extra bootstrap
 steps:
 
 ```ts
-const users = await User.query().whereKey('isActive', true).latest().get();
-const article = await Article.query().first();
+const users = await User.query().whereKey('isActive', true).latest().get()
+const article = await Article.query().first()
 
-users[0]?.getAttribute('email');
-article?.getAttribute('deletedAt');
+users[0]?.getAttribute('email')
+article?.getAttribute('deletedAt')
 ```
 
 ## 4. Pagination URL customization (optional)
 
 ```ts
-import { URLDriver, defineConfig } from 'arkormx';
+import { URLDriver, defineConfig } from 'arkormx'
 
 class AppURLDriver extends URLDriver {
   public override url(page: number): string {
-    return `/app${super.url(page)}`;
+    return `/app${super.url(page)}`
   }
 }
 
@@ -86,7 +86,7 @@ export default defineConfig({
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
-});
+})
 ```
 
 ## 5. Kysely + Postgres runtime
@@ -122,58 +122,58 @@ yarn add kysely pg
 Create a runtime module:
 
 ```ts
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
-import { createKyselyAdapter } from 'arkormx';
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
+import { createKyselyAdapter } from 'arkormx'
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-});
+})
 
 export const db = new Kysely<Record<string, never>>({
   dialect: new PostgresDialect({ pool }),
-});
+})
 
-export const adapter = createKyselyAdapter(db);
+export const adapter = createKyselyAdapter(db)
 ```
 
 Configure the adapter centrally from `arkormx.config.ts`:
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { adapter } from './database';
+import { defineConfig } from 'arkormx'
+import { adapter } from './database'
 
 export default defineConfig({
   adapter,
-});
+})
 ```
 
 You can still keep Prisma as an opt-in companion if you want Prisma-backed CLI
 flows, compatibility delegates, or `Model.transaction(...)`:
 
 ```ts
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
-import { defineConfig } from 'arkormx';
-import { adapter } from './database';
+import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+import { defineConfig } from 'arkormx'
+import { adapter } from './database'
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
     connectionString: process.env.DATABASE_URL as string,
   }),
-});
+})
 
 export default defineConfig({
   prisma: () => prisma,
   adapter,
-});
+})
 ```
 
 With that in place, normal Arkorm queries continue to work:
 
 ```ts
-const users = await User.query().orderBy({ id: 'asc' }).get();
-const article = await Article.query().onlyTrashed().first();
+const users = await User.query().orderBy({ id: 'asc' }).get()
+const article = await Article.query().onlyTrashed().first()
 ```
 
 Current adapter scope:
@@ -184,24 +184,24 @@ Current adapter scope:
 Transaction example:
 
 ```ts
-import { User } from './models';
-import { adapter } from './database';
+import { User } from './models'
+import { adapter } from './database'
 
 await adapter.transaction(async (transactionAdapter) => {
-  const previousAdapter = User.getAdapter();
+  const previousAdapter = User.getAdapter()
 
-  User.setAdapter(transactionAdapter);
+  User.setAdapter(transactionAdapter)
 
   try {
     await User.query().create({
       name: 'Mia',
       email: 'mia@example.com',
       isActive: 1,
-    });
+    })
   } finally {
-    User.setAdapter(previousAdapter);
+    User.setAdapter(previousAdapter)
   }
-});
+})
 ```
 
 If you bind transaction-scoped adapters manually like this, restore the

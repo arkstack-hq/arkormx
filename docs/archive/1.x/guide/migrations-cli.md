@@ -100,16 +100,12 @@ Use `foreignKey` in table migrations to generate Prisma relation fields automati
 
 ```ts
 schema.createTable('tokens', (table) => {
-  table.id();
-  table.integer('userId');
-  table.string('value');
+  table.id()
+  table.integer('userId')
+  table.string('value')
 
-  table
-    .foreignKey('userId')
-    .references('users', 'id')
-    .onDelete('cascade')
-    .alias('TokenUser');
-});
+  table.foreignKey('userId').references('users', 'id').onDelete('cascade').alias('TokenUser')
+})
 ```
 
 This generates a relation field like:
@@ -126,7 +122,7 @@ table
   .references('users', 'id')
   .onDelete('cascade')
   .alias('TokenOwner')
-  .as('owner');
+  .as('owner')
 ```
 
 Generated relation field:
@@ -145,9 +141,9 @@ If the foreign key column is the latest column you added, you can also chain `fo
 
 ```ts
 schema.createTable('next_of_kins', (table) => {
-  table.id();
-  table.uuid('userId').foreign().references('users', 'id').onDelete('cascade');
-});
+  table.id()
+  table.uuid('userId').foreign().references('users', 'id').onDelete('cascade')
+})
 ```
 
 That generates a named relation on both sides by default:
@@ -166,10 +162,10 @@ For one-to-one relations, make the foreign key column `@unique`. If the relation
 
 ```ts
 schema.alterTable('users', (table) => {
-  table.uuid('nokId').nullable().unique().map('nok_id');
+  table.uuid('nokId').nullable().unique().map('nok_id')
 
-  table.foreignKey('nokId').references('next_of_kins', 'id').as('nextOfKin');
-});
+  table.foreignKey('nokId').references('next_of_kins', 'id').as('nextOfKin')
+})
 ```
 
 This generates a one-to-one relation shape:
@@ -195,7 +191,7 @@ table
   .references('users', 'id')
   .alias('TokenOwner')
   .inverseAlias('UserTokens')
-  .as('owner');
+  .as('owner')
 ```
 
 ## Enum columns
@@ -204,12 +200,9 @@ Use `table.enum(...)` when a field should map to a Prisma enum type.
 
 ```ts
 schema.createTable('orders', (table) => {
-  table.id();
-  table
-    .enum('status', ['PENDING', 'PAID', 'CANCELLED'])
-    .enumName('OrderStatus')
-    .default('PENDING');
-});
+  table.id()
+  table.enum('status', ['PENDING', 'PAID', 'CANCELLED']).enumName('OrderStatus').default('PENDING')
+})
 ```
 
 This generates both the model field and the Prisma enum block:
@@ -241,8 +234,8 @@ enum name instead of redefining its values:
 
 ```ts
 schema.alterTable('invoices', (table) => {
-  table.enum('status', 'OrderStatus').default('PAID');
-});
+  table.enum('status', 'OrderStatus').default('PAID')
+})
 ```
 
 When you reuse an enum by name, Arkorm expects the enum block to already exist

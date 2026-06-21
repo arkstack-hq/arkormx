@@ -32,9 +32,9 @@ yarn add arkormx@next kysely pg
 Initialize Arkorm centrally in `arkormx.config.ts`:
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 export default defineConfig({
   adapter: createKyselyAdapter(
@@ -46,7 +46,7 @@ export default defineConfig({
       }),
     }),
   ),
-});
+})
 ```
 
 If you still need Prisma for compatibility mode, CLI flows, or Prisma-backed
@@ -59,7 +59,7 @@ Or run the Arkorm CLI command `npx arkormx init` to initialize your project alon
 ## 3. Define a model
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {}
 ```
@@ -72,11 +72,7 @@ and can be customized with `defineConfig({ naming: { case: ... } })`.
 ## 4. Run queries
 
 ```ts
-const users = await User.query()
-  .whereKey('isActive', true)
-  .latest()
-  .limit(10)
-  .get();
+const users = await User.query().whereKey('isActive', true).latest().limit(10).get()
 ```
 
 ## 5. Optional Prisma compatibility

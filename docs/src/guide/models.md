@@ -7,7 +7,7 @@ casts, mutators/accessors, scopes, events, and relationship definitions.
 ## Basic model
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {}
 ```
@@ -22,11 +22,11 @@ while still preserving convention-based fallback behavior for existing models.
 
 ```ts
 export class User extends Model {
-  protected static override table = 'app_users';
-  protected static override primaryKey = 'uuid';
+  protected static override table = 'app_users'
+  protected static override primaryKey = 'uuid'
   protected static override columns = {
     displayName: 'display_name',
-  };
+  }
 }
 ```
 
@@ -51,30 +51,30 @@ Fallback rules:
 You can customize inferred table casing globally:
 
 ```ts
-import { defineConfig } from 'arkormx';
+import { defineConfig } from 'arkormx'
 
 export default defineConfig({
   naming: {
     case: 'camel', // 'snake' (default), 'camel', 'kebab', 'studly'
   },
-});
+})
 ```
 
 ## Attributes
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-const email = user.getAttribute('email');
-user.setAttribute('name', 'Jane');
-await user.save();
+const email = user.getAttribute('email')
+user.setAttribute('name', 'Jane')
+await user.save()
 ```
 
 Arkorm also supports runtime property sugar:
 
 ```ts
-user.name = 'Jane';
-console.log(user.email);
+user.name = 'Jane'
+console.log(user.email)
 ```
 
 ## Fill and persist models
@@ -82,14 +82,14 @@ console.log(user.email);
 `fill()` assigns several attributes through the normal mutator and cast path:
 
 ```ts
-const user = new User();
+const user = new User()
 
 user.fill({
   name: 'Jane',
   email: 'jane@example.com',
-});
+})
 
-await user.save();
+await user.save()
 ```
 
 `save()` inserts a model that does not yet exist in the database and updates
@@ -105,7 +105,7 @@ Use `update()` for a fill-and-save shortcut:
 ```ts
 const updated = await user.update({
   name: 'Jane Updated',
-});
+})
 ```
 
 Instance `update()` returns `false` when the model has no identifier or the
@@ -117,9 +117,9 @@ When you want failures to surface instead of being swallowed, use the
 returning the model instance on success:
 
 ```ts
-await user.saveOrFail();
-await user.updateOrFail({ name: 'Jane Updated' });
-await user.deleteOrFail();
+await user.saveOrFail()
+await user.updateOrFail({ name: 'Jane Updated' })
+await user.deleteOrFail()
 ```
 
 - `saveOrFail()`: like `save()`, but wrapped in a transaction that rolls back and rethrows on error.
@@ -132,12 +132,12 @@ Common queries are available directly on the model class as shortcuts over
 `Model.query()`:
 
 ```ts
-const users = await User.all(); // ArkormCollection of every record
-const actives = await User.where({ isActive: 1 }).get();
+const users = await User.all() // ArkormCollection of every record
+const actives = await User.where({ isActive: 1 }).get()
 
-const created = await User.create({ name: 'Jane', email: 'jane@example.com' });
-const affected = await User.upsert(rows, 'email', ['name']);
-const deleted = await User.destroy([1, 2, 3]); // returns the number removed
+const created = await User.create({ name: 'Jane', email: 'jane@example.com' })
+const affected = await User.upsert(rows, 'email', ['name'])
+const deleted = await User.destroy([1, 2, 3]) // returns the number removed
 ```
 
 - `Model.all()`: retrieve every record as a collection.
@@ -153,11 +153,13 @@ The query builder also exposes find-or-create helpers, reachable through
 const user = await User.query().firstOrCreate(
   { email: 'jane@example.com' }, // matched against existing records
   { name: 'Jane' }, // merged in only when creating
-);
+)
 
-const draft = await User.query().firstOrNew({ email: 'ghost@example.com' });
-const settled = await User.query().updateOrCreate({ email: 'jane@example.com' }, { name: 'Jane' });
-const result = await User.query().where({ email: 'x@example.com' }).firstOr(() => 'fallback');
+const draft = await User.query().firstOrNew({ email: 'ghost@example.com' })
+const settled = await User.query().updateOrCreate({ email: 'jane@example.com' }, { name: 'Jane' })
+const result = await User.query()
+  .where({ email: 'x@example.com' })
+  .firstOr(() => 'fallback')
 ```
 
 - `firstOrCreate(attributes, values?)`: return the first match, otherwise create and persist a record with `{ ...attributes, ...values }`.
@@ -168,17 +170,17 @@ const result = await User.query().where({ email: 'x@example.com' }).firstOr(() =
 ## Delete and restore models
 
 ```ts
-await user.delete();
+await user.delete()
 ```
 
 For models with soft deletes enabled, `delete()` sets the configured deleted-at
 column. Otherwise it permanently deletes the record.
 
 ```ts
-const article = await Article.query().withTrashed().find(1);
+const article = await Article.query().withTrashed().find(1)
 
-await article?.restore();
-await article?.forceDelete();
+await article?.restore()
+await article?.forceDelete()
 ```
 
 - `restore()` clears the deleted-at column on a soft-deleted model.
@@ -203,25 +205,25 @@ Available helpers:
 - `exists`: `true` when the model maps to a row in the database (loaded, or saved at least once); `false` for unsaved `new Model(...)` instances and after a hard delete.
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-user.isClean(); // true
-user.getOriginal('name'); // original persisted value
+user.isClean() // true
+user.getOriginal('name') // original persisted value
 
-user.setAttribute('name', 'Jane Updated');
+user.setAttribute('name', 'Jane Updated')
 
-user.isDirty(); // true
-user.isDirty('name'); // true
-user.wasChanged('name'); // false, nothing has been persisted yet
+user.isDirty() // true
+user.isDirty('name') // true
+user.wasChanged('name') // false, nothing has been persisted yet
 
-await user.save();
+await user.save()
 
-user.isClean(); // true
-user.wasChanged('name'); // true
-user.getChanges(); // { name: 'Jane Updated' }
-user.getPrevious('name'); // previous persisted value
-user.getOriginal('name'); // 'Jane Updated'
-user.wasRecentlyCreated; // false for an update; true after an insert
+user.isClean() // true
+user.wasChanged('name') // true
+user.getChanges() // { name: 'Jane Updated' }
+user.getPrevious('name') // previous persisted value
+user.getOriginal('name') // 'Jane Updated'
+user.wasRecentlyCreated // false for an update; true after an insert
 ```
 
 New models created with `new Model(...)` start dirty because they do not have a
@@ -236,11 +238,11 @@ model's own persisted attributes.
 Use `is()` to compare model class and persisted primary key:
 
 ```ts
-const first = new User({ id: 1 });
-const second = new User({ id: 1 });
+const first = new User({ id: 1 })
+const second = new User({ id: 1 })
 
-first.is(second); // true
-first.isSame(second); // false
+first.is(second) // true
+first.isSame(second) // false
 ```
 
 - `is()` and `isNot()` compare persisted identity.
@@ -255,19 +257,19 @@ Use `hidden`, `visible`, and `appends` in model classes to shape serialization v
 
 ```ts
 export class User extends Model {
-  protected hidden = ['password'];
-  protected appends = ['displayName'];
+  protected hidden = ['password']
+  protected appends = ['displayName']
 }
 
-JSON.stringify(user); // invokes toJSON()
+JSON.stringify(user) // invokes toJSON()
 ```
 
 Use `getRawAttributes()` when you need the stored values before casts and
 accessors:
 
 ```ts
-const raw = user.getRawAttributes();
-const serialized = user.toObject();
+const raw = user.getRawAttributes()
+const serialized = user.toObject()
 ```
 
 For focused guides, see:
@@ -279,15 +281,15 @@ For focused guides, see:
 
 ```ts
 export class Article extends Model {
-  protected static override softDeletes = true;
+  protected static override softDeletes = true
 }
 ```
 
 Use query helpers:
 
 ```ts
-await Article.withTrashed().get();
-await Article.onlyTrashed().get();
+await Article.withTrashed().get()
+await Article.onlyTrashed().get()
 ```
 
 ## Local scopes
@@ -300,15 +302,15 @@ Define `scopeXxx` methods on the model prototype and call them with
 `Model.scope('xxx', ...)` or from an existing query builder via `.scope('xxx', ...)`.
 
 ```ts
-import { Model, QueryBuilder } from 'arkormx';
+import { Model, QueryBuilder } from 'arkormx'
 
 export class User extends Model {
   public scopeActive(query: QueryBuilder<User>) {
-    return query.whereKey('isActive', 1);
+    return query.whereKey('isActive', 1)
   }
 
   public scopeWithEmailDomain(query: QueryBuilder<User>, domain: string) {
-    return query.where({ email: { endsWith: `@${domain}` } });
+    return query.where({ email: { endsWith: `@${domain}` } })
   }
 }
 ```
@@ -316,12 +318,12 @@ export class User extends Model {
 Usage:
 
 ```ts
-const activeUsers = await User.scope('active').get();
+const activeUsers = await User.scope('active').get()
 
 const companyUsers = await User.query()
   .scope('active')
   .scope('withEmailDomain', 'example.com')
-  .get();
+  .get()
 ```
 
 Use local scopes when the logic belongs to the model itself. If the behavior
@@ -337,27 +339,27 @@ You can register them manually:
 
 ```ts
 User.addGlobalScope('active', (query) => {
-  query.whereKey('isActive', true);
-});
+  query.whereKey('isActive', true)
+})
 ```
 
 Then every `User.query()` call starts from the scoped query:
 
 ```ts
-const activeUsers = await User.query().get();
+const activeUsers = await User.query().get()
 ```
 
 The cleaner pattern is to register global scopes in `boot()` so they are set up
 once for the model class when Arkorm first touches it:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {
   protected static override boot(): void {
     this.addGlobalScope('active', (query) => {
-      query.whereKey('isActive', 1);
-    });
+      query.whereKey('isActive', 1)
+    })
   }
 }
 ```
@@ -367,8 +369,8 @@ If you need the unscoped dataset for a specific flow, use
 
 ```ts
 const allUsers = await User.withoutGlobalScopes(async () => {
-  return await User.query().get();
-});
+  return await User.query().get()
+})
 ```
 
 Use global scopes carefully. They improve consistency, but they also change the
@@ -393,11 +395,11 @@ in the pending database write. Events registered with `created`, `updated`, or
 ```ts
 User.on('creating', async (model) => {
   // mutate before insert
-});
+})
 
 User.on('created', async (model) => {
   // react after insert
-});
+})
 ```
 
 ### Fluent event registration helpers
@@ -408,11 +410,11 @@ better inside model boot hooks:
 ```ts
 User.created(async (model) => {
   // react after insert
-});
+})
 
 User.retrieved((model) => {
   // inspect hydrated models loaded from the database
-});
+})
 ```
 
 ### Registering events in `booted()`
@@ -420,24 +422,21 @@ User.retrieved((model) => {
 `booted()` is a good place to register model-specific listeners once per class:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {
   protected static override booted(): void {
     this.creating((model) => {
-      model.setAttribute(
-        'email',
-        String(model.getAttribute('email')).toLowerCase(),
-      );
-    });
+      model.setAttribute('email', String(model.getAttribute('email')).toLowerCase())
+    })
 
     this.created((model) => {
-      console.log('created user', model.getAttribute('id'));
-    });
+      console.log('created user', model.getAttribute('id'))
+    })
 
     this.retrieved((model) => {
-      console.log('loaded user', model.getAttribute('id'));
-    });
+      console.log('loaded user', model.getAttribute('id'))
+    })
   }
 }
 ```
@@ -449,14 +448,14 @@ If you prefer dedicated listener classes, use `dispatchesEvents`:
 ```ts
 class SendWelcomeEmail {
   async handle(model: User) {
-    await queueWelcomeEmail(model.getAttribute('email'));
+    await queueWelcomeEmail(model.getAttribute('email'))
   }
 }
 
 export class User extends Model {
   protected static override dispatchesEvents = {
     created: SendWelcomeEmail,
-  };
+  }
 }
 ```
 
@@ -466,14 +465,14 @@ When you need to persist a model without dispatching lifecycle events, use the
 quiet helpers:
 
 ```ts
-await user.saveQuietly();
-await user.deleteQuietly();
-await article.restoreQuietly();
-await article.forceDeleteQuietly();
+await user.saveQuietly()
+await user.deleteQuietly()
+await article.restoreQuietly()
+await article.forceDeleteQuietly()
 
 await User.withoutEvents(async () => {
-  await user.save();
-});
+  await user.save()
+})
 ```
 
 ### Available events

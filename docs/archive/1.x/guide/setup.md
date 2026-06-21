@@ -5,15 +5,15 @@ This page contains a complete starter setup for Arkorm + Prisma.
 ## 1. Create `arkormx.config.ts`
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
-import { PrismaPg } from '@prisma/adapter-pg';
+import { defineConfig } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
 
 const prisma = new PrismaClient({
   adapter: new PrismaPg({
     connectionString: process.env.DATABASE_URL as string,
   }),
-});
+})
 
 export default defineConfig({
   prisma: () => prisma as unknown as Record<string, unknown>,
@@ -26,7 +26,7 @@ export default defineConfig({
     buildOutput: './dist',
   },
   outputExt: 'ts',
-});
+})
 ```
 
 You can also use the Arkorm CLI to generate this config file by running the initialize command: `npx arkormx init`.
@@ -34,36 +34,36 @@ You can also use the Arkorm CLI to generate this config file by running the init
 ## 2. Define models
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 }
 
 export class Article extends Model<'articles'> {
-  protected static override delegate = 'articles';
-  protected static override softDeletes = true;
+  protected static override delegate = 'articles'
+  protected static override softDeletes = true
 }
 ```
 
 ## 3. Query usage
 
 ```ts
-const users = await User.query().whereKey('isActive', true).latest().get();
-const article = await Article.query().first();
+const users = await User.query().whereKey('isActive', true).latest().get()
+const article = await Article.query().first()
 
-users[0]?.getAttribute('email');
-article?.getAttribute('deletedAt');
+users[0]?.getAttribute('email')
+article?.getAttribute('deletedAt')
 ```
 
 ## 4. Pagination URL customization (optional)
 
 ```ts
-import { URLDriver, defineConfig } from 'arkormx';
+import { URLDriver, defineConfig } from 'arkormx'
 
 class AppURLDriver extends URLDriver {
   public override url(page: number): string {
-    return `/app${super.url(page)}`;
+    return `/app${super.url(page)}`
   }
 }
 
@@ -72,7 +72,7 @@ export default defineConfig({
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
   },
-});
+})
 ```
 
 ## 5. Production notes for TS seeders/migrations

@@ -40,10 +40,10 @@ While this gives you complete access to how Clear Router's container binding fea
 Register the plugin with Clear Router:
 
 ```ts
-import { ClearRouter } from 'clear-router';
-import { clearRouterPlugin } from '@arkormx/plugin-clear-router';
+import { ClearRouter } from 'clear-router'
+import { clearRouterPlugin } from '@arkormx/plugin-clear-router'
 
-ClearRouter.use(clearRouterPlugin);
+ClearRouter.use(clearRouterPlugin)
 ```
 
 ## Route Model Binding
@@ -51,9 +51,9 @@ ClearRouter.use(clearRouterPlugin);
 Once the plugin is registered, Clear Router can resolve Arkorm models directly inside controller methods.
 
 ```ts
-import Profile from './models/Profile';
-import { Bind } from 'clear-router/decorators';
-import { Controller } from 'clear-router';
+import Profile from './models/Profile'
+import { Bind } from 'clear-router/decorators'
+import { Controller } from 'clear-router'
 
 class ProfileController extends Controller {
   @Bind()
@@ -63,7 +63,7 @@ class ProfileController extends Controller {
         id: profile.getAttribute('id'),
         name: profile.name,
       },
-    };
+    }
   }
 }
 ```
@@ -71,7 +71,7 @@ class ProfileController extends Controller {
 Define the route using the route parameter:
 
 ```ts
-ClearRouter.get('/profiles/:profile', [ProfileController, 'show']);
+ClearRouter.get('/profiles/:profile', [ProfileController, 'show'])
 ```
 
 When a request matches:
@@ -89,5 +89,5 @@ Use `modelsPath` when your models live outside Arkorm’s configured model direc
 ```ts
 ClearRouter.use(clearRouterPlugin, {
   modelsPath: path.join(process.cwd(), 'src/models'),
-});
+})
 ```

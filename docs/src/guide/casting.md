@@ -16,7 +16,7 @@ Supported cast types:
 - `array`
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {
   protected override casts = {
@@ -24,7 +24,7 @@ export class User extends Model {
     profile: 'json',
     createdAt: 'date',
     tags: 'array',
-  } as const;
+  } as const
 }
 ```
 
@@ -33,17 +33,17 @@ export class User extends Model {
 You can define custom casts by providing an object or class with `get` and `set` methods. The `get` method transforms the raw value from the database into the desired format, while the `set` method transforms the value before it is stored in the database.
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 const centsCast = {
   get: (value: unknown) => Number(value ?? 0) / 100,
   set: (value: unknown) => Math.round(Number(value ?? 0) * 100),
-};
+}
 
 export class Product extends Model {
   protected override casts = {
     price: centsCast,
-  } as const;
+  } as const
 }
 ```
 
@@ -61,8 +61,8 @@ This keeps mutators expressive while preserving consistent storage formats.
 Proxy-based property access uses the same pipeline:
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-user.isActive = 1;
-console.log(user.isActive); // true (boolean cast)
+user.isActive = 1
+console.log(user.isActive) // true (boolean cast)
 ```

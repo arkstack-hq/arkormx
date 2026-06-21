@@ -5,28 +5,28 @@ Models are the core abstraction in Arkorm. They represent a Prisma delegate and 
 ## Basic model
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 }
 ```
 
 ## Attributes
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-const email = user.getAttribute('email');
-user.setAttribute('name', 'Jane');
-await user.save();
+const email = user.getAttribute('email')
+user.setAttribute('name', 'Jane')
+await user.save()
 ```
 
 Arkorm also supports runtime property sugar:
 
 ```ts
-user.name = 'Jane';
-console.log(user.email);
+user.name = 'Jane'
+console.log(user.email)
 ```
 
 ## Model state
@@ -43,22 +43,22 @@ Available helpers:
 - `wasChanged(keyOrKeys?)`: check whether the last successful persistence operation changed those attributes.
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-user.isClean(); // true
-user.getOriginal('name'); // original persisted value
+user.isClean() // true
+user.getOriginal('name') // original persisted value
 
-user.setAttribute('name', 'Jane Updated');
+user.setAttribute('name', 'Jane Updated')
 
-user.isDirty(); // true
-user.isDirty('name'); // true
-user.wasChanged('name'); // false, nothing has been persisted yet
+user.isDirty() // true
+user.isDirty('name') // true
+user.wasChanged('name') // false, nothing has been persisted yet
 
-await user.save();
+await user.save()
 
-user.isClean(); // true
-user.wasChanged('name'); // true
-user.getOriginal('name'); // 'Jane Updated'
+user.isClean() // true
+user.wasChanged('name') // true
+user.getOriginal('name') // 'Jane Updated'
 ```
 
 New models created with `new Model(...)` start dirty because they do not have a
@@ -81,16 +81,16 @@ For focused guides, see:
 
 ```ts
 export class Article extends Model<'articles'> {
-  protected static override delegate = 'articles';
-  protected static override softDeletes = true;
+  protected static override delegate = 'articles'
+  protected static override softDeletes = true
 }
 ```
 
 Use query helpers:
 
 ```ts
-await Article.withTrashed().get();
-await Article.onlyTrashed().get();
+await Article.withTrashed().get()
+await Article.onlyTrashed().get()
 ```
 
 ## Local scopes
@@ -103,17 +103,17 @@ Define `scopeXxx` methods on the model prototype and call them with
 `Model.scope('xxx', ...)` or from an existing query builder via `.scope('xxx', ...)`.
 
 ```ts
-import { Model, QueryBuilder } from 'arkormx';
+import { Model, QueryBuilder } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   public scopeActive(query: QueryBuilder<User>) {
-    return query.whereKey('isActive', 1);
+    return query.whereKey('isActive', 1)
   }
 
   public scopeWithEmailDomain(query: QueryBuilder<User>, domain: string) {
-    return query.where({ email: { endsWith: `@${domain}` } });
+    return query.where({ email: { endsWith: `@${domain}` } })
   }
 }
 ```
@@ -121,12 +121,12 @@ export class User extends Model<'users'> {
 Usage:
 
 ```ts
-const activeUsers = await User.scope('active').get();
+const activeUsers = await User.scope('active').get()
 
 const companyUsers = await User.query()
   .scope('active')
   .scope('withEmailDomain', 'example.com')
-  .get();
+  .get()
 ```
 
 Use local scopes when the logic belongs to the model itself. If the behavior
@@ -142,29 +142,29 @@ You can register them manually:
 
 ```ts
 User.addGlobalScope('active', (query) => {
-  query.whereKey('isActive', true);
-});
+  query.whereKey('isActive', true)
+})
 ```
 
 Then every `User.query()` call starts from the scoped query:
 
 ```ts
-const activeUsers = await User.query().get();
+const activeUsers = await User.query().get()
 ```
 
 The cleaner pattern is to register global scopes in `boot()` so they are set up
 once for the model class when Arkorm first touches it:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   protected static override boot(): void {
     this.addGlobalScope('active', (query) => {
-      query.whereKey('isActive', 1);
-    });
+      query.whereKey('isActive', 1)
+    })
   }
 }
 ```
@@ -174,8 +174,8 @@ If you need the unscoped dataset for a specific flow, use
 
 ```ts
 const allUsers = await User.withoutGlobalScopes(async () => {
-  return await User.query().get();
-});
+  return await User.query().get()
+})
 ```
 
 Use global scopes carefully. They improve consistency, but they also change the
@@ -196,11 +196,11 @@ main write operations.
 ```ts
 User.on('creating', async (model) => {
   // mutate before insert
-});
+})
 
 User.on('created', async (model) => {
   // react after insert
-});
+})
 ```
 
 ### Fluent event registration helpers
@@ -211,11 +211,11 @@ better inside model boot hooks:
 ```ts
 User.created(async (model) => {
   // react after insert
-});
+})
 
 User.retrieved((model) => {
   // inspect hydrated models loaded from the database
-});
+})
 ```
 
 ### Registering events in `booted()`
@@ -223,26 +223,23 @@ User.retrieved((model) => {
 `booted()` is a good place to register model-specific listeners once per class:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   protected static override booted(): void {
     this.creating((model) => {
-      model.setAttribute(
-        'email',
-        String(model.getAttribute('email')).toLowerCase(),
-      );
-    });
+      model.setAttribute('email', String(model.getAttribute('email')).toLowerCase())
+    })
 
     this.created((model) => {
-      console.log('created user', model.getAttribute('id'));
-    });
+      console.log('created user', model.getAttribute('id'))
+    })
 
     this.retrieved((model) => {
-      console.log('loaded user', model.getAttribute('id'));
-    });
+      console.log('loaded user', model.getAttribute('id'))
+    })
   }
 }
 ```
@@ -254,16 +251,16 @@ If you prefer dedicated listener classes, use `dispatchesEvents`:
 ```ts
 class SendWelcomeEmail {
   async handle(model: User) {
-    await queueWelcomeEmail(model.getAttribute('email'));
+    await queueWelcomeEmail(model.getAttribute('email'))
   }
 }
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   protected static override dispatchesEvents = {
     created: SendWelcomeEmail,
-  };
+  }
 }
 ```
 
@@ -273,14 +270,14 @@ When you need to persist a model without dispatching lifecycle events, use the
 quiet helpers:
 
 ```ts
-await user.saveQuietly();
-await user.deleteQuietly();
-await article.restoreQuietly();
-await article.forceDeleteQuietly();
+await user.saveQuietly()
+await user.deleteQuietly()
+await article.restoreQuietly()
+await article.forceDeleteQuietly()
 
 await User.withoutEvents(async () => {
-  await user.save();
-});
+  await user.save()
+})
 ```
 
 ### Available events

@@ -5,65 +5,70 @@ import { SingleResultRelation } from './SingleResultRelation'
 
 /**
  * Defines a polymorphic one-to-one relationship.
- * 
+ *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export class MorphOneRelation<TParent, TRelated> extends SingleResultRelation<TParent & { getAttribute: (key: string) => unknown }, TRelated> {
-    public constructor(
-        parent: TParent & { getAttribute: (key: string) => unknown },
-        related: RelatedModelClass<TRelated>,
-        private readonly morphName: string,
-        private readonly morphIdColumn: string,
-        private readonly morphTypeColumn: string,
-        private readonly localKey: string,
-    ) {
-        super(parent, related)
+export class MorphOneRelation<TParent, TRelated> extends SingleResultRelation<
+  TParent & { getAttribute: (key: string) => unknown },
+  TRelated
+> {
+  public constructor(
+    parent: TParent & { getAttribute: (key: string) => unknown },
+    related: RelatedModelClass<TRelated>,
+    private readonly morphName: string,
+    private readonly morphIdColumn: string,
+    private readonly morphTypeColumn: string,
+    private readonly localKey: string,
+  ) {
+    super(parent, related)
+  }
+
+  /**
+   * Build the relationship query.
+   *
+   * @returns
+   */
+  public async getQuery(): Promise<QueryBuilder<TRelated>> {
+    const id = this.parent.getAttribute(this.localKey)
+    const type = this.parent.constructor.name
+
+    return this.applyConstraint(
+      this.related.query().where({
+        [this.morphIdColumn]: id,
+        [this.morphTypeColumn]: type,
+      }),
+    )
+  }
+
+  protected override getCreationAttributes(): Record<string, unknown> {
+    return {
+      [this.morphIdColumn]: this.parent.getAttribute(this.localKey),
+      [this.morphTypeColumn]: this.parent.constructor.name,
     }
+  }
 
-    /**
-     * Build the relationship query.
-     *
-     * @returns
-     */
-    public async getQuery (): Promise<QueryBuilder<TRelated>> {
-        const id = this.parent.getAttribute(this.localKey)
-        const type = this.parent.constructor.name
-
-        return this.applyConstraint(this.related.query().where({
-            [this.morphIdColumn]: id,
-            [this.morphTypeColumn]: type,
-        }))
+  public getMetadata(): MorphOneRelationMetadata {
+    return {
+      type: 'morphOne',
+      relatedModel: this.related,
+      morphName: this.morphName,
+      morphIdColumn: this.morphIdColumn,
+      morphTypeColumn: this.morphTypeColumn,
+      localKey: this.localKey,
     }
+  }
 
-    protected override getCreationAttributes (): Record<string, unknown> {
-        return {
-            [this.morphIdColumn]: this.parent.getAttribute(this.localKey),
-            [this.morphTypeColumn]: this.parent.constructor.name,
-        }
-    }
+  /**
+   * Fetches the related models for this relationship.
+   *
+   * @returns
+   */
+  public async getResults(): Promise<TRelated | null> {
+    const query = await this.getQuery()
 
-    public getMetadata (): MorphOneRelationMetadata {
-        return {
-            type: 'morphOne',
-            relatedModel: this.related,
-            morphName: this.morphName,
-            morphIdColumn: this.morphIdColumn,
-            morphTypeColumn: this.morphTypeColumn,
-            localKey: this.localKey,
-        }
-    }
+    const result = await query.first()
 
-    /**
-     * Fetches the related models for this relationship.
-     * 
-     * @returns 
-     */
-    public async getResults (): Promise<TRelated | null> {
-        const query = await this.getQuery()
-
-        const result = await query.first()
-
-        return result ?? this.resolveDefaultResult()
-    }
+    return result ?? this.resolveDefaultResult()
+  }
 }

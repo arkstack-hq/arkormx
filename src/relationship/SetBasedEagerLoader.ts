@@ -1,4 +1,10 @@
-import type { DatabaseAdapter, DatabaseRow, EagerLoadConstraint, EagerLoadMap, RelationMetadata } from '../types'
+import type {
+  DatabaseAdapter,
+  DatabaseRow,
+  EagerLoadConstraint,
+  EagerLoadMap,
+  RelationMetadata,
+} from '../types'
 
 import { ArkormCollection } from '../Collection'
 import { RelationResolutionException } from '../Exceptions/RelationResolutionException'
@@ -7,1039 +13,1043 @@ import { Relation } from './Relation'
 import { RelationTableLoader } from './RelationTableLoader'
 
 type EagerLoadableModel = {
-    getAttribute: (key: string) => unknown
-    setLoadedRelation: (name: string, value: unknown) => void
+  getAttribute: (key: string) => unknown
+  setLoadedRelation: (name: string, value: unknown) => void
 }
 
 type RawAttributeReadable = {
-    getRawAttributes: () => Record<string, unknown>
-    setAttribute: (key: string, value: unknown) => unknown
-    getAttribute: (key: string) => unknown
+  getRawAttributes: () => Record<string, unknown>
+  setAttribute: (key: string, value: unknown) => unknown
+  getAttribute: (key: string) => unknown
 }
 
 type RelationResolver = (this: EagerLoadableModel) => Relation<unknown>
 type EagerLoadNode = {
-    constraint?: EagerLoadConstraint
-    children: Map<string, EagerLoadNode>
+  constraint?: EagerLoadConstraint
+  children: Map<string, EagerLoadNode>
 }
 
 /**
- * Utility class responsible for performing set-based eager loading of relationships for 
+ * Utility class responsible for performing set-based eager loading of relationships for
  * a collection of models.
- * 
+ *
  * @author Legacy (3m1n3nc3)
  * @since 2.0.0-next.2
  */
 export class SetBasedEagerLoader {
-    public constructor(
-        private readonly models: EagerLoadableModel[],
-        private readonly relations: EagerLoadMap,
-    ) { }
+  public constructor(
+    private readonly models: EagerLoadableModel[],
+    private readonly relations: EagerLoadMap,
+  ) {}
 
-    /**
-     * Performs eager loading of all specified relationships for the set of models. 
-     * 
-     * @returns 
-     */
-    public async load (): Promise<void> {
-        if (this.models.length === 0)
-            return
+  /**
+   * Performs eager loading of all specified relationships for the set of models.
+   *
+   * @returns
+   */
+  public async load(): Promise<void> {
+    if (this.models.length === 0) return
 
-        const relationTree = this.buildRelationTree(this.relations)
+    const relationTree = this.buildRelationTree(this.relations)
 
-        await Promise.all(Array.from(relationTree.entries()).map(async ([name, node]) => {
-            await this.loadRelationNode(name, node)
-        }))
+    await Promise.all(
+      Array.from(relationTree.entries()).map(async ([name, node]) => {
+        await this.loadRelationNode(name, node)
+      }),
+    )
+  }
+
+  private async loadRelationNode(name: string, node: EagerLoadNode): Promise<void> {
+    await this.loadRelation(name, node.constraint)
+
+    if (node.children.size === 0) return
+
+    const relatedModels = this.collectLoadedRelationModels(name)
+    if (relatedModels.length === 0) return
+
+    await new SetBasedEagerLoader(relatedModels, this.relationTreeToMap(node.children)).load()
+  }
+
+  /**
+   * Loads a specific relationship for the set of models based on the relationship name
+   * and an optional constraint.
+   *
+   * @param name          The name of the relationship to load.
+   * @param constraint    An optional constraint to apply to the query.
+   * @returns             A promise that resolves when the relationship is loaded.
+   */
+  private async loadRelation(name: string, constraint?: EagerLoadConstraint): Promise<void> {
+    const resolver = this.resolveRelationResolver(name)
+    if (!resolver) return
+
+    const metadata = resolver.call(this.models[0]).getMetadata()
+
+    switch (metadata.type) {
+      case 'belongsTo':
+        await this.loadBelongsTo(name, resolver, metadata, constraint)
+
+        return
+      case 'belongsToMany':
+        await this.loadBelongsToMany(name, metadata, constraint)
+
+        return
+      case 'hasMany':
+        await this.loadHasMany(name, metadata, constraint)
+
+        return
+      case 'hasOne':
+        await this.loadHasOne(name, resolver, metadata, constraint)
+
+        return
+      case 'hasManyThrough':
+        await this.loadHasManyThrough(name, metadata, constraint)
+
+        return
+      case 'hasOneThrough':
+        await this.loadHasOneThrough(name, resolver, metadata, constraint)
+
+        return
+      case 'morphTo':
+        await this.loadMorphTo(name, metadata, constraint)
+
+        return
+      case 'morphOne':
+        await this.loadMorphOne(name, resolver, metadata, constraint)
+
+        return
+      case 'morphMany':
+        await this.loadMorphMany(name, metadata, constraint)
+
+        return
+      default:
+        await this.loadIndividually(name, resolver, constraint)
+    }
+  }
+
+  /**
+   * Resolves the relation resolver function for a given relationship name by inspecting
+   * the first model in the set.
+   *
+   * @param name  The name of the relationship to resolve.
+   * @returns     The relation resolver function or null if not found.
+   */
+  private resolveRelationResolver(name: string): RelationResolver | null {
+    const resolver = (this.models[0] as Record<string, unknown>)[name]
+
+    if (typeof resolver !== 'function') {
+      const modelName =
+        (this.models[0] as { constructor?: { name?: string } }).constructor?.name ?? 'Model'
+
+      throw new RelationResolutionException(`Relation [${name}] is not defined on the model.`, {
+        operation: 'eagerLoad',
+        model: modelName,
+        relation: name,
+      })
     }
 
-    private async loadRelationNode (name: string, node: EagerLoadNode): Promise<void> {
-        await this.loadRelation(name, node.constraint)
+    return resolver as RelationResolver
+  }
 
-        if (node.children.size === 0)
-            return
+  private buildRelationTree(relations: EagerLoadMap): Map<string, EagerLoadNode> {
+    const tree = new Map<string, EagerLoadNode>()
 
-        const relatedModels = this.collectLoadedRelationModels(name)
-        if (relatedModels.length === 0)
-            return
+    Object.entries(relations).forEach(([path, constraint]) => {
+      const segments = path
+        .split('.')
+        .map((segment) => segment.trim())
+        .filter((segment) => segment.length > 0)
 
-        await new SetBasedEagerLoader(relatedModels, this.relationTreeToMap(node.children)).load()
-    }
+      if (segments.length === 0) return
 
-    /**
-     * Loads a specific relationship for the set of models based on the relationship name 
-     * and an optional constraint.
-     * 
-     * @param name          The name of the relationship to load.
-     * @param constraint    An optional constraint to apply to the query.
-     * @returns             A promise that resolves when the relationship is loaded.
-     */
-    private async loadRelation (name: string, constraint?: EagerLoadConstraint): Promise<void> {
-        const resolver = this.resolveRelationResolver(name)
-        if (!resolver)
-            return
+      let current = tree
 
-        const metadata = resolver.call(this.models[0]).getMetadata()
-
-        switch (metadata.type) {
-            case 'belongsTo':
-                await this.loadBelongsTo(name, resolver, metadata, constraint)
-
-                return
-            case 'belongsToMany':
-                await this.loadBelongsToMany(name, metadata, constraint)
-
-                return
-            case 'hasMany':
-                await this.loadHasMany(name, metadata, constraint)
-
-                return
-            case 'hasOne':
-                await this.loadHasOne(name, resolver, metadata, constraint)
-
-                return
-            case 'hasManyThrough':
-                await this.loadHasManyThrough(name, metadata, constraint)
-
-                return
-            case 'hasOneThrough':
-                await this.loadHasOneThrough(name, resolver, metadata, constraint)
-
-                return
-            case 'morphTo':
-                await this.loadMorphTo(name, metadata, constraint)
-
-                return
-            case 'morphOne':
-                await this.loadMorphOne(name, resolver, metadata, constraint)
-
-                return
-            case 'morphMany':
-                await this.loadMorphMany(name, metadata, constraint)
-
-                return
-            default:
-                await this.loadIndividually(name, resolver, constraint)
+      segments.forEach((segment, index) => {
+        const existing = current.get(segment) ?? {
+          constraint: undefined,
+          children: new Map<string, EagerLoadNode>(),
         }
-    }
 
-    /**
-     * Resolves the relation resolver function for a given relationship name by inspecting 
-     * the first model in the set.
-     * 
-     * @param name  The name of the relationship to resolve.
-     * @returns     The relation resolver function or null if not found.
-     */
-    private resolveRelationResolver (name: string): RelationResolver | null {
-        const resolver = (this.models[0] as Record<string, unknown>)[name]
+        if (index === segments.length - 1 && constraint) existing.constraint = constraint
 
-        if (typeof resolver !== 'function') {
-            const modelName = (this.models[0] as { constructor?: { name?: string } }).constructor?.name ?? 'Model'
+        current.set(segment, existing)
+        current = existing.children
+      })
+    })
 
-            throw new RelationResolutionException(`Relation [${name}] is not defined on the model.`, {
-                operation: 'eagerLoad',
-                model: modelName,
-                relation: name,
-            })
-        }
+    return tree
+  }
 
-        return resolver as RelationResolver
-    }
+  private relationTreeToMap(tree: Map<string, EagerLoadNode>, prefix = ''): EagerLoadMap {
+    return Array.from(tree.entries()).reduce<EagerLoadMap>((all, [name, node]) => {
+      const path = prefix ? `${prefix}.${name}` : name
+      all[path] = node.constraint
 
-    private buildRelationTree (relations: EagerLoadMap): Map<string, EagerLoadNode> {
-        const tree = new Map<string, EagerLoadNode>()
+      Object.assign(all, this.relationTreeToMap(node.children, path))
 
-        Object.entries(relations).forEach(([path, constraint]) => {
-            const segments = path
-                .split('.')
-                .map(segment => segment.trim())
-                .filter(segment => segment.length > 0)
+      return all
+    }, {})
+  }
 
-            if (segments.length === 0)
-                return
+  private collectLoadedRelationModels(name: string): EagerLoadableModel[] {
+    return this.models.reduce<EagerLoadableModel[]>((all, model) => {
+      const loaded = model.getAttribute(name)
 
-            let current = tree
-
-            segments.forEach((segment, index) => {
-                const existing = current.get(segment) ?? { constraint: undefined, children: new Map<string, EagerLoadNode>() }
-
-                if (index === segments.length - 1 && constraint)
-                    existing.constraint = constraint
-
-                current.set(segment, existing)
-                current = existing.children
-            })
+      if (loaded instanceof ArkormCollection) {
+        loaded.all().forEach((item: unknown) => {
+          if (this.isEagerLoadableModel(item)) all.push(item)
         })
 
-        return tree
+        return all
+      }
+
+      if (this.isEagerLoadableModel(loaded)) all.push(loaded)
+
+      return all
+    }, [])
+  }
+
+  private isEagerLoadableModel(value: unknown): value is EagerLoadableModel {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      typeof (value as EagerLoadableModel).getAttribute === 'function' &&
+      typeof (value as EagerLoadableModel).setLoadedRelation === 'function'
+    )
+  }
+
+  /**
+   * Loads a "belongs to" relationship for the set of models.
+   *
+   * @param name          The name of the relationship to load.
+   * @param resolver      The relation resolver function.
+   * @param metadata      The metadata for the relationship.
+   * @param constraint    An optional constraint to apply to the query.
+   * @returns             A promise that resolves when the relationship is loaded.
+   */
+  private async loadBelongsTo(
+    name: string,
+    resolver: RelationResolver,
+    metadata: Extract<RelationMetadata, { type: 'belongsTo' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const keys = this.collectUniqueKeys((model) => model.getAttribute(metadata.foreignKey))
+    if (keys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
+      })
+
+      return
     }
 
-    private relationTreeToMap (tree: Map<string, EagerLoadNode>, prefix = ''): EagerLoadMap {
-        return Array.from(tree.entries()).reduce<EagerLoadMap>((all, [name, node]) => {
-            const path = prefix ? `${prefix}.${name}` : name
-            all[path] = node.constraint
+    let query = metadata.relatedModel.query().whereIn(metadata.ownerKey as never, keys as never[])
 
-            Object.assign(all, this.relationTreeToMap(node.children, path))
+    query = this.applyConstraint(query, constraint)
 
-            return all
-        }, {})
+    const relatedModels = (await query.get()).all()
+    const relatedByOwnerKey = new Map<string, unknown>()
+
+    relatedModels.forEach((related) => {
+      const value = this.readModelAttribute(related, metadata.ownerKey)
+      if (value == null) return
+
+      const lookupKey = this.toLookupKey(value)
+      if (!relatedByOwnerKey.has(lookupKey)) relatedByOwnerKey.set(lookupKey, related)
+    })
+
+    this.models.forEach((model) => {
+      const foreignValue = model.getAttribute(metadata.foreignKey)
+      const relationValue =
+        foreignValue == null ? undefined : relatedByOwnerKey.get(this.toLookupKey(foreignValue))
+
+      model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
+    })
+  }
+
+  /**
+   * Loads a "has many" relationship for the set of models.
+   *
+   * @param name
+   * @param metadata
+   * @param constraint
+   * @returns
+   */
+  private async loadHasMany(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'hasMany' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const keys = this.collectUniqueKeys((model) => model.getAttribute(metadata.localKey))
+    if (keys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, new ArkormCollection([]))
+      })
+
+      return
     }
 
-    private collectLoadedRelationModels (name: string): EagerLoadableModel[] {
-        return this.models.reduce<EagerLoadableModel[]>((all, model) => {
-            const loaded = model.getAttribute(name)
+    let query = metadata.relatedModel.query().whereIn(metadata.foreignKey as never, keys as never[])
 
-            if (loaded instanceof ArkormCollection) {
-                loaded.all().forEach((item: unknown) => {
-                    if (this.isEagerLoadableModel(item))
-                        all.push(item)
-                })
+    query = this.applyConstraint(query, constraint)
 
-                return all
-            }
+    const relatedModels = (await query.get()).all()
+    const relatedByForeignKey = new Map<string, unknown[]>()
 
-            if (this.isEagerLoadableModel(loaded))
-                all.push(loaded)
+    relatedModels.forEach((related) => {
+      const value = this.readModelAttribute(related, metadata.foreignKey)
+      if (value == null) return
 
-            return all
-        }, [])
+      const lookupKey = this.toLookupKey(value)
+      const bucket = relatedByForeignKey.get(lookupKey) ?? []
+      bucket.push(related)
+      relatedByForeignKey.set(lookupKey, bucket)
+    })
+
+    this.models.forEach((model) => {
+      const localValue = model.getAttribute(metadata.localKey)
+      const related =
+        localValue == null ? [] : (relatedByForeignKey.get(this.toLookupKey(localValue)) ?? [])
+
+      model.setLoadedRelation(name, new ArkormCollection(related))
+    })
+  }
+
+  /**
+   * Loads a "belongs to many" relationship for the set of models.
+   *
+   * @param name
+   * @param metadata
+   * @param constraint
+   * @returns
+   */
+  private async loadBelongsToMany(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const parentKeys = this.collectUniqueKeys((model) => model.getAttribute(metadata.parentKey))
+    if (parentKeys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, new ArkormCollection([]))
+      })
+
+      return
     }
 
-    private isEagerLoadableModel (value: unknown): value is EagerLoadableModel {
-        return typeof value === 'object'
-            && value !== null
-            && typeof (value as EagerLoadableModel).getAttribute === 'function'
-            && typeof (value as EagerLoadableModel).setLoadedRelation === 'function'
+    const pivotRows = await this.createRelationTableLoader().selectRows({
+      table: metadata.throughTable,
+      where: this.buildBelongsToManyPivotWhere(metadata, parentKeys),
+      columns: this.getBelongsToManyPivotColumns(metadata).map((column) => ({ column })),
+    })
+
+    const relatedIds = this.collectUniqueRowValues(pivotRows, metadata.relatedPivotKey)
+    if (relatedIds.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, new ArkormCollection([]))
+      })
+
+      return
     }
 
-    /**
-     * Loads a "belongs to" relationship for the set of models.
-     * 
-     * @param name          The name of the relationship to load.
-     * @param resolver      The relation resolver function.
-     * @param metadata      The metadata for the relationship.
-     * @param constraint    An optional constraint to apply to the query.
-     * @returns             A promise that resolves when the relationship is loaded.
-     */
-    private async loadBelongsTo (
-        name: string,
-        resolver: RelationResolver,
-        metadata: Extract<RelationMetadata, { type: 'belongsTo' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const keys = this.collectUniqueKeys(model => model.getAttribute(metadata.foreignKey))
-        if (keys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
-            })
+    let query = metadata.relatedModel
+      .query()
+      .whereIn(metadata.relatedKey as never, relatedIds as never[])
 
-            return
-        }
+    query = this.applyConstraint(query, constraint)
 
-        let query = metadata.relatedModel.query()
-            .whereIn(metadata.ownerKey as never, keys as never[])
+    const relatedModels = (await query.get()).all()
+    const relatedByKey = new Map<string, unknown>()
+
+    relatedModels.forEach((related) => {
+      const relatedValue = this.readModelAttribute(related, metadata.relatedKey)
+      if (relatedValue == null) return
+
+      relatedByKey.set(this.toLookupKey(relatedValue), related)
+    })
+
+    const relatedKeysByParent = new Map<string, unknown[]>()
+    const pivotByParentAndRelated = new Map<string, DatabaseRow>()
+    pivotRows.forEach((row: DatabaseRow) => {
+      const parentValue = row[metadata.foreignPivotKey]
+      const relatedValue = row[metadata.relatedPivotKey]
+      if (parentValue == null || relatedValue == null) return
+
+      const bucket = relatedKeysByParent.get(this.toLookupKey(parentValue)) ?? []
+      bucket.push(relatedValue)
+      relatedKeysByParent.set(this.toLookupKey(parentValue), bucket)
+      pivotByParentAndRelated.set(
+        `${this.toLookupKey(parentValue)}:${this.toLookupKey(relatedValue)}`,
+        row,
+      )
+    })
+
+    this.models.forEach((model) => {
+      const parentValue = model.getAttribute(metadata.parentKey)
+      const relatedValues =
+        parentValue == null ? [] : (relatedKeysByParent.get(this.toLookupKey(parentValue)) ?? [])
+      const related = relatedValues.reduce<unknown[]>((all, relatedValue) => {
+        const candidate = relatedByKey.get(this.toLookupKey(relatedValue))
+        if (candidate)
+          all.push(
+            this.attachBelongsToManyPivot(
+              metadata,
+              candidate,
+              pivotByParentAndRelated.get(
+                `${this.toLookupKey(parentValue)}:${this.toLookupKey(relatedValue)}`,
+              ),
+            ),
+          )
+
+        return all
+      }, [])
+
+      model.setLoadedRelation(name, new ArkormCollection(related))
+    })
+  }
+
+  private buildBelongsToManyPivotWhere(
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    parentKeys: unknown[],
+  ) {
+    const baseCondition = {
+      type: 'comparison' as const,
+      column: metadata.foreignPivotKey,
+      operator: 'in' as const,
+      value: parentKeys as never[],
+    }
+
+    if (!metadata.pivotWhere) return baseCondition
+
+    return {
+      type: 'group' as const,
+      operator: 'and' as const,
+      conditions: [baseCondition, metadata.pivotWhere],
+    }
+  }
+
+  private getBelongsToManyPivotColumns(
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+  ): string[] {
+    return [
+      metadata.foreignPivotKey,
+      metadata.relatedPivotKey,
+      ...(metadata.pivotColumns ?? []),
+    ].filter((column, index, all) => all.indexOf(column) === index)
+  }
+
+  private shouldAttachBelongsToManyPivot(
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+  ): boolean {
+    return (
+      Boolean(metadata.pivotModel) ||
+      Boolean(metadata.pivotCreatedAtColumn) ||
+      Boolean(metadata.pivotUpdatedAtColumn) ||
+      (metadata.pivotColumns?.length ?? 0) > 0 ||
+      Boolean(metadata.pivotAccessor)
+    )
+  }
+
+  private createBelongsToManyPivotRecord(
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    row: DatabaseRow,
+  ): unknown {
+    const attributes = this.getBelongsToManyPivotColumns(metadata).reduce<Record<string, unknown>>(
+      (all, column) => {
+        all[column] = row[column]
+
+        return all
+      },
+      {},
+    )
+
+    if (!metadata.pivotModel) return attributes
+
+    if (typeof metadata.pivotModel.hydrate === 'function')
+      return metadata.pivotModel.hydrate(attributes)
+
+    return new metadata.pivotModel(attributes)
+  }
+
+  private attachBelongsToManyPivot(
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    related: unknown,
+    row?: DatabaseRow,
+  ): unknown {
+    if (!row || !this.shouldAttachBelongsToManyPivot(metadata)) return related
+
+    const rawReader = related as RawAttributeReadable
+    if (
+      typeof rawReader.getRawAttributes !== 'function' ||
+      typeof rawReader.setAttribute !== 'function'
+    )
+      return related
+
+    const cloned = metadata.relatedModel.hydrate(
+      rawReader.getRawAttributes(),
+    ) as RawAttributeReadable
+    cloned.setAttribute(
+      metadata.pivotAccessor ?? 'pivot',
+      this.createBelongsToManyPivotRecord(metadata, row),
+    )
+
+    return cloned
+  }
+
+  /**
+   * Loads a "belongs to many" relationship for the set of models.
+   *
+   * @param name
+   * @param resolver
+   * @param metadata
+   * @param constraint
+   * @returns
+   */
+  private async loadHasOne(
+    name: string,
+    resolver: RelationResolver,
+    metadata: Extract<RelationMetadata, { type: 'hasOne' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const keys = this.collectUniqueKeys((model) => model.getAttribute(metadata.localKey))
+    if (keys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
+      })
+
+      return
+    }
+
+    let query = metadata.relatedModel.query().whereIn(metadata.foreignKey as never, keys as never[])
+
+    query = this.applyConstraint(query, constraint)
+
+    const relatedModels = (await query.get()).all()
+    const relatedByForeignKey = new Map<string, unknown>()
+
+    relatedModels.forEach((related) => {
+      const value = this.readModelAttribute(related, metadata.foreignKey)
+      if (value == null) return
+
+      const lookupKey = this.toLookupKey(value)
+      if (!relatedByForeignKey.has(lookupKey)) relatedByForeignKey.set(lookupKey, related)
+    })
+
+    this.models.forEach((model) => {
+      const localValue = model.getAttribute(metadata.localKey)
+      const relationValue =
+        localValue == null ? undefined : relatedByForeignKey.get(this.toLookupKey(localValue))
+
+      model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
+    })
+  }
+
+  /**
+   * Loads a "has many through" relationship for the set of models.
+   *
+   * @param name
+   * @param metadata
+   * @param constraint
+   * @returns
+   */
+  private async loadHasManyThrough(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'hasManyThrough' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const parentKeys = this.collectUniqueKeys((model) => model.getAttribute(metadata.localKey))
+    if (parentKeys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, new ArkormCollection([]))
+      })
+
+      return
+    }
+
+    const throughRows = await this.createRelationTableLoader().selectRows({
+      table: metadata.throughTable,
+      where: {
+        type: 'comparison',
+        column: metadata.firstKey,
+        operator: 'in',
+        value: parentKeys as never[],
+      },
+    })
+
+    const intermediateKeys = this.collectUniqueRowValues(throughRows, metadata.secondLocalKey)
+    if (intermediateKeys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, new ArkormCollection([]))
+      })
+
+      return
+    }
+
+    let query = metadata.relatedModel
+      .query()
+      .whereIn(metadata.secondKey as never, intermediateKeys as never[])
+
+    query = this.applyConstraint(query, constraint)
+
+    const relatedModels = (await query.get()).all()
+    const relatedByIntermediate = new Map<string, unknown[]>()
+
+    relatedModels.forEach((related) => {
+      const relatedValue = this.readModelAttribute(related, metadata.secondKey)
+      if (relatedValue == null) return
+
+      const bucket = relatedByIntermediate.get(this.toLookupKey(relatedValue)) ?? []
+      bucket.push(related)
+      relatedByIntermediate.set(this.toLookupKey(relatedValue), bucket)
+    })
+
+    const intermediateByParent = new Map<string, unknown[]>()
+    throughRows.forEach((row: DatabaseRow) => {
+      const parentValue = row[metadata.firstKey]
+      const intermediateValue = row[metadata.secondLocalKey]
+      if (parentValue == null || intermediateValue == null) return
+
+      const bucket = intermediateByParent.get(this.toLookupKey(parentValue)) ?? []
+      bucket.push(intermediateValue)
+      intermediateByParent.set(this.toLookupKey(parentValue), bucket)
+    })
+
+    this.models.forEach((model) => {
+      const parentValue = model.getAttribute(metadata.localKey)
+      const related = (
+        parentValue == null ? [] : (intermediateByParent.get(this.toLookupKey(parentValue)) ?? [])
+      ).flatMap(
+        (intermediateValue) => relatedByIntermediate.get(this.toLookupKey(intermediateValue)) ?? [],
+      )
+
+      model.setLoadedRelation(name, new ArkormCollection(related))
+    })
+  }
+
+  /**
+   * Loads a "has one through" relationship for the set of models.
+   *
+   * @param name
+   * @param resolver
+   * @param metadata
+   * @param constraint
+   * @returns
+   */
+  private async loadHasOneThrough(
+    name: string,
+    resolver: RelationResolver,
+    metadata: Extract<RelationMetadata, { type: 'hasOneThrough' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const parentKeys = this.collectUniqueKeys((model) => model.getAttribute(metadata.localKey))
+    if (parentKeys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
+      })
+
+      return
+    }
+
+    const throughRows = await this.createRelationTableLoader().selectRows({
+      table: metadata.throughTable,
+      where: {
+        type: 'comparison',
+        column: metadata.firstKey,
+        operator: 'in',
+        value: parentKeys as never[],
+      },
+    })
+
+    const intermediateKeys = this.collectUniqueRowValues(throughRows, metadata.secondLocalKey)
+    if (intermediateKeys.length === 0) {
+      this.models.forEach((model) => {
+        model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
+      })
+
+      return
+    }
+
+    let query = metadata.relatedModel
+      .query()
+      .whereIn(metadata.secondKey as never, intermediateKeys as never[])
+
+    query = this.applyConstraint(query, constraint)
+
+    const relatedModels = (await query.get()).all()
+    const relatedByIntermediate = new Map<string, unknown>()
+
+    relatedModels.forEach((related) => {
+      const relatedValue = this.readModelAttribute(related, metadata.secondKey)
+      if (relatedValue == null) return
+
+      const lookupKey = this.toLookupKey(relatedValue)
+      if (!relatedByIntermediate.has(lookupKey)) relatedByIntermediate.set(lookupKey, related)
+    })
+
+    const intermediateByParent = new Map<string, unknown>()
+    throughRows.forEach((row: DatabaseRow) => {
+      const parentValue = row[metadata.firstKey]
+      const intermediateValue = row[metadata.secondLocalKey]
+      if (parentValue == null || intermediateValue == null) return
+
+      const lookupKey = this.toLookupKey(parentValue)
+      if (!intermediateByParent.has(lookupKey))
+        intermediateByParent.set(lookupKey, intermediateValue)
+    })
+
+    this.models.forEach((model) => {
+      const parentValue = model.getAttribute(metadata.localKey)
+      const intermediateValue =
+        parentValue == null ? undefined : intermediateByParent.get(this.toLookupKey(parentValue))
+      const relationValue =
+        intermediateValue == null
+          ? undefined
+          : relatedByIntermediate.get(this.toLookupKey(intermediateValue))
+
+      model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
+    })
+  }
+
+  /**
+   * Loads an inverse polymorphic ("morph to") relationship for the set of
+   * models. Parents are grouped by their morph type, so each distinct type
+   * runs a single batched query instead of one query per parent row.
+   *
+   * @param name
+   * @param metadata
+   * @param constraint
+   * @returns
+   */
+  private async loadMorphTo(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'morphTo' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const idsByType = new Map<string, unknown[]>()
+    const seenByType = new Map<string, Set<string>>()
+
+    this.models.forEach((model) => {
+      const morphType = model.getAttribute(metadata.morphTypeColumn)
+      const morphId = model.getAttribute(metadata.morphIdColumn)
+      if (typeof morphType !== 'string' || morphType.length === 0 || morphId == null) return
+
+      const ids = idsByType.get(morphType) ?? []
+      const seen = seenByType.get(morphType) ?? new Set<string>()
+      const lookupKey = this.toLookupKey(morphId)
+
+      if (!seen.has(lookupKey)) {
+        seen.add(lookupKey)
+        ids.push(morphId)
+      }
+
+      idsByType.set(morphType, ids)
+      seenByType.set(morphType, seen)
+    })
+
+    const relatedByTypeAndKey = new Map<string, unknown>()
+
+    await Promise.all(
+      Array.from(idsByType.entries()).map(async ([morphType, ids]) => {
+        const relatedModel = metadata.resolveModel(morphType)
+        const ownerKey = metadata.ownerKey ?? relatedModel.getPrimaryKey()
+
+        let query = relatedModel.query().whereIn(ownerKey as never, ids as never[])
 
         query = this.applyConstraint(query, constraint)
 
         const relatedModels = (await query.get()).all()
-        const relatedByOwnerKey = new Map<string, unknown>()
+        relatedModels.forEach((related) => {
+          const value = this.readModelAttribute(related, ownerKey)
+          if (value == null) return
 
-        relatedModels.forEach(related => {
-            const value = this.readModelAttribute(related, metadata.ownerKey)
-            if (value == null)
-                return
-
-            const lookupKey = this.toLookupKey(value)
-            if (!relatedByOwnerKey.has(lookupKey))
-                relatedByOwnerKey.set(lookupKey, related)
+          relatedByTypeAndKey.set(`${morphType}:${this.toLookupKey(value)}`, related)
         })
+      }),
+    )
 
-        this.models.forEach(model => {
-            const foreignValue = model.getAttribute(metadata.foreignKey)
-            const relationValue = foreignValue == null
-                ? undefined
-                : relatedByOwnerKey.get(this.toLookupKey(foreignValue))
+    this.models.forEach((model) => {
+      const morphType = model.getAttribute(metadata.morphTypeColumn)
+      const morphId = model.getAttribute(metadata.morphIdColumn)
+      const relationValue =
+        typeof morphType !== 'string' || morphId == null
+          ? null
+          : (relatedByTypeAndKey.get(`${morphType}:${this.toLookupKey(morphId)}`) ?? null)
 
-            model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
-        })
-    }
+      model.setLoadedRelation(name, relationValue)
+    })
+  }
 
-    /**
-     * Loads a "has many" relationship for the set of models. 
-     * 
-     * @param name 
-     * @param metadata 
-     * @param constraint 
-     * @returns 
-     */
-    private async loadHasMany (
-        name: string,
-        metadata: Extract<RelationMetadata, { type: 'hasMany' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const keys = this.collectUniqueKeys(model => model.getAttribute(metadata.localKey))
-        if (keys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, new ArkormCollection([]))
-            })
+  /**
+   * Loads a polymorphic one-to-one ("morph one") relationship for the set of
+   * models. See {@link loadMorphChildren} for the batching strategy.
+   *
+   * @param name
+   * @param resolver
+   * @param metadata
+   * @param constraint
+   */
+  private async loadMorphOne(
+    name: string,
+    resolver: RelationResolver,
+    metadata: Extract<RelationMetadata, { type: 'morphOne' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const relatedByKey = await this.loadMorphChildren(metadata, constraint)
 
-            return
-        }
+    this.models.forEach((model) => {
+      const bucket = relatedByKey.get(this.morphParentKey(model, metadata.localKey))
 
-        let query = metadata.relatedModel.query()
-            .whereIn(metadata.foreignKey as never, keys as never[])
+      model.setLoadedRelation(name, bucket?.[0] ?? this.resolveSingleDefault(resolver, model))
+    })
+  }
+
+  /**
+   * Loads a polymorphic one-to-many ("morph many") relationship for the set of
+   * models. See {@link loadMorphChildren} for the batching strategy.
+   *
+   * @param name
+   * @param metadata
+   * @param constraint
+   */
+  private async loadMorphMany(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'morphMany' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const relatedByKey = await this.loadMorphChildren(metadata, constraint)
+
+    this.models.forEach((model) => {
+      const bucket = relatedByKey.get(this.morphParentKey(model, metadata.localKey)) ?? []
+
+      model.setLoadedRelation(name, new ArkormCollection(bucket))
+    })
+  }
+
+  /**
+   * Batch-loads the children for a morphOne/morphMany relationship. Parents are
+   * grouped by their own morph type (constructor name), so each distinct type
+   * runs a single query constrained by `idColumn IN (...) AND typeColumn = type`
+   * instead of one query per parent row. This also supports a heterogeneous
+   * parent set (e.g. the result of a nested load after a morphTo).
+   *
+   * @param metadata
+   * @param constraint
+   * @returns A map of `"{type}:{localKey}" -> related[]`.
+   */
+  private async loadMorphChildren(
+    metadata: Extract<RelationMetadata, { type: 'morphOne' | 'morphMany' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<Map<string, unknown[]>> {
+    const keysByType = new Map<string, unknown[]>()
+    const seenByType = new Map<string, Set<string>>()
+
+    this.models.forEach((model) => {
+      const morphType = this.morphTypeOf(model)
+      const localValue = model.getAttribute(metadata.localKey)
+      if (morphType.length === 0 || localValue == null) return
+
+      const keys = keysByType.get(morphType) ?? []
+      const seen = seenByType.get(morphType) ?? new Set<string>()
+      const lookupKey = this.toLookupKey(localValue)
+
+      if (!seen.has(lookupKey)) {
+        seen.add(lookupKey)
+        keys.push(localValue)
+      }
+
+      keysByType.set(morphType, keys)
+      seenByType.set(morphType, seen)
+    })
+
+    const relatedByKey = new Map<string, unknown[]>()
+
+    await Promise.all(
+      Array.from(keysByType.entries()).map(async ([morphType, keys]) => {
+        let query = metadata.relatedModel
+          .query()
+          .whereIn(metadata.morphIdColumn as never, keys as never[])
+          .where({ [metadata.morphTypeColumn]: morphType } as never)
 
         query = this.applyConstraint(query, constraint)
 
         const relatedModels = (await query.get()).all()
-        const relatedByForeignKey = new Map<string, unknown[]>()
+        relatedModels.forEach((related) => {
+          const value = this.readModelAttribute(related, metadata.morphIdColumn)
+          if (value == null) return
 
-        relatedModels.forEach(related => {
-            const value = this.readModelAttribute(related, metadata.foreignKey)
-            if (value == null)
-                return
-
-            const lookupKey = this.toLookupKey(value)
-            const bucket = relatedByForeignKey.get(lookupKey) ?? []
-            bucket.push(related)
-            relatedByForeignKey.set(lookupKey, bucket)
+          const key = `${morphType}:${this.toLookupKey(value)}`
+          const bucket = relatedByKey.get(key) ?? []
+          bucket.push(related)
+          relatedByKey.set(key, bucket)
         })
+      }),
+    )
 
-        this.models.forEach(model => {
-            const localValue = model.getAttribute(metadata.localKey)
-            const related = localValue == null
-                ? []
-                : relatedByForeignKey.get(this.toLookupKey(localValue)) ?? []
+    return relatedByKey
+  }
 
-            model.setLoadedRelation(name, new ArkormCollection(related))
-        })
-    }
+  private morphParentKey(model: EagerLoadableModel, localKey: string): string {
+    return `${this.morphTypeOf(model)}:${this.toLookupKey(model.getAttribute(localKey))}`
+  }
 
-    /**
-     * Loads a "belongs to many" relationship for the set of models. 
-     * 
-     * @param name 
-     * @param metadata 
-     * @param constraint 
-     * @returns 
-     */
-    private async loadBelongsToMany (
-        name: string,
-        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const parentKeys = this.collectUniqueKeys(model => model.getAttribute(metadata.parentKey))
-        if (parentKeys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, new ArkormCollection([]))
-            })
+  private morphTypeOf(model: EagerLoadableModel): string {
+    return (model as { constructor?: { name?: string } }).constructor?.name ?? ''
+  }
 
-            return
+  /**
+   * Fallback method to load relationships individually for each model when the
+   * relationship type is not supported for set-based loading.
+   *
+   * @param name
+   * @param resolver
+   * @param constraint
+   */
+  private async loadIndividually(
+    name: string,
+    resolver: RelationResolver,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    await Promise.all(
+      this.models.map(async (model) => {
+        const relation = resolver.call(model)
+        if (constraint) {
+          relation.constrain(
+            constraint as (query: QueryBuilder<unknown>) => QueryBuilder<unknown> | void,
+          )
         }
 
-        const pivotRows = await this.createRelationTableLoader().selectRows({
-            table: metadata.throughTable,
-            where: this.buildBelongsToManyPivotWhere(metadata, parentKeys),
-            columns: this.getBelongsToManyPivotColumns(metadata).map(column => ({ column })),
-        })
+        model.setLoadedRelation(name, await relation.getResults())
+      }),
+    )
+  }
 
-        const relatedIds = this.collectUniqueRowValues(pivotRows, metadata.relatedPivotKey)
-        if (relatedIds.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, new ArkormCollection([]))
-            })
+  /**
+   * Applies an eager load constraint to a query if provided.
+   *
+   * @param query
+   * @param constraint
+   * @returns
+   */
+  private applyConstraint<TModel>(
+    query: QueryBuilder<TModel>,
+    constraint?: EagerLoadConstraint,
+  ): QueryBuilder<TModel> {
+    if (!constraint) return query
 
-            return
-        }
+    const constrained = constraint(query)
 
-        let query = metadata.relatedModel.query()
-            .whereIn(metadata.relatedKey as never, relatedIds as never[])
+    return (constrained ?? query) as QueryBuilder<TModel>
+  }
 
-        query = this.applyConstraint(query, constraint)
+  /**
+   * Collects unique values from the set of models based on a resolver function, which
+   * is used to extract the value from each model.
+   *
+   * @param resolve   A function that takes a model and returns the value to be collected.
+   * @returns         An array of unique values.
+   */
+  private collectUniqueKeys(resolve: (model: EagerLoadableModel) => unknown): unknown[] {
+    const seen = new Set<string>()
+    const values: unknown[] = []
 
-        const relatedModels = (await query.get()).all()
-        const relatedByKey = new Map<string, unknown>()
+    this.models.forEach((model) => {
+      const value = resolve(model)
+      if (value == null) return
 
-        relatedModels.forEach(related => {
-            const relatedValue = this.readModelAttribute(related, metadata.relatedKey)
-            if (relatedValue == null)
-                return
+      const lookupKey = this.toLookupKey(value)
+      if (seen.has(lookupKey)) return
 
-            relatedByKey.set(this.toLookupKey(relatedValue), related)
-        })
+      seen.add(lookupKey)
+      values.push(value)
+    })
 
-        const relatedKeysByParent = new Map<string, unknown[]>()
-        const pivotByParentAndRelated = new Map<string, DatabaseRow>()
-        pivotRows.forEach((row: DatabaseRow) => {
-            const parentValue = row[metadata.foreignPivotKey]
-            const relatedValue = row[metadata.relatedPivotKey]
-            if (parentValue == null || relatedValue == null)
-                return
+    return values
+  }
 
-            const bucket = relatedKeysByParent.get(this.toLookupKey(parentValue)) ?? []
-            bucket.push(relatedValue)
-            relatedKeysByParent.set(this.toLookupKey(parentValue), bucket)
-            pivotByParentAndRelated.set(`${this.toLookupKey(parentValue)}:${this.toLookupKey(relatedValue)}`, row)
-        })
+  /**
+   * Collects unique values from an array of database rows based on a specified key, which
+   * is used to extract the value from each row.
+   *
+   * @param rows  An array of database rows.
+   * @param key   The key to extract values from each row.
+   * @returns     An array of unique values.
+   */
+  private collectUniqueRowValues(rows: Array<Record<string, unknown>>, key: string): unknown[] {
+    const seen = new Set<string>()
+    const values: unknown[] = []
 
-        this.models.forEach(model => {
-            const parentValue = model.getAttribute(metadata.parentKey)
-            const relatedValues = parentValue == null
-                ? []
-                : relatedKeysByParent.get(this.toLookupKey(parentValue)) ?? []
-            const related = relatedValues.reduce<unknown[]>((all, relatedValue) => {
-                const candidate = relatedByKey.get(this.toLookupKey(relatedValue))
-                if (candidate)
-                    all.push(this.attachBelongsToManyPivot(metadata, candidate, pivotByParentAndRelated.get(`${this.toLookupKey(parentValue)}:${this.toLookupKey(relatedValue)}`)))
+    rows.forEach((row) => {
+      const value = row[key]
+      if (value == null) return
 
-                return all
-            }, [])
+      const lookupKey = this.toLookupKey(value)
+      if (seen.has(lookupKey)) return
 
-            model.setLoadedRelation(name, new ArkormCollection(related))
-        })
+      seen.add(lookupKey)
+      values.push(value)
+    })
+
+    return values
+  }
+
+  /**
+   * Loads a "belongs to many" relationship for the set of models.
+   *
+   * @returns
+   */
+  private createRelationTableLoader(): RelationTableLoader {
+    return new RelationTableLoader(this.resolveAdapter())
+  }
+
+  /**
+   * Loads a "belongs to many" relationship for the set of models.
+   *
+   * @returns
+   */
+  private resolveAdapter(): DatabaseAdapter {
+    const firstModel = this.models[0] as Record<string, unknown>
+    const adapter = (firstModel.constructor as { getAdapter?: () => unknown }).getAdapter?.()
+
+    if (!adapter) throw new Error('Set-based eager loading requires a configured adapter.')
+
+    return adapter as DatabaseAdapter
+  }
+
+  /**
+   * Reads an attribute value from a model using the getAttribute method, which is used
+   * to access model attributes in a way that is compatible with Arkorm's internal model structure.
+   *
+   * @param model The model to read the attribute from.
+   * @param key The name of the attribute to read.
+   * @returns
+   */
+  private readModelAttribute(model: unknown, key: string): unknown {
+    return (model as { getAttribute?: (attribute: string) => unknown }).getAttribute?.(key)
+  }
+
+  /**
+   * Resolves the default result for a relationship when no related models are found.
+   *
+   * @param resolver
+   * @param model
+   * @returns
+   */
+  private resolveSingleDefault(resolver: RelationResolver, model: EagerLoadableModel): unknown {
+    const relation = resolver.call(model) as Relation<unknown> & {
+      resolveDefaultResult?: () => unknown
     }
 
-    private buildBelongsToManyPivotWhere (
-        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
-        parentKeys: unknown[],
-    ) {
-        const baseCondition = {
-            type: 'comparison' as const,
-            column: metadata.foreignPivotKey,
-            operator: 'in' as const,
-            value: parentKeys as never[],
-        }
-
-        if (!metadata.pivotWhere)
-            return baseCondition
-
-        return {
-            type: 'group' as const,
-            operator: 'and' as const,
-            conditions: [baseCondition, metadata.pivotWhere],
-        }
-    }
-
-    private getBelongsToManyPivotColumns (
-        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
-    ): string[] {
-        return [
-            metadata.foreignPivotKey,
-            metadata.relatedPivotKey,
-            ...(metadata.pivotColumns ?? []),
-        ].filter((column, index, all) => all.indexOf(column) === index)
-    }
-
-    private shouldAttachBelongsToManyPivot (
-        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
-    ): boolean {
-        return Boolean(metadata.pivotModel)
-            || Boolean(metadata.pivotCreatedAtColumn)
-            || Boolean(metadata.pivotUpdatedAtColumn)
-            || (metadata.pivotColumns?.length ?? 0) > 0
-            || Boolean(metadata.pivotAccessor)
-    }
-
-    private createBelongsToManyPivotRecord (
-        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
-        row: DatabaseRow,
-    ): unknown {
-        const attributes = this.getBelongsToManyPivotColumns(metadata).reduce<Record<string, unknown>>((all, column) => {
-            all[column] = row[column]
-
-            return all
-        }, {})
-
-        if (!metadata.pivotModel)
-            return attributes
-
-        if (typeof metadata.pivotModel.hydrate === 'function')
-            return metadata.pivotModel.hydrate(attributes)
-
-        return new metadata.pivotModel(attributes)
-    }
-
-    private attachBelongsToManyPivot (
-        metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
-        related: unknown,
-        row?: DatabaseRow,
-    ): unknown {
-        if (!row || !this.shouldAttachBelongsToManyPivot(metadata))
-            return related
-
-        const rawReader = related as RawAttributeReadable
-        if (typeof rawReader.getRawAttributes !== 'function' || typeof rawReader.setAttribute !== 'function')
-            return related
-
-        const cloned = metadata.relatedModel.hydrate(rawReader.getRawAttributes()) as RawAttributeReadable
-        cloned.setAttribute(metadata.pivotAccessor ?? 'pivot', this.createBelongsToManyPivotRecord(metadata, row))
-
-        return cloned
-    }
-
-    /**
-     * Loads a "belongs to many" relationship for the set of models.
-     * 
-     * @param name 
-     * @param resolver 
-     * @param metadata 
-     * @param constraint 
-     * @returns 
-     */
-    private async loadHasOne (
-        name: string,
-        resolver: RelationResolver,
-        metadata: Extract<RelationMetadata, { type: 'hasOne' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const keys = this.collectUniqueKeys(model => model.getAttribute(metadata.localKey))
-        if (keys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
-            })
-
-            return
-        }
-
-        let query = metadata.relatedModel.query()
-            .whereIn(metadata.foreignKey as never, keys as never[])
-
-        query = this.applyConstraint(query, constraint)
-
-        const relatedModels = (await query.get()).all()
-        const relatedByForeignKey = new Map<string, unknown>()
-
-        relatedModels.forEach(related => {
-            const value = this.readModelAttribute(related, metadata.foreignKey)
-            if (value == null)
-                return
-
-            const lookupKey = this.toLookupKey(value)
-            if (!relatedByForeignKey.has(lookupKey))
-                relatedByForeignKey.set(lookupKey, related)
-        })
-
-        this.models.forEach(model => {
-            const localValue = model.getAttribute(metadata.localKey)
-            const relationValue = localValue == null
-                ? undefined
-                : relatedByForeignKey.get(this.toLookupKey(localValue))
-
-            model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
-        })
-    }
-
-    /**
-     * Loads a "has many through" relationship for the set of models.
-     * 
-     * @param name 
-     * @param metadata 
-     * @param constraint 
-     * @returns 
-     */
-    private async loadHasManyThrough (
-        name: string,
-        metadata: Extract<RelationMetadata, { type: 'hasManyThrough' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const parentKeys = this.collectUniqueKeys(model => model.getAttribute(metadata.localKey))
-        if (parentKeys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, new ArkormCollection([]))
-            })
-
-            return
-        }
-
-        const throughRows = await this.createRelationTableLoader().selectRows({
-            table: metadata.throughTable,
-            where: {
-                type: 'comparison',
-                column: metadata.firstKey,
-                operator: 'in',
-                value: parentKeys as never[],
-            },
-        })
-
-        const intermediateKeys = this.collectUniqueRowValues(throughRows, metadata.secondLocalKey)
-        if (intermediateKeys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, new ArkormCollection([]))
-            })
-
-            return
-        }
-
-        let query = metadata.relatedModel.query()
-            .whereIn(metadata.secondKey as never, intermediateKeys as never[])
-
-        query = this.applyConstraint(query, constraint)
-
-        const relatedModels = (await query.get()).all()
-        const relatedByIntermediate = new Map<string, unknown[]>()
-
-        relatedModels.forEach(related => {
-            const relatedValue = this.readModelAttribute(related, metadata.secondKey)
-            if (relatedValue == null)
-                return
-
-            const bucket = relatedByIntermediate.get(this.toLookupKey(relatedValue)) ?? []
-            bucket.push(related)
-            relatedByIntermediate.set(this.toLookupKey(relatedValue), bucket)
-        })
-
-        const intermediateByParent = new Map<string, unknown[]>()
-        throughRows.forEach((row: DatabaseRow) => {
-            const parentValue = row[metadata.firstKey]
-            const intermediateValue = row[metadata.secondLocalKey]
-            if (parentValue == null || intermediateValue == null)
-                return
-
-            const bucket = intermediateByParent.get(this.toLookupKey(parentValue)) ?? []
-            bucket.push(intermediateValue)
-            intermediateByParent.set(this.toLookupKey(parentValue), bucket)
-        })
-
-        this.models.forEach(model => {
-            const parentValue = model.getAttribute(metadata.localKey)
-            const related = (parentValue == null
-                ? []
-                : intermediateByParent.get(this.toLookupKey(parentValue)) ?? [])
-                .flatMap(intermediateValue => relatedByIntermediate.get(this.toLookupKey(intermediateValue)) ?? [])
-
-            model.setLoadedRelation(name, new ArkormCollection(related))
-        })
-    }
-
-    /**
-     * Loads a "has one through" relationship for the set of models.
-     * 
-     * @param name 
-     * @param resolver 
-     * @param metadata 
-     * @param constraint 
-     * @returns 
-     */
-    private async loadHasOneThrough (
-        name: string,
-        resolver: RelationResolver,
-        metadata: Extract<RelationMetadata, { type: 'hasOneThrough' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const parentKeys = this.collectUniqueKeys(model => model.getAttribute(metadata.localKey))
-        if (parentKeys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
-            })
-
-            return
-        }
-
-        const throughRows = await this.createRelationTableLoader().selectRows({
-            table: metadata.throughTable,
-            where: {
-                type: 'comparison',
-                column: metadata.firstKey,
-                operator: 'in',
-                value: parentKeys as never[],
-            },
-        })
-
-        const intermediateKeys = this.collectUniqueRowValues(throughRows, metadata.secondLocalKey)
-        if (intermediateKeys.length === 0) {
-            this.models.forEach(model => {
-                model.setLoadedRelation(name, this.resolveSingleDefault(resolver, model))
-            })
-
-            return
-        }
-
-        let query = metadata.relatedModel.query()
-            .whereIn(metadata.secondKey as never, intermediateKeys as never[])
-
-        query = this.applyConstraint(query, constraint)
-
-        const relatedModels = (await query.get()).all()
-        const relatedByIntermediate = new Map<string, unknown>()
-
-        relatedModels.forEach(related => {
-            const relatedValue = this.readModelAttribute(related, metadata.secondKey)
-            if (relatedValue == null)
-                return
-
-            const lookupKey = this.toLookupKey(relatedValue)
-            if (!relatedByIntermediate.has(lookupKey))
-                relatedByIntermediate.set(lookupKey, related)
-        })
-
-        const intermediateByParent = new Map<string, unknown>()
-        throughRows.forEach((row: DatabaseRow) => {
-            const parentValue = row[metadata.firstKey]
-            const intermediateValue = row[metadata.secondLocalKey]
-            if (parentValue == null || intermediateValue == null)
-                return
-
-            const lookupKey = this.toLookupKey(parentValue)
-            if (!intermediateByParent.has(lookupKey))
-                intermediateByParent.set(lookupKey, intermediateValue)
-        })
-
-        this.models.forEach(model => {
-            const parentValue = model.getAttribute(metadata.localKey)
-            const intermediateValue = parentValue == null
-                ? undefined
-                : intermediateByParent.get(this.toLookupKey(parentValue))
-            const relationValue = intermediateValue == null
-                ? undefined
-                : relatedByIntermediate.get(this.toLookupKey(intermediateValue))
-
-            model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
-        })
-    }
-
-    /**
-     * Loads an inverse polymorphic ("morph to") relationship for the set of
-     * models. Parents are grouped by their morph type, so each distinct type
-     * runs a single batched query instead of one query per parent row.
-     *
-     * @param name
-     * @param metadata
-     * @param constraint
-     * @returns
-     */
-    private async loadMorphTo (
-        name: string,
-        metadata: Extract<RelationMetadata, { type: 'morphTo' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const idsByType = new Map<string, unknown[]>()
-        const seenByType = new Map<string, Set<string>>()
-
-        this.models.forEach(model => {
-            const morphType = model.getAttribute(metadata.morphTypeColumn)
-            const morphId = model.getAttribute(metadata.morphIdColumn)
-            if (typeof morphType !== 'string' || morphType.length === 0 || morphId == null)
-                return
-
-            const ids = idsByType.get(morphType) ?? []
-            const seen = seenByType.get(morphType) ?? new Set<string>()
-            const lookupKey = this.toLookupKey(morphId)
-
-            if (!seen.has(lookupKey)) {
-                seen.add(lookupKey)
-                ids.push(morphId)
-            }
-
-            idsByType.set(morphType, ids)
-            seenByType.set(morphType, seen)
-        })
-
-        const relatedByTypeAndKey = new Map<string, unknown>()
-
-        await Promise.all(Array.from(idsByType.entries()).map(async ([morphType, ids]) => {
-            const relatedModel = metadata.resolveModel(morphType)
-            const ownerKey = metadata.ownerKey ?? relatedModel.getPrimaryKey()
-
-            let query = relatedModel.query()
-                .whereIn(ownerKey as never, ids as never[])
-
-            query = this.applyConstraint(query, constraint)
-
-            const relatedModels = (await query.get()).all()
-            relatedModels.forEach(related => {
-                const value = this.readModelAttribute(related, ownerKey)
-                if (value == null)
-                    return
-
-                relatedByTypeAndKey.set(`${morphType}:${this.toLookupKey(value)}`, related)
-            })
-        }))
-
-        this.models.forEach(model => {
-            const morphType = model.getAttribute(metadata.morphTypeColumn)
-            const morphId = model.getAttribute(metadata.morphIdColumn)
-            const relationValue = (typeof morphType !== 'string' || morphId == null)
-                ? null
-                : relatedByTypeAndKey.get(`${morphType}:${this.toLookupKey(morphId)}`) ?? null
-
-            model.setLoadedRelation(name, relationValue)
-        })
-    }
-
-    /**
-     * Loads a polymorphic one-to-one ("morph one") relationship for the set of
-     * models. See {@link loadMorphChildren} for the batching strategy.
-     *
-     * @param name
-     * @param resolver
-     * @param metadata
-     * @param constraint
-     */
-    private async loadMorphOne (
-        name: string,
-        resolver: RelationResolver,
-        metadata: Extract<RelationMetadata, { type: 'morphOne' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const relatedByKey = await this.loadMorphChildren(metadata, constraint)
-
-        this.models.forEach(model => {
-            const bucket = relatedByKey.get(this.morphParentKey(model, metadata.localKey))
-
-            model.setLoadedRelation(name, bucket?.[0] ?? this.resolveSingleDefault(resolver, model))
-        })
-    }
-
-    /**
-     * Loads a polymorphic one-to-many ("morph many") relationship for the set of
-     * models. See {@link loadMorphChildren} for the batching strategy.
-     *
-     * @param name
-     * @param metadata
-     * @param constraint
-     */
-    private async loadMorphMany (
-        name: string,
-        metadata: Extract<RelationMetadata, { type: 'morphMany' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        const relatedByKey = await this.loadMorphChildren(metadata, constraint)
-
-        this.models.forEach(model => {
-            const bucket = relatedByKey.get(this.morphParentKey(model, metadata.localKey)) ?? []
-
-            model.setLoadedRelation(name, new ArkormCollection(bucket))
-        })
-    }
-
-    /**
-     * Batch-loads the children for a morphOne/morphMany relationship. Parents are
-     * grouped by their own morph type (constructor name), so each distinct type
-     * runs a single query constrained by `idColumn IN (...) AND typeColumn = type`
-     * instead of one query per parent row. This also supports a heterogeneous
-     * parent set (e.g. the result of a nested load after a morphTo).
-     *
-     * @param metadata
-     * @param constraint
-     * @returns A map of `"{type}:{localKey}" -> related[]`.
-     */
-    private async loadMorphChildren (
-        metadata: Extract<RelationMetadata, { type: 'morphOne' | 'morphMany' }>,
-        constraint?: EagerLoadConstraint,
-    ): Promise<Map<string, unknown[]>> {
-        const keysByType = new Map<string, unknown[]>()
-        const seenByType = new Map<string, Set<string>>()
-
-        this.models.forEach(model => {
-            const morphType = this.morphTypeOf(model)
-            const localValue = model.getAttribute(metadata.localKey)
-            if (morphType.length === 0 || localValue == null)
-                return
-
-            const keys = keysByType.get(morphType) ?? []
-            const seen = seenByType.get(morphType) ?? new Set<string>()
-            const lookupKey = this.toLookupKey(localValue)
-
-            if (!seen.has(lookupKey)) {
-                seen.add(lookupKey)
-                keys.push(localValue)
-            }
-
-            keysByType.set(morphType, keys)
-            seenByType.set(morphType, seen)
-        })
-
-        const relatedByKey = new Map<string, unknown[]>()
-
-        await Promise.all(Array.from(keysByType.entries()).map(async ([morphType, keys]) => {
-            let query = metadata.relatedModel.query()
-                .whereIn(metadata.morphIdColumn as never, keys as never[])
-                .where({ [metadata.morphTypeColumn]: morphType } as never)
-
-            query = this.applyConstraint(query, constraint)
-
-            const relatedModels = (await query.get()).all()
-            relatedModels.forEach(related => {
-                const value = this.readModelAttribute(related, metadata.morphIdColumn)
-                if (value == null)
-                    return
-
-                const key = `${morphType}:${this.toLookupKey(value)}`
-                const bucket = relatedByKey.get(key) ?? []
-                bucket.push(related)
-                relatedByKey.set(key, bucket)
-            })
-        }))
-
-        return relatedByKey
-    }
-
-    private morphParentKey (model: EagerLoadableModel, localKey: string): string {
-        return `${this.morphTypeOf(model)}:${this.toLookupKey(model.getAttribute(localKey))}`
-    }
-
-    private morphTypeOf (model: EagerLoadableModel): string {
-        return (model as { constructor?: { name?: string } }).constructor?.name ?? ''
-    }
-
-    /**
-     * Fallback method to load relationships individually for each model when the
-     * relationship type is not supported for set-based loading.
-     *
-     * @param name
-     * @param resolver
-     * @param constraint
-     */
-    private async loadIndividually (
-        name: string,
-        resolver: RelationResolver,
-        constraint?: EagerLoadConstraint,
-    ): Promise<void> {
-        await Promise.all(this.models.map(async model => {
-            const relation = resolver.call(model)
-            if (constraint) {
-                relation.constrain(
-                    constraint as (query: QueryBuilder<unknown>) => QueryBuilder<unknown> | void,
-                )
-            }
-
-            model.setLoadedRelation(name, await relation.getResults())
-        }))
-    }
-
-    /**
-     * Applies an eager load constraint to a query if provided.
-     * 
-     * @param query 
-     * @param constraint 
-     * @returns 
-     */
-    private applyConstraint<TModel> (
-        query: QueryBuilder<TModel>,
-        constraint?: EagerLoadConstraint,
-    ): QueryBuilder<TModel> {
-        if (!constraint)
-            return query
-
-        const constrained = constraint(query)
-
-        return (constrained ?? query) as QueryBuilder<TModel>
-    }
-
-    /**
-     * Collects unique values from the set of models based on a resolver function, which 
-     * is used to extract the value from each model.
-     * 
-     * @param resolve   A function that takes a model and returns the value to be collected.
-     * @returns         An array of unique values.
-     */
-    private collectUniqueKeys (resolve: (model: EagerLoadableModel) => unknown): unknown[] {
-        const seen = new Set<string>()
-        const values: unknown[] = []
-
-        this.models.forEach(model => {
-            const value = resolve(model)
-            if (value == null)
-                return
-
-            const lookupKey = this.toLookupKey(value)
-            if (seen.has(lookupKey))
-                return
-
-            seen.add(lookupKey)
-            values.push(value)
-        })
-
-        return values
-    }
-
-    /**
-     * Collects unique values from an array of database rows based on a specified key, which 
-     * is used to extract the value from each row.
-     * 
-     * @param rows  An array of database rows.
-     * @param key   The key to extract values from each row.
-     * @returns     An array of unique values.
-     */
-    private collectUniqueRowValues (rows: Array<Record<string, unknown>>, key: string): unknown[] {
-        const seen = new Set<string>()
-        const values: unknown[] = []
-
-        rows.forEach(row => {
-            const value = row[key]
-            if (value == null)
-                return
-
-            const lookupKey = this.toLookupKey(value)
-            if (seen.has(lookupKey))
-                return
-
-            seen.add(lookupKey)
-            values.push(value)
-        })
-
-        return values
-    }
-
-    /**
-     * Loads a "belongs to many" relationship for the set of models.
-     * 
-     * @returns 
-     */
-    private createRelationTableLoader (): RelationTableLoader {
-        return new RelationTableLoader(this.resolveAdapter())
-    }
-
-    /**
-     * Loads a "belongs to many" relationship for the set of models.
-     * 
-     * @returns 
-     */
-    private resolveAdapter (): DatabaseAdapter {
-        const firstModel = this.models[0] as Record<string, unknown>
-        const adapter = (firstModel.constructor as { getAdapter?: () => unknown }).getAdapter?.()
-
-        if (!adapter)
-            throw new Error('Set-based eager loading requires a configured adapter.')
-
-        return adapter as DatabaseAdapter
-    }
-
-    /**
-     * Reads an attribute value from a model using the getAttribute method, which is used 
-     * to access model attributes in a way that is compatible with Arkorm's internal model structure.
-     * 
-     * @param model The model to read the attribute from.
-     * @param key The name of the attribute to read.
-     * @returns 
-     */
-    private readModelAttribute (model: unknown, key: string): unknown {
-        return (model as { getAttribute?: (attribute: string) => unknown }).getAttribute?.(key)
-    }
-
-    /**
-     * Resolves the default result for a relationship when no related models are found. 
-     * 
-     * @param resolver 
-     * @param model 
-     * @returns 
-     */
-    private resolveSingleDefault (resolver: RelationResolver, model: EagerLoadableModel): unknown {
-        const relation = resolver.call(model) as Relation<unknown> & { resolveDefaultResult?: () => unknown }
-
-        return relation.resolveDefaultResult?.() ?? null
-    }
-
-    /**
-     * Generates a unique lookup key for a given value, which is used to store and retrieve 
-     * values in maps during the eager loading process.
-     * 
-     * @param value     The value to generate a lookup key for.
-     * @returns         A unique string representing the value.
-     */
-    private toLookupKey (value: unknown): string {
-        if (value instanceof Date)
-            return `date:${value.toISOString()}`
-
-        return `${typeof value}:${String(value)}`
-    }
+    return relation.resolveDefaultResult?.() ?? null
+  }
+
+  /**
+   * Generates a unique lookup key for a given value, which is used to store and retrieve
+   * values in maps during the eager loading process.
+   *
+   * @param value     The value to generate a lookup key for.
+   * @returns         A unique string representing the value.
+   */
+  private toLookupKey(value: unknown): string {
+    if (value instanceof Date) return `date:${value.toISOString()}`
+
+    return `${typeof value}:${String(value)}`
+  }
 }

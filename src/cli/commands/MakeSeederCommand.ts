@@ -8,24 +8,23 @@ import { Command } from '@h3ravel/musket'
  * @since 0.1.0
  */
 export class MakeSeederCommand extends Command<CliApp> {
-    protected signature = `make:seeder
+  protected signature = `make:seeder
         {name : Name of the seeder to create}
         {--f|force : Overwrite existing file}
     `
 
-    protected description = 'Create a new seeder class'
+  protected description = 'Create a new seeder class'
 
-    /**
-     * Command handler for the make:seeder command.
-     */
-    async handle () {
-        this.app.command = this
-        const name = this.argument('name')
-        if (!name)
-            return void this.error('Error: Name argument is required.')
+  /**
+   * Command handler for the make:seeder command.
+   */
+  async handle() {
+    this.app.command = this
+    const name = this.argument('name')
+    if (!name) return void this.error('Error: Name argument is required.')
 
-        const created = this.app.makeSeeder(name, this.options())
+    const created = this.app.makeSeeder(name, this.options())
 
-        this.success(`Created seeder: ${this.app.formatPathForLog(created.path)}`)
-    }
+    this.success(`Created seeder: ${this.app.formatPathForLog(created.path)}`)
+  }
 }

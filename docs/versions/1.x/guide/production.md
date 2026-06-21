@@ -16,7 +16,7 @@ Example with tsdown:
 // tsdown.config.js
 export default {
   unbundle: true,
-};
+}
 ```
 
 ## 2. Runtime config
@@ -29,7 +29,7 @@ export default defineConfig({
     seeders: './database/seeders',
     buildOutput: './dist',
   },
-});
+})
 ```
 
 ## 3. Generated extension policy

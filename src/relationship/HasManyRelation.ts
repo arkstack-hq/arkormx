@@ -6,54 +6,54 @@ import { Relation } from './Relation'
 
 /**
  * Defines a one-to-many relationship.
- * 
+ *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
 export class HasManyRelation<TParent, TRelated> extends Relation<TRelated> {
-    public constructor(
-        private readonly parent: TParent & { getAttribute: (key: string) => unknown },
-        private readonly related: RelationshipModelStatic,
-        private readonly foreignKey: string,
-        private readonly localKey: string,
-    ) {
-        super()
+  public constructor(
+    private readonly parent: TParent & { getAttribute: (key: string) => unknown },
+    private readonly related: RelationshipModelStatic,
+    private readonly foreignKey: string,
+    private readonly localKey: string,
+  ) {
+    super()
+  }
+
+  /**
+   * Build the relationship query.
+   *
+   * @returns
+   */
+  public async getQuery(): Promise<QueryBuilder<TRelated>> {
+    const localValue = this.parent.getAttribute(this.localKey)
+
+    return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+  }
+
+  protected override getCreationAttributes(): Record<string, unknown> {
+    return {
+      [this.foreignKey]: this.parent.getAttribute(this.localKey),
     }
+  }
 
-    /**
-     * Build the relationship query.
-     *
-     * @returns
-     */
-    public async getQuery (): Promise<QueryBuilder<TRelated>> {
-        const localValue = this.parent.getAttribute(this.localKey)
-
-        return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+  public getMetadata(): HasManyRelationMetadata {
+    return {
+      type: 'hasMany',
+      relatedModel: this.related,
+      foreignKey: this.foreignKey,
+      localKey: this.localKey,
     }
+  }
 
-    protected override getCreationAttributes (): Record<string, unknown> {
-        return {
-            [this.foreignKey]: this.parent.getAttribute(this.localKey),
-        }
-    }
+  /**
+   * Fetches the related models for this relationship.
+   *
+   * @returns
+   */
+  public async getResults(): Promise<ArkormCollection<TRelated>> {
+    const query = await this.getQuery()
 
-    public getMetadata (): HasManyRelationMetadata {
-        return {
-            type: 'hasMany',
-            relatedModel: this.related,
-            foreignKey: this.foreignKey,
-            localKey: this.localKey,
-        }
-    }
-
-    /**
-     * Fetches the related models for this relationship.
-     * 
-     * @returns 
-     */
-    public async getResults (): Promise<ArkormCollection<TRelated>> {
-        const query = await this.getQuery()
-
-        return query.get()
-    }
+    return query.get()
+  }
 }

@@ -6,18 +6,18 @@ Arkorm supports relationships with eager loading and constrained relationship qu
 
 ```ts
 class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   posts() {
-    return this.hasMany(Post, 'authorId', 'id');
+    return this.hasMany(Post, 'authorId', 'id')
   }
 }
 
 class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
+  protected static override delegate = 'posts'
 
   author() {
-    return this.belongsTo(User, 'authorId', 'id');
+    return this.belongsTo(User, 'authorId', 'id')
   }
 }
 ```
@@ -42,10 +42,10 @@ Use `hasOne` when the current model owns exactly one related record.
 
 ```ts
 class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   profile() {
-    return this.hasOne(Profile, 'userId', 'id');
+    return this.hasOne(Profile, 'userId', 'id')
   }
 }
 ```
@@ -56,10 +56,10 @@ Use `hasMany` when the current model owns many related records.
 
 ```ts
 class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   posts() {
-    return this.hasMany(Post, 'authorId', 'id');
+    return this.hasMany(Post, 'authorId', 'id')
   }
 }
 ```
@@ -70,10 +70,10 @@ Use `belongsTo` on the child side that contains the foreign key.
 
 ```ts
 class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
+  protected static override delegate = 'posts'
 
   author() {
-    return this.belongsTo(User, 'authorId', 'id');
+    return this.belongsTo(User, 'authorId', 'id')
   }
 }
 ```
@@ -84,17 +84,10 @@ Use `belongsToMany` for many-to-many relations through a pivot table.
 
 ```ts
 class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   roles() {
-    return this.belongsToMany(
-      Role,
-      'roleUsers',
-      'userId',
-      'roleId',
-      'id',
-      'id',
-    );
+    return this.belongsToMany(Role, 'roleUsers', 'userId', 'roleId', 'id', 'id')
   }
 }
 ```
@@ -105,10 +98,10 @@ Use `hasOneThrough` to access one distant relation via an intermediate model.
 
 ```ts
 class Mechanic extends Model<'mechanics'> {
-  protected static override delegate = 'mechanics';
+  protected static override delegate = 'mechanics'
 
   carOwner() {
-    return this.hasOneThrough(Owner, Car, 'mechanicId', 'carId', 'id', 'id');
+    return this.hasOneThrough(Owner, Car, 'mechanicId', 'carId', 'id', 'id')
   }
 }
 ```
@@ -119,10 +112,10 @@ Use `hasManyThrough` to access many distant relations via an intermediate model.
 
 ```ts
 class Country extends Model<'countries'> {
-  protected static override delegate = 'countries';
+  protected static override delegate = 'countries'
 
   posts() {
-    return this.hasManyThrough(Post, User, 'countryId', 'authorId', 'id', 'id');
+    return this.hasManyThrough(Post, User, 'countryId', 'authorId', 'id', 'id')
   }
 }
 ```
@@ -133,10 +126,10 @@ Use `morphOne` for one polymorphic relation.
 
 ```ts
 class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   avatar() {
-    return this.morphOne(Image, 'imageable', 'id');
+    return this.morphOne(Image, 'imageable', 'id')
   }
 }
 ```
@@ -147,10 +140,10 @@ Use `morphMany` for many polymorphic related records.
 
 ```ts
 class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
+  protected static override delegate = 'posts'
 
   comments() {
-    return this.morphMany(Comment, 'commentable', 'id');
+    return this.morphMany(Comment, 'commentable', 'id')
   }
 }
 ```
@@ -161,18 +154,10 @@ Use `morphToMany` for polymorphic many-to-many relation through a pivot table.
 
 ```ts
 class Post extends Model<'posts'> {
-  protected static override delegate = 'posts';
+  protected static override delegate = 'posts'
 
   tags() {
-    return this.morphToMany(
-      Tag,
-      'taggable',
-      'taggables',
-      'taggableId',
-      'tagId',
-      'id',
-      'id',
-    );
+    return this.morphToMany(Tag, 'taggable', 'taggables', 'taggableId', 'tagId', 'id', 'id')
   }
 }
 ```
@@ -190,13 +175,13 @@ Use it when a missing related record should resolve to a fallback model instead 
 
 ```ts
 class Profile extends Model<'profiles'> {
-  protected static override delegate = 'profiles';
+  protected static override delegate = 'profiles'
 
   user() {
     return this.belongsTo(User, 'userId').withDefault({
       name: 'Guest User',
       email: 'guest@example.com',
-    });
+    })
   }
 }
 ```
@@ -208,43 +193,43 @@ class Profile extends Model<'profiles'> {
 - A callback that returns either of the above
 
 ```ts
-user.profile().withDefault(new Profile({ bio: 'Not provided yet' }));
+user.profile().withDefault(new Profile({ bio: 'Not provided yet' }))
 
 user.avatar().withDefault((parent) => ({
   url: `/images/default-${parent.getAttribute('id')}.png`,
-}));
+}))
 ```
 
 ## Eager loading
 
 ```ts
-await User.query().with('posts').get();
+await User.query().with('posts').get()
 
 await User.query()
   .with({
     posts: (query) => query.latest().limit(5),
   })
-  .get();
+  .get()
 ```
 
 ## Relationship filters and aggregates
 
 ```ts
-await User.query().has('posts').get();
+await User.query().has('posts').get()
 await User.query()
   .whereHas('posts', (q) => q.whereKey('published', true))
-  .get();
-await User.query().withCount('posts').get();
-await User.query().withExists('posts').get();
-await User.query().withSum('posts', 'views').get();
+  .get()
+await User.query().withCount('posts').get()
+await User.query().withExists('posts').get()
+await User.query().withSum('posts', 'views').get()
 ```
 
 ## Direct relation execution
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-await user.posts().get();
-await user.posts().first();
-await user.posts().where({ published: true }).getResults();
+await user.posts().get()
+await user.posts().first()
+await user.posts().where({ published: true }).getResults()
 ```

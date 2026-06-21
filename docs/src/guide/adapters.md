@@ -10,9 +10,9 @@ database layer.
 ### Kysely
 
 ```ts
-import { createKyselyAdapter } from 'arkormx';
+import { createKyselyAdapter } from 'arkormx'
 
-const adapter = createKyselyAdapter(db);
+const adapter = createKyselyAdapter(db)
 ```
 
 The optional second argument maps Arkorm table names to Kysely table names:
@@ -20,15 +20,15 @@ The optional second argument maps Arkorm table names to Kysely table names:
 ```ts
 const adapter = createKyselyAdapter(db, {
   users: 'app_users',
-});
+})
 ```
 
 ### Prisma compatibility
 
 ```ts
-import { createPrismaDatabaseAdapter } from 'arkormx';
+import { createPrismaDatabaseAdapter } from 'arkormx'
 
-const adapter = createPrismaDatabaseAdapter(prisma);
+const adapter = createPrismaDatabaseAdapter(prisma)
 ```
 
 The optional mapping resolves Arkorm table/delegate names to Prisma client
@@ -37,7 +37,7 @@ delegate names:
 ```ts
 const adapter = createPrismaDatabaseAdapter(prisma, {
   users: 'user',
-});
+})
 ```
 
 See [Prisma Compatibility](./prisma-compatibility.md) for its intentionally
@@ -76,40 +76,40 @@ A custom adapter implements the core read, write, count, and transaction
 methods:
 
 ```ts
-import type { DatabaseAdapter } from 'arkormx';
+import type { DatabaseAdapter } from 'arkormx'
 
 export class AppDatabaseAdapter implements DatabaseAdapter {
   readonly capabilities = {
     transactions: true,
     exists: true,
-  };
+  }
 
   async select(spec) {
-    return [];
+    return []
   }
 
   async selectOne(spec) {
-    return null;
+    return null
   }
 
   async insert(spec) {
-    return spec.values;
+    return spec.values
   }
 
   async update(spec) {
-    return null;
+    return null
   }
 
   async delete(spec) {
-    return null;
+    return null
   }
 
   async count(spec) {
-    return 0;
+    return 0
   }
 
   async transaction(callback, context) {
-    return callback(this);
+    return callback(this)
   }
 }
 ```
@@ -139,17 +139,17 @@ spec can contain:
 
 ```ts
 type SelectSpec = {
-  target: QueryTarget;
-  columns?: QuerySelectColumn[];
-  where?: QueryCondition;
-  orderBy?: QueryOrderBy[];
-  limit?: number;
-  offset?: number;
-  softDeleteMode?: 'exclude' | 'include' | 'only';
-  relationLoads?: RelationLoadPlan[];
-  relationAggregates?: RelationAggregateSpec[];
-  relationFilters?: RelationFilterSpec[];
-};
+  target: QueryTarget
+  columns?: QuerySelectColumn[]
+  where?: QueryCondition
+  orderBy?: QueryOrderBy[]
+  limit?: number
+  offset?: number
+  softDeleteMode?: 'exclude' | 'include' | 'only'
+  relationLoads?: RelationLoadPlan[]
+  relationAggregates?: RelationAggregateSpec[]
+  relationFilters?: RelationFilterSpec[]
+}
 ```
 
 Column mappings in `target.columns` use logical model attributes as keys and

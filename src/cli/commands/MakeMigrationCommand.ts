@@ -8,25 +8,24 @@ import { Command } from '@h3ravel/musket'
  * @since 0.1.0
  */
 export class MakeMigrationCommand extends Command<CliApp> {
-    protected signature = `make:migration
+  protected signature = `make:migration
         {name : Name of the migration to create}
     `
 
-    protected description = 'Create a new migration class file'
+  protected description = 'Create a new migration class file'
 
-    /**
-     * Command handler for the make:migration command.
-     * 
-     * @returns 
-     */
-    async handle () {
-        this.app.command = this
-        const name = this.argument('name')
-        if (!name)
-            return void this.error('Error: Name argument is required.')
+  /**
+   * Command handler for the make:migration command.
+   *
+   * @returns
+   */
+  async handle() {
+    this.app.command = this
+    const name = this.argument('name')
+    if (!name) return void this.error('Error: Name argument is required.')
 
-        const created = this.app.makeMigration(name)
+    const created = this.app.makeMigration(name)
 
-        this.success(`Created migration: ${this.app.formatPathForLog(created.path)}`)
-    }
+    this.success(`Created migration: ${this.app.formatPathForLog(created.path)}`)
+  }
 }

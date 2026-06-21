@@ -2,31 +2,25 @@ import { IModel, RouteBindableModel } from './types'
 
 import { Model } from 'arkormx'
 
-export async function resolveRouteBinding (
-    modelClass: IModel,
-    value: unknown,
-    field?: string,
-) {
-    const instance = new modelClass() as RouteBindableModel
+export async function resolveRouteBinding(modelClass: IModel, value: unknown, field?: string) {
+  const instance = new modelClass() as RouteBindableModel
 
-    if (typeof instance.resolveRouteBinding === 'function') {
-        return await instance.resolveRouteBinding(value, field)
-    }
+  if (typeof instance.resolveRouteBinding === 'function') {
+    return await instance.resolveRouteBinding(value, field)
+  }
 
-    const resolvedField = field ?? modelClass.getPrimaryKey()
+  const resolvedField = field ?? modelClass.getPrimaryKey()
 
-    return await modelClass
-        .query()
-        .where({ [resolvedField]: value as string | number })
-        .firstOrFail()
+  return await modelClass
+    .query()
+    .where({ [resolvedField]: value as string | number })
+    .firstOrFail()
 }
 
 export const isModel = (cls: any): cls is IModel => {
-    return typeof cls === 'function' && cls.prototype instanceof Model
+  return typeof cls === 'function' && cls.prototype instanceof Model
 }
 
 export const getRouteBindingName = (modelClass: IModel): string => {
-    return modelClass.name
-        .replace(/Model$/, '')
-        .replace(/^[A-Z]/, (letter) => letter.toLowerCase())
+  return modelClass.name.replace(/Model$/, '').replace(/^[A-Z]/, (letter) => letter.toLowerCase())
 }

@@ -1,1065 +1,1134 @@
-import { ArkormCollection, Model, PivotModel, QueryBuilder, RelationResolutionException, configureArkormRuntime, createPrismaDatabaseAdapter, registerModels } from '../../src'
-import { Comment, Image, Post, Profile, Role, Tag, User, setupCoreRuntime } from './helpers/core-fixtures'
+import {
+  ArkormCollection,
+  Model,
+  PivotModel,
+  QueryBuilder,
+  RelationResolutionException,
+  configureArkormRuntime,
+  createPrismaDatabaseAdapter,
+  registerModels,
+} from '../../src'
+import {
+  Comment,
+  Image,
+  Post,
+  Profile,
+  Role,
+  Tag,
+  User,
+  setupCoreRuntime,
+} from './helpers/core-fixtures'
 import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { createCoreClient } from './helpers/core-fixtures'
 
 describe('Model relationships', () => {
-    class MembershipPivot extends PivotModel {
-        public getAttribute (key: string): any {
-            return this.attributes[key]
-        }
+  class MembershipPivot extends PivotModel {
+    public getAttribute(key: string): any {
+      return this.attributes[key]
+    }
+  }
+
+  beforeEach(() => {
+    setupCoreRuntime()
+  })
+
+  it('supports one-to-one and one-to-many relations', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const profile = await user?.profile().getResults()
+    const posts = await user?.posts().getResults()
+
+    expect(profile).not.toBeNull()
+    expect(posts).toBeInstanceOf(ArkormCollection)
+    expect(Array.isArray(posts)).toBe(false)
+    expect((posts as ArkormCollection<Post>).all().length).toBe(2)
+  })
+
+  it('keeps strong typing for relationship collections', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    const posts = await user.posts().getResults()
+    expectTypeOf(posts.all()).toEqualTypeOf<Post[]>()
+
+    await user.load('posts')
+    const eagerLoadedPosts = user.getAttribute('posts')
+    expectTypeOf(eagerLoadedPosts.all()).toEqualTypeOf<Post[]>()
+  })
+
+  it('supports many-to-many and through relations', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const roles = await user?.roles().getResults()
+    const avatar = await user?.avatar().getResults()
+    const postImages = await user?.postImages().getResults()
+
+    expect((roles as ArkormCollection<Role>).all().length).toBe(2)
+    expect(avatar).not.toBeNull()
+    expect((postImages as ArkormCollection<Image>).all().length).toBe(2)
+  })
+
+  it('routes pivot and through table reads through the adapter seam', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+    const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+    User.setAdapter(adapter)
+    Role.setAdapter(adapter)
+    Image.setAdapter(adapter)
+    Tag.setAdapter(adapter)
+
+    try {
+      const user = await User.query().find(1)
+      expect(user).not.toBeNull()
+
+      await user?.roles().getResults()
+      await user?.postImages().getResults()
+      await user?.avatar().getResults()
+      await user?.tags().getResults()
+
+      expect(selectSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({ table: 'roleUsers' }),
+        }),
+      )
+      expect(selectSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({ table: 'posts' }),
+        }),
+      )
+      expect(selectSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({ table: 'taggables' }),
+        }),
+      )
+      expect(selectOneSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          target: expect.objectContaining({ table: 'profiles' }),
+        }),
+      )
+    } finally {
+      User.setAdapter(undefined)
+      Role.setAdapter(undefined)
+      Image.setAdapter(undefined)
+      Tag.setAdapter(undefined)
+    }
+  })
+
+  it('supports polymorphic relations', async () => {
+    registerModels(User, Post)
+
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const comments = await user?.comments().getResults()
+    const tags = await user?.tags().getResults()
+    const userComment = await Comment.query().find(1000)
+    const postComment = await Comment.query().find(1001)
+    const commentUser = await userComment?.commentable().getResults()
+    const commentPost = await postComment?.commentable().getResults()
+
+    expect((comments as ArkormCollection<Comment>).all().length).toBe(1)
+    expect((tags as ArkormCollection<Tag>).all().length).toBe(2)
+    expect(commentUser).toBeInstanceOf(User)
+    expect(commentUser?.getAttribute('id')).toBe(1)
+    expect(commentPost).toBeInstanceOf(Post)
+    expect(commentPost?.getAttribute('id')).toBe(100)
+  })
+
+  it('forwards query builder constraints through relations', async () => {
+    const user = await User.query().findOrFail(1)
+    const posts = await user
+      .posts()
+      .whereNot({ title: 'B' })
+      .whereNotIn('id', [999])
+      .orderBy({ id: 'asc' })
+      .select({ id: true })
+      .addSelect({ title: true })
+      .offset(0)
+      .limit(1)
+      .getResults()
+
+    expect(posts.all()).toHaveLength(1)
+    expect(posts.all()[0]?.getAttribute('title')).toBe('A')
+  })
+
+  it('accepts a model constructor for morph-to resolution', async () => {
+    const comment = await Comment.query().find(1000)
+    expect(comment).not.toBeNull()
+    if (!comment) throw new Error('Expected comment to exist.')
+
+    class ConstructorComment extends Model {
+      public commentable() {
+        return this.morphTo('commentable', User)
+      }
     }
 
-    beforeEach(() => {
-        setupCoreRuntime()
+    const constructorComment = ConstructorComment.hydrate(comment.getRawAttributes())
+    const related = await constructorComment.commentable().getResults()
+
+    expectTypeOf(related).toEqualTypeOf<User | null>()
+    expect(related).toBeInstanceOf(User)
+    expect(related?.getAttribute('id')).toBe(1)
+  })
+
+  it('exposes relation metadata from model relationship definitions', () => {
+    expect(User.getRelationMetadata('profile')).toMatchObject({
+      type: 'hasOne',
+      foreignKey: 'userId',
+      localKey: 'id',
+    })
+    expect(User.getRelationMetadata('roles')).toMatchObject({
+      type: 'belongsToMany',
+      throughTable: 'roleUsers',
+      foreignPivotKey: 'userId',
+      relatedPivotKey: 'roleId',
+      parentKey: 'id',
+      relatedKey: 'id',
+    })
+    expect(User.getRelationMetadata('avatar')).toMatchObject({
+      type: 'hasOneThrough',
+      throughTable: 'profiles',
+      firstKey: 'userId',
+      secondKey: 'profileId',
+      localKey: 'id',
+      secondLocalKey: 'id',
+    })
+    expect(User.getRelationMetadata('tags')).toMatchObject({
+      type: 'morphToMany',
+      throughTable: 'taggables',
+      morphName: 'taggable',
+      morphIdColumn: 'taggableId',
+      morphTypeColumn: 'taggableType',
+      relatedPivotKey: 'tagId',
+      parentKey: 'id',
+      relatedKey: 'id',
+    })
+    expect(Comment.getRelationMetadata('commentable')).toMatchObject({
+      type: 'morphTo',
+      morphName: 'commentable',
+      morphIdColumn: 'commentableId',
+      morphTypeColumn: 'commentableType',
+    })
+    expect(User.getRelationMetadata('missing')).toBeNull()
+  })
+
+  it('eager loads mixed morph-to model types', async () => {
+    registerModels(User, Post)
+
+    const comments = await Comment.query().with('commentable').orderBy({ id: 'asc' }).get()
+    const loaded = comments.all()
+
+    expect(loaded[0]?.getAttribute('commentable')).toBeInstanceOf(User)
+    expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
+  })
+
+  it('batches morph-to eager loading into one query per type', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+
+    registerModels(User, Post)
+    Comment.setAdapter(adapter)
+    User.setAdapter(adapter)
+    Post.setAdapter(adapter)
+
+    try {
+      const loaded = (await Comment.query().with('commentable').orderBy({ id: 'asc' }).get()).all()
+
+      expect(loaded[0]?.getAttribute('commentable')).toBeInstanceOf(User)
+      expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
+
+      const tableOf = (call: unknown[]) =>
+        (call[0] as { target?: { table?: string } }).target?.table
+      const usersSelects = selectSpy.mock.calls.filter((call) => tableOf(call) === 'users')
+      const postsSelects = selectSpy.mock.calls.filter((call) => tableOf(call) === 'posts')
+
+      // Set-based loading issues one batched `select` per distinct morph
+      // type. The old per-row fallback used `selectOne` per comment, so the
+      // `select` spy would not see these table reads at all.
+      expect(usersSelects).toHaveLength(1)
+      expect(postsSelects).toHaveLength(1)
+      expect(JSON.stringify(usersSelects[0]?.[0])).toContain('"in"')
+    } finally {
+      Comment.setAdapter(undefined)
+      User.setAdapter(undefined)
+      Post.setAdapter(undefined)
+    }
+  })
+
+  it('batches morph-many eager loading into a single query', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+
+    User.setAdapter(adapter)
+    Comment.setAdapter(adapter)
+
+    try {
+      const users = (await User.query().with('comments').orderBy({ id: 'asc' }).get()).all()
+      const first = users.find((user) => user.getAttribute('id') === 1)
+      const second = users.find((user) => user.getAttribute('id') === 2)
+
+      expect(
+        (first?.getAttribute('comments') as ArkormCollection<Comment>)
+          .all()
+          .map((comment) => comment.getAttribute('id')),
+      ).toEqual([1000])
+      expect((second?.getAttribute('comments') as ArkormCollection<Comment>).all()).toEqual([])
+
+      const tableOf = (call: unknown[]) =>
+        (call[0] as { target?: { table?: string } }).target?.table
+      const commentSelects = selectSpy.mock.calls.filter((call) => tableOf(call) === 'comments')
+
+      // Both users' comments load in one query (whereIn + type), not per row.
+      expect(commentSelects).toHaveLength(1)
+      expect(JSON.stringify(commentSelects[0]?.[0])).toContain('"in"')
+    } finally {
+      User.setAdapter(undefined)
+      Comment.setAdapter(undefined)
+    }
+  })
+
+  it('eager loads morph-one relations with a null default for misses', async () => {
+    registerModels(User, Post)
+
+    const users = (await User.query().with('primaryComment').orderBy({ id: 'asc' }).get()).all()
+
+    expect(
+      (
+        users
+          .find((user) => user.getAttribute('id') === 1)
+          ?.getAttribute('primaryComment') as Comment
+      )?.getAttribute('id'),
+    ).toBe(1000)
+    expect(
+      users.find((user) => user.getAttribute('id') === 2)?.getAttribute('primaryComment'),
+    ).toBeNull()
+  })
+
+  it('uses naming.case for inferred morph-to-many pivot columns', () => {
+    class SnakeTag extends Model {
+      protected static override table = 'tags'
+    }
+
+    class SnakePost extends Model {
+      public tags() {
+        return this.morphToMany(SnakeTag, 'taggable')
+      }
+    }
+
+    configureArkormRuntime(createCoreClient(), {
+      naming: {
+        case: 'snake',
+      },
     })
 
-    it('supports one-to-one and one-to-many relations', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const profile = await user?.profile().getResults()
-        const posts = await user?.posts().getResults()
-
-        expect(profile).not.toBeNull()
-        expect(posts).toBeInstanceOf(ArkormCollection)
-        expect(Array.isArray(posts)).toBe(false)
-        expect((posts as ArkormCollection<Post>).all().length).toBe(2)
+    expect(SnakePost.getRelationMetadata('tags')).toMatchObject({
+      throughTable: 'taggables',
+      morphName: 'taggable',
+      morphIdColumn: 'taggable_id',
+      morphTypeColumn: 'taggable_type',
+      relatedPivotKey: 'tag_id',
     })
 
-    it('keeps strong typing for relationship collections', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
+    class SnakeComment extends Model {
+      public commentable() {
+        return this.morphTo('commentable')
+      }
+    }
 
-        const posts = await user.posts().getResults()
-        expectTypeOf(posts.all()).toEqualTypeOf<Post[]>()
-
-        await user.load('posts')
-        const eagerLoadedPosts = user.getAttribute('posts')
-        expectTypeOf(eagerLoadedPosts.all()).toEqualTypeOf<Post[]>()
+    expect(SnakeComment.getRelationMetadata('commentable')).toMatchObject({
+      morphIdColumn: 'commentable_id',
+      morphTypeColumn: 'commentable_type',
     })
+  })
 
-    it('supports many-to-many and through relations', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
+  it('supports explicit polymorphic column and key overrides', () => {
+    class CustomTag extends Model {
+      protected static override table = 'tags'
+    }
 
-        const roles = await user?.roles().getResults()
-        const avatar = await user?.avatar().getResults()
-        const postImages = await user?.postImages().getResults()
+    class CustomComment extends Model {
+      protected static override table = 'comments'
+    }
 
-        expect((roles as ArkormCollection<Role>).all().length).toBe(2)
-        expect(avatar).not.toBeNull()
-        expect((postImages as ArkormCollection<Image>).all().length).toBe(2)
-    })
+    class CustomPost extends Model {
+      public primaryComment() {
+        return this.morphOne(CustomComment, 'commentable', 'ownerId', 'ownerType', 'uuid')
+      }
 
-    it('routes pivot and through table reads through the adapter seam', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+      public comments() {
+        return this.morphMany(CustomComment, 'commentable', 'ownerId', 'ownerType', 'uuid')
+      }
 
-        User.setAdapter(adapter)
-        Role.setAdapter(adapter)
-        Image.setAdapter(adapter)
-        Tag.setAdapter(adapter)
-
-        try {
-            const user = await User.query().find(1)
-            expect(user).not.toBeNull()
-
-            await user?.roles().getResults()
-            await user?.postImages().getResults()
-            await user?.avatar().getResults()
-            await user?.tags().getResults()
-
-            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
-                target: expect.objectContaining({ table: 'roleUsers' }),
-            }))
-            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
-                target: expect.objectContaining({ table: 'posts' }),
-            }))
-            expect(selectSpy).toHaveBeenCalledWith(expect.objectContaining({
-                target: expect.objectContaining({ table: 'taggables' }),
-            }))
-            expect(selectOneSpy).toHaveBeenCalledWith(expect.objectContaining({
-                target: expect.objectContaining({ table: 'profiles' }),
-            }))
-        } finally {
-            User.setAdapter(undefined)
-            Role.setAdapter(undefined)
-            Image.setAdapter(undefined)
-            Tag.setAdapter(undefined)
-        }
-    })
-
-    it('supports polymorphic relations', async () => {
-        registerModels(User, Post)
-
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const comments = await user?.comments().getResults()
-        const tags = await user?.tags().getResults()
-        const userComment = await Comment.query().find(1000)
-        const postComment = await Comment.query().find(1001)
-        const commentUser = await userComment?.commentable().getResults()
-        const commentPost = await postComment?.commentable().getResults()
-
-        expect((comments as ArkormCollection<Comment>).all().length).toBe(1)
-        expect((tags as ArkormCollection<Tag>).all().length).toBe(2)
-        expect(commentUser).toBeInstanceOf(User)
-        expect(commentUser?.getAttribute('id')).toBe(1)
-        expect(commentPost).toBeInstanceOf(Post)
-        expect(commentPost?.getAttribute('id')).toBe(100)
-    })
-
-    it('forwards query builder constraints through relations', async () => {
-        const user = await User.query().findOrFail(1)
-        const posts = await user.posts()
-            .whereNot({ title: 'B' })
-            .whereNotIn('id', [999])
-            .orderBy({ id: 'asc' })
-            .select({ id: true })
-            .addSelect({ title: true })
-            .offset(0)
-            .limit(1)
-            .getResults()
-
-        expect(posts.all()).toHaveLength(1)
-        expect(posts.all()[0]?.getAttribute('title')).toBe('A')
-    })
-
-    it('accepts a model constructor for morph-to resolution', async () => {
-        const comment = await Comment.query().find(1000)
-        expect(comment).not.toBeNull()
-        if (!comment)
-            throw new Error('Expected comment to exist.')
-
-        class ConstructorComment extends Model {
-            public commentable () {
-                return this.morphTo('commentable', User)
-            }
-        }
-
-        const constructorComment = ConstructorComment.hydrate(comment.getRawAttributes())
-        const related = await constructorComment.commentable().getResults()
-
-        expectTypeOf(related).toEqualTypeOf<User | null>()
-        expect(related).toBeInstanceOf(User)
-        expect(related?.getAttribute('id')).toBe(1)
-    })
-
-    it('exposes relation metadata from model relationship definitions', () => {
-        expect(User.getRelationMetadata('profile')).toMatchObject({
-            type: 'hasOne',
-            foreignKey: 'userId',
-            localKey: 'id',
-        })
-        expect(User.getRelationMetadata('roles')).toMatchObject({
-            type: 'belongsToMany',
-            throughTable: 'roleUsers',
-            foreignPivotKey: 'userId',
-            relatedPivotKey: 'roleId',
-            parentKey: 'id',
-            relatedKey: 'id',
-        })
-        expect(User.getRelationMetadata('avatar')).toMatchObject({
-            type: 'hasOneThrough',
-            throughTable: 'profiles',
-            firstKey: 'userId',
-            secondKey: 'profileId',
-            localKey: 'id',
-            secondLocalKey: 'id',
-        })
-        expect(User.getRelationMetadata('tags')).toMatchObject({
-            type: 'morphToMany',
-            throughTable: 'taggables',
-            morphName: 'taggable',
-            morphIdColumn: 'taggableId',
-            morphTypeColumn: 'taggableType',
-            relatedPivotKey: 'tagId',
-            parentKey: 'id',
-            relatedKey: 'id',
-        })
-        expect(Comment.getRelationMetadata('commentable')).toMatchObject({
-            type: 'morphTo',
-            morphName: 'commentable',
-            morphIdColumn: 'commentableId',
-            morphTypeColumn: 'commentableType',
-        })
-        expect(User.getRelationMetadata('missing')).toBeNull()
-    })
-
-    it('eager loads mixed morph-to model types', async () => {
-        registerModels(User, Post)
-
-        const comments = await Comment.query()
-            .with('commentable')
-            .orderBy({ id: 'asc' })
-            .get()
-        const loaded = comments.all()
-
-        expect(loaded[0]?.getAttribute('commentable')).toBeInstanceOf(User)
-        expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
-    })
-
-    it('batches morph-to eager loading into one query per type', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-
-        registerModels(User, Post)
-        Comment.setAdapter(adapter)
-        User.setAdapter(adapter)
-        Post.setAdapter(adapter)
-
-        try {
-            const loaded = (await Comment.query()
-                .with('commentable')
-                .orderBy({ id: 'asc' })
-                .get()).all()
-
-            expect(loaded[0]?.getAttribute('commentable')).toBeInstanceOf(User)
-            expect(loaded[1]?.getAttribute('commentable')).toBeInstanceOf(Post)
-
-            const tableOf = (call: unknown[]) => (call[0] as { target?: { table?: string } }).target?.table
-            const usersSelects = selectSpy.mock.calls.filter(call => tableOf(call) === 'users')
-            const postsSelects = selectSpy.mock.calls.filter(call => tableOf(call) === 'posts')
-
-            // Set-based loading issues one batched `select` per distinct morph
-            // type. The old per-row fallback used `selectOne` per comment, so the
-            // `select` spy would not see these table reads at all.
-            expect(usersSelects).toHaveLength(1)
-            expect(postsSelects).toHaveLength(1)
-            expect(JSON.stringify(usersSelects[0]?.[0])).toContain('"in"')
-        } finally {
-            Comment.setAdapter(undefined)
-            User.setAdapter(undefined)
-            Post.setAdapter(undefined)
-        }
-    })
-
-    it('batches morph-many eager loading into a single query', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-
-        User.setAdapter(adapter)
-        Comment.setAdapter(adapter)
-
-        try {
-            const users = (await User.query().with('comments').orderBy({ id: 'asc' }).get()).all()
-            const first = users.find(user => user.getAttribute('id') === 1)
-            const second = users.find(user => user.getAttribute('id') === 2)
-
-            expect((first?.getAttribute('comments') as ArkormCollection<Comment>).all()
-                .map(comment => comment.getAttribute('id'))).toEqual([1000])
-            expect((second?.getAttribute('comments') as ArkormCollection<Comment>).all()).toEqual([])
-
-            const tableOf = (call: unknown[]) => (call[0] as { target?: { table?: string } }).target?.table
-            const commentSelects = selectSpy.mock.calls.filter(call => tableOf(call) === 'comments')
-
-            // Both users' comments load in one query (whereIn + type), not per row.
-            expect(commentSelects).toHaveLength(1)
-            expect(JSON.stringify(commentSelects[0]?.[0])).toContain('"in"')
-        } finally {
-            User.setAdapter(undefined)
-            Comment.setAdapter(undefined)
-        }
-    })
-
-    it('eager loads morph-one relations with a null default for misses', async () => {
-        registerModels(User, Post)
-
-        const users = (await User.query().with('primaryComment').orderBy({ id: 'asc' }).get()).all()
-
-        expect((users.find(user => user.getAttribute('id') === 1)
-            ?.getAttribute('primaryComment') as Comment)?.getAttribute('id')).toBe(1000)
-        expect(users.find(user => user.getAttribute('id') === 2)
-            ?.getAttribute('primaryComment')).toBeNull()
-    })
-
-    it('uses naming.case for inferred morph-to-many pivot columns', () => {
-        class SnakeTag extends Model {
-            protected static override table = 'tags'
-        }
-
-        class SnakePost extends Model {
-            public tags () {
-                return this.morphToMany(SnakeTag, 'taggable')
-            }
-        }
-
-        configureArkormRuntime(createCoreClient(), {
-            naming: {
-                case: 'snake',
-            },
-        })
-
-        expect(SnakePost.getRelationMetadata('tags')).toMatchObject({
-            throughTable: 'taggables',
-            morphName: 'taggable',
-            morphIdColumn: 'taggable_id',
-            morphTypeColumn: 'taggable_type',
-            relatedPivotKey: 'tag_id',
-        })
-
-        class SnakeComment extends Model {
-            public commentable () {
-                return this.morphTo('commentable')
-            }
-        }
-
-        expect(SnakeComment.getRelationMetadata('commentable')).toMatchObject({
-            morphIdColumn: 'commentable_id',
-            morphTypeColumn: 'commentable_type',
-        })
-    })
-
-    it('supports explicit polymorphic column and key overrides', () => {
-        class CustomTag extends Model {
-            protected static override table = 'tags'
-        }
-
-        class CustomComment extends Model {
-            protected static override table = 'comments'
-        }
-
-        class CustomPost extends Model {
-            public primaryComment () {
-                return this.morphOne(CustomComment, 'commentable', 'ownerId', 'ownerType', 'uuid')
-            }
-
-            public comments () {
-                return this.morphMany(CustomComment, 'commentable', 'ownerId', 'ownerType', 'uuid')
-            }
-
-            public tags () {
-                return this.morphToMany(
-                    CustomTag,
-                    'taggable',
-                    'customTagLinks',
-                    'ownerId',
-                    'ownerType',
-                    'tagReferenceId',
-                    'uuid',
-                    'tagUuid',
-                )
-            }
-        }
-
-        class CustomMorphComment extends Model {
-            public commentable () {
-                return this.morphTo('commentable', 'ownerType', 'ownerId', 'uuid')
-            }
-        }
-
-        expect(CustomPost.getRelationMetadata('primaryComment')).toMatchObject({
-            morphName: 'commentable',
-            morphIdColumn: 'ownerId',
-            morphTypeColumn: 'ownerType',
-            localKey: 'uuid',
-        })
-        expect(CustomPost.getRelationMetadata('comments')).toMatchObject({
-            morphName: 'commentable',
-            morphIdColumn: 'ownerId',
-            morphTypeColumn: 'ownerType',
-            localKey: 'uuid',
-        })
-        expect(CustomPost.getRelationMetadata('tags')).toMatchObject({
-            morphName: 'taggable',
-            throughTable: 'customTagLinks',
-            morphIdColumn: 'ownerId',
-            morphTypeColumn: 'ownerType',
-            relatedPivotKey: 'tagReferenceId',
-            parentKey: 'uuid',
-            relatedKey: 'tagUuid',
-        })
-        expect(CustomMorphComment.getRelationMetadata('commentable')).toMatchObject({
-            morphName: 'commentable',
-            morphIdColumn: 'ownerId',
-            morphTypeColumn: 'ownerType',
-            ownerKey: 'uuid',
-        })
-    })
-
-    it('reports unregistered morph-to model types', async () => {
-        const comment = Comment.hydrate({
-            id: 1,
-            commentableId: 1,
-            commentableType: 'MissingModel',
-        })
-
-        await expect(comment.commentable().getResults()).rejects.toThrow(
-            'Morph model [MissingModel] is not registered.',
+      public tags() {
+        return this.morphToMany(
+          CustomTag,
+          'taggable',
+          'customTagLinks',
+          'ownerId',
+          'ownerType',
+          'tagReferenceId',
+          'uuid',
+          'tagUuid',
         )
+      }
+    }
+
+    class CustomMorphComment extends Model {
+      public commentable() {
+        return this.morphTo('commentable', 'ownerType', 'ownerId', 'uuid')
+      }
+    }
+
+    expect(CustomPost.getRelationMetadata('primaryComment')).toMatchObject({
+      morphName: 'commentable',
+      morphIdColumn: 'ownerId',
+      morphTypeColumn: 'ownerType',
+      localKey: 'uuid',
+    })
+    expect(CustomPost.getRelationMetadata('comments')).toMatchObject({
+      morphName: 'commentable',
+      morphIdColumn: 'ownerId',
+      morphTypeColumn: 'ownerType',
+      localKey: 'uuid',
+    })
+    expect(CustomPost.getRelationMetadata('tags')).toMatchObject({
+      morphName: 'taggable',
+      throughTable: 'customTagLinks',
+      morphIdColumn: 'ownerId',
+      morphTypeColumn: 'ownerType',
+      relatedPivotKey: 'tagReferenceId',
+      parentKey: 'uuid',
+      relatedKey: 'tagUuid',
+    })
+    expect(CustomMorphComment.getRelationMetadata('commentable')).toMatchObject({
+      morphName: 'commentable',
+      morphIdColumn: 'ownerId',
+      morphTypeColumn: 'ownerType',
+      ownerKey: 'uuid',
+    })
+  })
+
+  it('reports unregistered morph-to model types', async () => {
+    const comment = Comment.hydrate({
+      id: 1,
+      commentableId: 1,
+      commentableType: 'MissingModel',
     })
 
-    it('returns empty collections for through and many-to-many relations with no matches', async () => {
-        const user = await User.query().find(2)
-        expect(user).not.toBeNull()
+    await expect(comment.commentable().getResults()).rejects.toThrow(
+      'Morph model [MissingModel] is not registered.',
+    )
+  })
 
-        const roles = await user?.roles().getResults()
-        const postImages = await user?.postImages().getResults()
-        const tags = await user?.tags().getResults()
-        const avatar = await user?.avatar().getResults()
+  it('returns empty collections for through and many-to-many relations with no matches', async () => {
+    const user = await User.query().find(2)
+    expect(user).not.toBeNull()
 
-        expect(roles).toBeInstanceOf(ArkormCollection)
-        expect((roles as ArkormCollection<Role>).all()).toEqual([])
-        expect(postImages).toBeInstanceOf(ArkormCollection)
-        expect((postImages as ArkormCollection<Image>).all()).toEqual([])
-        expect(tags).toBeInstanceOf(ArkormCollection)
-        expect((tags as ArkormCollection<Tag>).all()).toEqual([])
-        expect(avatar).toBeNull()
+    const roles = await user?.roles().getResults()
+    const postImages = await user?.postImages().getResults()
+    const tags = await user?.tags().getResults()
+    const avatar = await user?.avatar().getResults()
+
+    expect(roles).toBeInstanceOf(ArkormCollection)
+    expect((roles as ArkormCollection<Role>).all()).toEqual([])
+    expect(postImages).toBeInstanceOf(ArkormCollection)
+    expect((postImages as ArkormCollection<Image>).all()).toEqual([])
+    expect(tags).toBeInstanceOf(ArkormCollection)
+    expect((tags as ArkormCollection<Tag>).all()).toEqual([])
+    expect(avatar).toBeNull()
+  })
+
+  it('supports withDefault for single-result relationships', async () => {
+    const missingProfileOwner = new Profile({ id: 99, userId: 999 })
+    const belongsToDefault = await missingProfileOwner
+      .user()
+      .withDefault({ name: 'Guest User', email: 'guest@example.com' })
+      .getResults()
+
+    expect(belongsToDefault).toBeInstanceOf(User)
+    expect((belongsToDefault as User).getAttribute('name')).toBe('Guest User')
+
+    const missingUser = new User({
+      id: 999,
+      name: 'Ghost',
+      email: 'ghost@example.com',
+      isActive: 0,
+    })
+    const hasOneDefault = await missingUser
+      .profile()
+      .withDefault(new Profile({ id: 500, userId: 999 }))
+      .getResults()
+
+    expect(hasOneDefault).toBeInstanceOf(Profile)
+    expect((hasOneDefault as Profile).getAttribute('id')).toBe(500)
+
+    const throughDefault = await missingUser
+      .avatar()
+      .withDefault(
+        (parent: User) =>
+          new Image({ id: 9010, profileId: parent.getAttribute('id'), url: 'fallback.png' }),
+      )
+      .getResults()
+
+    expect(throughDefault).toBeInstanceOf(Image)
+    expect((throughDefault as Image).getAttribute('url')).toBe('fallback.png')
+
+    const morphDefault = await missingUser
+      .primaryComment()
+      .withDefault((parent: User) => ({
+        body: `No comment for ${String(parent.getAttribute('name'))}`,
+      }))
+      .getResults()
+
+    expect(morphDefault).toBeInstanceOf(Comment)
+    expect((morphDefault as Comment).getAttribute('body')).toBe('No comment for Ghost')
+  })
+
+  it('supports belongsToMany make, create, save, and attach helpers', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    const draft = user.roles().make({ name: 'draft-role' })
+    expect(draft).toBeInstanceOf(Role)
+    expect(draft.getAttribute('name')).toBe('draft-role')
+
+    const created = await user
+      .roles()
+      .withPivot('approved')
+      .as('membership')
+      .create({ id: 502, name: 'reviewer' }, { approved: true })
+
+    expect(created).toBeInstanceOf(Role)
+    expect(created.getAttribute('name')).toBe('reviewer')
+    expect(created.getAttribute('membership')).toMatchObject({ approved: true })
+
+    const saved = await user.roles().save(new Role({ id: 503, name: 'auditor' }))
+    expect(saved).toBeInstanceOf(Role)
+    expect(saved.getAttribute('name')).toBe('auditor')
+
+    const batchCreated = await user.roles().createMany([{ id: 504, name: 'observer' }])
+    expect(batchCreated).toHaveLength(1)
+    expect(batchCreated[0]?.getAttribute('name')).toBe('observer')
+
+    const batchSaved = await user.roles().saveMany([new Role({ id: 505, name: 'publisher' })])
+    expect(batchSaved).toHaveLength(1)
+    expect(batchSaved[0]?.getAttribute('name')).toBe('publisher')
+
+    const attached = await user.roles().attach(500, { approved: false, priority: 99 })
+    expect(attached).toBe(1)
+
+    const attachedRole = await user
+      .roles()
+      .withPivot('priority', 'approved')
+      .as('membership')
+      .wherePivot('priority', 99)
+      .first()
+
+    expect(attachedRole).not.toBeNull()
+    expect(attachedRole?.getAttribute('name')).toBe('admin')
+    expect(attachedRole?.getAttribute('membership')).toMatchObject({
+      approved: false,
+      priority: 99,
     })
 
-    it('supports withDefault for single-result relationships', async () => {
-        const missingProfileOwner = new Profile({ id: 99, userId: 999 })
-        const belongsToDefault = await missingProfileOwner.user()
-            .withDefault({ name: 'Guest User', email: 'guest@example.com' })
-            .getResults()
+    const allRoles = await user.roles().orderBy({ id: 'asc' }).getResults()
+    expect(allRoles.all().map((role) => role.getAttribute('name'))).toEqual([
+      'admin',
+      'editor',
+      'reviewer',
+      'auditor',
+      'observer',
+      'publisher',
+    ])
+  })
 
-        expect(belongsToDefault).toBeInstanceOf(User)
-        expect((belongsToDefault as User).getAttribute('name')).toBe('Guest User')
+  it('supports query and persistence helpers on non-pivot relationships', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
 
-        const missingUser = new User({ id: 999, name: 'Ghost', email: 'ghost@example.com', isActive: 0 })
-        const hasOneDefault = await missingUser.profile()
-            .withDefault(new Profile({ id: 500, userId: 999 }))
-            .getResults()
+    const draft = user.posts().make({ id: 150, title: 'Draft' })
+    expect(draft).toBeInstanceOf(Post)
+    expect(draft.getAttribute('userId')).toBe(1)
 
-        expect(hasOneDefault).toBeInstanceOf(Profile)
-        expect((hasOneDefault as Profile).getAttribute('id')).toBe(500)
+    const drafts = user.posts().makeMany([
+      { id: 151, title: 'One' },
+      { id: 152, title: 'Two' },
+    ])
+    expect(drafts.map((post) => post.getAttribute('userId'))).toEqual([1, 1])
 
-        const throughDefault = await missingUser.avatar()
-            .withDefault((parent: User) => new Image({ id: 9010, profileId: parent.getAttribute('id'), url: 'fallback.png' }))
-            .getResults()
+    const created = await user.posts().create({ id: 153, title: 'Created' })
+    expect(created.getAttribute('userId')).toBe(1)
 
-        expect(throughDefault).toBeInstanceOf(Image)
-        expect((throughDefault as Image).getAttribute('url')).toBe('fallback.png')
+    const createdMany = await user.posts().createMany([
+      { id: 154, title: 'Created many A' },
+      { id: 155, title: 'Created many B' },
+    ])
+    expect(createdMany.map((post) => post.getAttribute('userId'))).toEqual([1, 1])
 
-        const morphDefault = await missingUser.primaryComment()
-            .withDefault((parent: User) => ({ body: `No comment for ${String(parent.getAttribute('name'))}` }))
-            .getResults()
+    const saved = await user.posts().save(new Post({ id: 156, title: 'Saved' }))
+    expect(saved.getAttribute('userId')).toBe(1)
 
-        expect(morphDefault).toBeInstanceOf(Comment)
-        expect((morphDefault as Comment).getAttribute('body')).toBe('No comment for Ghost')
+    const quietlySaved = await user.posts().saveQuietly(new Post({ id: 157, title: 'Quiet' }))
+    expect(quietlySaved.getAttribute('userId')).toBe(1)
+
+    const savedMany = await user.posts().saveMany([new Post({ id: 158, title: 'Saved many A' })])
+    expect(savedMany[0]?.getAttribute('userId')).toBe(1)
+
+    const quietlySavedMany = await user
+      .posts()
+      .saveManyQuietly([new Post({ id: 159, title: 'Saved many quietly A' })])
+    expect(quietlySavedMany[0]?.getAttribute('userId')).toBe(1)
+
+    expect(await user.posts().firstOrFail()).toBeInstanceOf(Post)
+    expect(
+      await user.posts().firstOr(() => new Post({ id: 999, title: 'fallback' })),
+    ).toBeInstanceOf(Post)
+    expect(await user.posts().find(153)).toBeInstanceOf(Post)
+    expect((await user.posts().findMany([153, 154])).all()).toHaveLength(2)
+    expect(await user.posts().findOr(153, () => new Post({ id: 999 }))).toBeInstanceOf(Post)
+    await expect(user.posts().findOrFail(9999)).rejects.toThrow()
+    expect(await user.posts().firstWhere('title', 'Created')).toBeInstanceOf(Post)
+
+    const firstOrNew = await user.posts().firstOrNew({ title: 'Not persisted' }, { id: 160 })
+    expect(firstOrNew.getAttribute('userId')).toBe(1)
+    expect(firstOrNew.getAttribute('title')).toBe('Not persisted')
+
+    const existingFirstOrCreate = await user
+      .posts()
+      .firstOrCreate({ title: 'Created' }, { id: 161 })
+    expect(existingFirstOrCreate.getAttribute('id')).toBe(153)
+
+    const missingFirstOrCreate = await user
+      .posts()
+      .firstOrCreate({ title: 'First or create' }, { id: 162 })
+    expect(missingFirstOrCreate.getAttribute('userId')).toBe(1)
+
+    const updated = await user.posts().updateOrCreate({ id: 153 }, { title: 'Updated title' })
+    expect(updated.getAttribute('title')).toBe('Updated title')
+
+    const updateCreated = await user
+      .posts()
+      .updateOrCreate({ id: 163 }, { title: 'Update created' })
+    expect(updateCreated.getAttribute('userId')).toBe(1)
+
+    const upserted = await user.posts().upsert([{ id: 164, title: 'Upserted' }], 'id')
+    expect(upserted).toBe(1)
+    expect((await user.posts().findOrFail(164)).getAttribute('userId')).toBe(1)
+
+    const page = await user.posts().orderBy({ id: 'asc' }).paginate(3, 1)
+    expect(page.data).toBeInstanceOf(ArkormCollection)
+    expect(page.data.all()).toHaveLength(3)
+  })
+
+  it('supports belongsToMany detach and sync helpers', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    const detached = await user.roles().detach(500)
+    expect(detached).toBe(1)
+
+    const rolesAfterDetach = await user.roles().orderBy({ id: 'asc' }).getResults()
+    expect(rolesAfterDetach.all().map((role) => role.getAttribute('name'))).toEqual(['editor'])
+
+    await user.roles().create({ id: 502, name: 'reviewer' }, { approved: true, priority: 2 })
+
+    const changes = await user.roles().sync({
+      500: { approved: true, priority: 10 },
+      502: { approved: false, priority: 20 },
     })
 
-    it('supports belongsToMany make, create, save, and attach helpers', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
+    expect(changes).toEqual({ attached: 1, detached: 1, updated: 1 })
 
-        const draft = user.roles().make({ name: 'draft-role' })
-        expect(draft).toBeInstanceOf(Role)
-        expect(draft.getAttribute('name')).toBe('draft-role')
+    const syncedRoles = await user
+      .roles()
+      .withPivot('approved', 'priority')
+      .as('membership')
+      .orderBy({ id: 'asc' })
+      .getResults()
 
-        const created = await user.roles()
-            .withPivot('approved')
-            .as('membership')
-            .create({ id: 502, name: 'reviewer' }, { approved: true })
-
-        expect(created).toBeInstanceOf(Role)
-        expect(created.getAttribute('name')).toBe('reviewer')
-        expect(created.getAttribute('membership')).toMatchObject({ approved: true })
-
-        const saved = await user.roles().save(new Role({ id: 503, name: 'auditor' }))
-        expect(saved).toBeInstanceOf(Role)
-        expect(saved.getAttribute('name')).toBe('auditor')
-
-        const batchCreated = await user.roles().createMany([
-            { id: 504, name: 'observer' },
-        ])
-        expect(batchCreated).toHaveLength(1)
-        expect(batchCreated[0]?.getAttribute('name')).toBe('observer')
-
-        const batchSaved = await user.roles().saveMany([
-            new Role({ id: 505, name: 'publisher' }),
-        ])
-        expect(batchSaved).toHaveLength(1)
-        expect(batchSaved[0]?.getAttribute('name')).toBe('publisher')
-
-        const attached = await user.roles().attach(500, { approved: false, priority: 99 })
-        expect(attached).toBe(1)
-
-        const attachedRole = await user.roles()
-            .withPivot('priority', 'approved')
-            .as('membership')
-            .wherePivot('priority', 99)
-            .first()
-
-        expect(attachedRole).not.toBeNull()
-        expect(attachedRole?.getAttribute('name')).toBe('admin')
-        expect(attachedRole?.getAttribute('membership')).toMatchObject({ approved: false, priority: 99 })
-
-        const allRoles = await user.roles().orderBy({ id: 'asc' }).getResults()
-        expect(allRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'editor', 'reviewer', 'auditor', 'observer', 'publisher'])
+    expect(syncedRoles.all().map((role) => role.getAttribute('name'))).toEqual([
+      'admin',
+      'reviewer',
+    ])
+    expect(syncedRoles.all()[0]?.getAttribute('membership')).toMatchObject({
+      approved: true,
+      priority: 10,
+    })
+    expect(syncedRoles.all()[1]?.getAttribute('membership')).toMatchObject({
+      approved: false,
+      priority: 20,
     })
 
-    it('supports query and persistence helpers on non-pivot relationships', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
+    const detachedAll = await user.roles().detach()
+    expect(detachedAll).toBe(2)
+    expect((await user.roles().getResults()).all()).toEqual([])
+  })
 
-        const draft = user.posts().make({ id: 150, title: 'Draft' })
-        expect(draft).toBeInstanceOf(Post)
-        expect(draft.getAttribute('userId')).toBe(1)
+  it('supports fluent relation query chaining', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
 
-        const drafts = user.posts().makeMany([{ id: 151, title: 'One' }, { id: 152, title: 'Two' }])
-        expect(drafts.map(post => post.getAttribute('userId'))).toEqual([1, 1])
+    const posts = await user
+      ?.posts()
+      .whereStartsWith('title', 'A')
+      .orderBy({ id: 'asc' })
+      .getResults()
 
-        const created = await user.posts().create({ id: 153, title: 'Created' })
-        expect(created.getAttribute('userId')).toBe(1)
+    const profile = await user?.profile().where({ id: 10 }).getResults()
 
-        const createdMany = await user.posts().createMany([
-            { id: 154, title: 'Created many A' },
-            { id: 155, title: 'Created many B' },
-        ])
-        expect(createdMany.map(post => post.getAttribute('userId'))).toEqual([1, 1])
+    const postsEndingWithB = await user?.posts().whereEndsWith('title', 'B').getResults()
 
-        const saved = await user.posts().save(new Post({ id: 156, title: 'Saved' }))
-        expect(saved.getAttribute('userId')).toBe(1)
+    const postsLike = await user?.posts().whereLike('title', 'A').getResults()
 
-        const quietlySaved = await user.posts().saveQuietly(new Post({ id: 157, title: 'Quiet' }))
-        expect(quietlySaved.getAttribute('userId')).toBe(1)
+    expect((posts as ArkormCollection<Post>).all().length).toBe(1)
+    expect((posts as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('A')
+    expect((postsEndingWithB as ArkormCollection<Post>).all().length).toBe(1)
+    expect((postsEndingWithB as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('B')
+    expect((postsLike as ArkormCollection<Post>).all().length).toBe(1)
+    expect((postsLike as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('A')
+    expect(profile).not.toBeNull()
+    expect((profile as Profile).getAttribute('id')).toBe(10)
+  })
 
-        const savedMany = await user.posts().saveMany([
-            new Post({ id: 158, title: 'Saved many A' }),
-        ])
-        expect(savedMany[0]?.getAttribute('userId')).toBe(1)
+  it('supports belongsToMany pivot helpers for filtering and attached pivot payloads', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
 
-        const quietlySavedMany = await user.posts().saveManyQuietly([
-            new Post({ id: 159, title: 'Saved many quietly A' }),
-        ])
-        expect(quietlySavedMany[0]?.getAttribute('userId')).toBe(1)
+    const roles = await user
+      ?.roles()
+      .withPivot('approved', 'priority', 'assignedAt', 'revokedAt')
+      .withTimestamps()
+      .as('membership')
+      .using(MembershipPivot)
+      .wherePivot('approved', true)
+      .wherePivotNotIn('roleId', [501])
+      .wherePivotBetween('priority', [1, 2])
+      .wherePivotNull('revokedAt')
+      .getResults()
 
-        expect(await user.posts().firstOrFail()).toBeInstanceOf(Post)
-        expect(await user.posts().firstOr(() => new Post({ id: 999, title: 'fallback' }))).toBeInstanceOf(Post)
-        expect(await user.posts().find(153)).toBeInstanceOf(Post)
-        expect((await user.posts().findMany([153, 154])).all()).toHaveLength(2)
-        expect(await user.posts().findOr(153, () => new Post({ id: 999 }))).toBeInstanceOf(Post)
-        await expect(user.posts().findOrFail(9999)).rejects.toThrow()
-        expect(await user.posts().firstWhere('title', 'Created')).toBeInstanceOf(Post)
+    expect(roles).toBeInstanceOf(ArkormCollection)
+    expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
+    expect((roles as ArkormCollection<Role>).all()[0]?.getAttribute('name')).toBe('admin')
 
-        const firstOrNew = await user.posts().firstOrNew({ title: 'Not persisted' }, { id: 160 })
-        expect(firstOrNew.getAttribute('userId')).toBe(1)
-        expect(firstOrNew.getAttribute('title')).toBe('Not persisted')
+    const membership = (roles as ArkormCollection<Role>)
+      .all()[0]
+      ?.getAttribute('membership') as MembershipPivot
+    expect(membership).toBeInstanceOf(MembershipPivot)
+    expect(membership.getAttribute('userId')).toBe(1)
+    expect(membership.getAttribute('roleId')).toBe(500)
+    expect(membership.getAttribute('approved')).toBe(true)
+    expect(membership.getAttribute('assignedAt')).toBe('2026-03-05T12:00:00.000Z')
+    expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
+    expect(membership.getAttribute('updatedAt')).toBe('2026-03-06T12:00:00.000Z')
+  })
 
-        const existingFirstOrCreate = await user.posts().firstOrCreate({ title: 'Created' }, { id: 161 })
-        expect(existingFirstOrCreate.getAttribute('id')).toBe(153)
+  it('supports negative and null pivot helpers on belongsToMany relations', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
 
-        const missingFirstOrCreate = await user.posts().firstOrCreate({ title: 'First or create' }, { id: 162 })
-        expect(missingFirstOrCreate.getAttribute('userId')).toBe(1)
+    const roles = await user
+      ?.roles()
+      .wherePivotNotBetween('priority', [1, 2])
+      .wherePivotNotNull('revokedAt')
+      .getResults()
 
-        const updated = await user.posts().updateOrCreate({ id: 153 }, { title: 'Updated title' })
-        expect(updated.getAttribute('title')).toBe('Updated title')
+    expect(roles).toBeInstanceOf(ArkormCollection)
+    expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
+    expect((roles as ArkormCollection<Role>).all()[0]?.getAttribute('name')).toBe('editor')
+  })
 
-        const updateCreated = await user.posts().updateOrCreate({ id: 163 }, { title: 'Update created' })
-        expect(updateCreated.getAttribute('userId')).toBe(1)
+  it('applies configured pivot metadata during eager loading for belongsToMany relations', async () => {
+    class UserWithMembershipRoles extends User {
+      public override roles() {
+        return this.belongsToMany(Role, 'roleUsers', 'userId', 'roleId')
+          .withPivot('approved')
+          .withTimestamps()
+          .as('membership')
+          .using(MembershipPivot)
+          .wherePivot('approved', true)
+      }
+    }
 
-        const upserted = await user.posts().upsert([
-            { id: 164, title: 'Upserted' },
-        ], 'id')
-        expect(upserted).toBe(1)
-        expect((await user.posts().findOrFail(164)).getAttribute('userId')).toBe(1)
+    const user = await UserWithMembershipRoles.query().find(1)
+    expect(user).not.toBeNull()
 
-        const page = await user.posts().orderBy({ id: 'asc' }).paginate(3, 1)
-        expect(page.data).toBeInstanceOf(ArkormCollection)
-        expect(page.data.all()).toHaveLength(3)
+    await user?.load('roles')
+
+    const roles = user?.getAttribute('roles') as ArkormCollection<Role>
+    expect(roles).toBeInstanceOf(ArkormCollection)
+    expect(roles.all()).toHaveLength(1)
+    expect(roles.all()[0]?.getAttribute('name')).toBe('admin')
+
+    const membership = roles.all()[0]?.getAttribute('membership') as MembershipPivot
+    expect(membership).toBeInstanceOf(MembershipPivot)
+    expect(membership.getAttribute('approved')).toBe(true)
+    expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
+    expect(membership.getAttribute('updatedAt')).toBe('2026-03-06T12:00:00.000Z')
+  })
+
+  it('supports relation get() and first() helpers', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const posts = await user?.posts().where({ title: 'A' }).get()
+    const firstPost = await user?.posts().orderBy({ id: 'asc' }).first()
+    const firstProfile = await user?.profile().first()
+
+    expect(posts).toBeInstanceOf(ArkormCollection)
+    expect((posts as ArkormCollection<Post>).all().length).toBe(1)
+    expect(firstPost).not.toBeNull()
+    expect((firstPost as Post).getAttribute('title')).toBe('A')
+    expect(firstProfile).not.toBeNull()
+    expect((firstProfile as Profile).getAttribute('id')).toBe(10)
+  })
+
+  it('supports getQuery() for continued query chaining', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const postsQuery = await user?.posts().getQuery()
+    const posts = await postsQuery?.where({ title: 'B' }).get()
+
+    expect(posts).toBeInstanceOf(ArkormCollection)
+    expect((posts as ArkormCollection<Post>).all()).toHaveLength(1)
+    expect((posts as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('B')
+
+    const rolesQuery = await user?.roles().getQuery()
+    const firstRole = await rolesQuery?.orderBy({ id: 'desc' }).first()
+
+    expect(firstRole).not.toBeNull()
+    expect((firstRole as Role).getAttribute('name')).toBe('editor')
+  })
+
+  it('preserves configured pivot payloads when executing terminal methods from getQuery()', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const rolesQuery = await user
+      ?.roles()
+      .withPivot('approved', 'priority')
+      .withTimestamps()
+      .as('membership')
+      .using(MembershipPivot)
+      .wherePivot('approved', true)
+      .getQuery()
+
+    const roles = await rolesQuery?.get()
+    expect(roles).toBeInstanceOf(ArkormCollection)
+    expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
+
+    const membership = (roles as ArkormCollection<Role>)
+      .all()[0]
+      ?.getAttribute('membership') as MembershipPivot
+    expect(membership).toBeInstanceOf(MembershipPivot)
+    expect(membership.getAttribute('approved')).toBe(true)
+    expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
+
+    const paginated = await rolesQuery?.clone().paginate(10, 1)
+    expect(paginated?.data.all()).toHaveLength(1)
+
+    const paginatedMembership = paginated?.data
+      .all()[0]
+      ?.getAttribute('membership') as MembershipPivot
+    expect(paginatedMembership).toBeInstanceOf(MembershipPivot)
+    expect(paginatedMembership.getAttribute('priority')).toBe(1)
+  })
+
+  it('supports relation exists() and count() helpers', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+
+    const postCount = await user?.posts().count()
+    const hasAvatar = await user?.avatar().exists()
+    const hasNoMissingProfile = await user?.profile().doesntExist()
+    const roleCount = await user?.roles().count()
+
+    expect(postCount).toBe(2)
+    expect(hasAvatar).toBe(true)
+    expect(hasNoMissingProfile).toBe(false)
+    expect(roleCount).toBe(2)
+
+    const missingUser = new User({
+      id: 999,
+      name: 'Ghost',
+      email: 'ghost@example.com',
+      isActive: 0,
+    })
+    const missingProfileCount = await missingUser.profile().withDefault({ id: 500 }).count()
+    const missingProfileExists = await missingUser.profile().withDefault({ id: 500 }).exists()
+    const missingProfileDoesntExist = await missingUser
+      .profile()
+      .withDefault({ id: 500 })
+      .doesntExist()
+
+    expect(missingProfileCount).toBe(0)
+    expect(missingProfileExists).toBe(false)
+    expect(missingProfileDoesntExist).toBe(true)
+  })
+
+  it('supports constrained eager loading callbacks', async () => {
+    const user = await User.query()
+      .with({
+        posts: (query) => (query as QueryBuilder<Post>).where({ title: 'A' }),
+      })
+      .find(1)
+
+    expect(user).not.toBeNull()
+    const posts = user?.getAttribute('posts') as ArkormCollection<Post>
+    expect(posts).toBeInstanceOf(ArkormCollection)
+    expect(posts.all().length).toBe(1)
+  })
+
+  it('batches hasOne and hasMany eager loads across parent models', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+    const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+    User.setAdapter(adapter)
+    Profile.setAdapter(adapter)
+    Post.setAdapter(adapter)
+
+    try {
+      const users = await User.query().with(['profile', 'posts']).orderBy({ id: 'asc' }).get()
+
+      expect(users.all()).toHaveLength(2)
+      expect(selectSpy).toHaveBeenCalledTimes(3)
+      expect(selectOneSpy).not.toHaveBeenCalled()
+
+      const firstUser = users.all()[0] as User
+      expect(firstUser.getAttribute('profile')).toBeInstanceOf(Profile)
+      expect((firstUser.getAttribute('posts') as ArkormCollection<Post>).all()).toHaveLength(2)
+    } finally {
+      User.setAdapter(undefined)
+      Profile.setAdapter(undefined)
+      Post.setAdapter(undefined)
+    }
+  })
+
+  it('uses adapter-owned eager loading when the adapter advertises relationLoads support', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+    const loadRelationsSpy = vi.spyOn(adapter, 'loadRelations').mockImplementation(async (spec) => {
+      spec.models.forEach((model) => {
+        ;(model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation(
+          'posts',
+          new ArkormCollection([]),
+        )
+      })
     })
 
-    it('supports belongsToMany detach and sync helpers', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
-
-        const detached = await user.roles().detach(500)
-        expect(detached).toBe(1)
-
-        const rolesAfterDetach = await user.roles().orderBy({ id: 'asc' }).getResults()
-        expect(rolesAfterDetach.all().map(role => role.getAttribute('name'))).toEqual(['editor'])
-
-        await user.roles().create({ id: 502, name: 'reviewer' }, { approved: true, priority: 2 })
-
-        const changes = await user.roles().sync({
-            500: { approved: true, priority: 10 },
-            502: { approved: false, priority: 20 },
-        })
-
-        expect(changes).toEqual({ attached: 1, detached: 1, updated: 1 })
-
-        const syncedRoles = await user.roles()
-            .withPivot('approved', 'priority')
-            .as('membership')
-            .orderBy({ id: 'asc' })
-            .getResults()
-
-        expect(syncedRoles.all().map(role => role.getAttribute('name'))).toEqual(['admin', 'reviewer'])
-        expect(syncedRoles.all()[0]?.getAttribute('membership')).toMatchObject({ approved: true, priority: 10 })
-        expect(syncedRoles.all()[1]?.getAttribute('membership')).toMatchObject({ approved: false, priority: 20 })
-
-        const detachedAll = await user.roles().detach()
-        expect(detachedAll).toBe(2)
-        expect((await user.roles().getResults()).all()).toEqual([])
+    Object.defineProperty(adapter, 'capabilities', {
+      value: {
+        ...(adapter.capabilities ?? {}),
+        relationLoads: true,
+      },
+      configurable: true,
     })
 
-    it('supports fluent relation query chaining', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
+    User.setAdapter(adapter)
 
-        const posts = await user?.posts()
-            .whereStartsWith('title', 'A')
-            .orderBy({ id: 'asc' })
-            .getResults()
+    try {
+      const users = await User.query().with('posts').orderBy({ id: 'asc' }).get()
 
-        const profile = await user?.profile()
-            .where({ id: 10 })
-            .getResults()
+      expect(users.all()).toHaveLength(2)
+      expect(selectSpy).toHaveBeenCalledTimes(1)
+      expect(loadRelationsSpy).toHaveBeenCalledTimes(1)
+      expect(loadRelationsSpy).toHaveBeenCalledWith(
+        expect.objectContaining({
+          relations: [{ relation: 'posts', relationLoads: undefined }],
+        }),
+      )
+      expect((users.all()[0]?.getAttribute('posts') as ArkormCollection<Post>).all()).toHaveLength(
+        0,
+      )
+    } finally {
+      User.setAdapter(undefined)
+    }
+  })
 
-        const postsEndingWithB = await user?.posts()
-            .whereEndsWith('title', 'B')
-            .getResults()
+  it('batches belongsTo eager loads across parent models', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+    const selectOneSpy = vi.spyOn(adapter, 'selectOne')
 
-        const postsLike = await user?.posts()
-            .whereLike('title', 'A')
-            .getResults()
+    User.setAdapter(adapter)
+    Profile.setAdapter(adapter)
 
-        expect((posts as ArkormCollection<Post>).all().length).toBe(1)
-        expect((posts as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('A')
-        expect((postsEndingWithB as ArkormCollection<Post>).all().length).toBe(1)
-        expect((postsEndingWithB as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('B')
-        expect((postsLike as ArkormCollection<Post>).all().length).toBe(1)
-        expect((postsLike as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('A')
-        expect(profile).not.toBeNull()
-        expect((profile as Profile).getAttribute('id')).toBe(10)
+    try {
+      const profiles = await Profile.query().with('user').orderBy({ id: 'asc' }).get()
+
+      expect(profiles.all()).toHaveLength(2)
+      expect(selectSpy).toHaveBeenCalledTimes(2)
+      expect(selectOneSpy).not.toHaveBeenCalled()
+
+      const firstProfile = profiles.all()[0] as Profile
+      expect(firstProfile.getAttribute('user')).toBeInstanceOf(User)
+    } finally {
+      User.setAdapter(undefined)
+      Profile.setAdapter(undefined)
+    }
+  })
+
+  it('batches belongsToMany eager loads across parent models', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+    const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+    User.setAdapter(adapter)
+    Role.setAdapter(adapter)
+
+    try {
+      const users = await User.query().with('roles').orderBy({ id: 'asc' }).get()
+
+      expect(users.all()).toHaveLength(2)
+      expect(selectSpy).toHaveBeenCalledTimes(3)
+      expect(selectOneSpy).not.toHaveBeenCalled()
+
+      const firstUser = users.all()[0] as User
+      expect(firstUser.getAttribute('roles')).toBeInstanceOf(ArkormCollection)
+      expect((firstUser.getAttribute('roles') as ArkormCollection<Role>).all()).toHaveLength(2)
+    } finally {
+      User.setAdapter(undefined)
+      Role.setAdapter(undefined)
+    }
+  })
+
+  it('batches through eager loads across parent models', async () => {
+    const prisma = createCoreClient()
+    const adapter = createPrismaDatabaseAdapter(prisma)
+    const selectSpy = vi.spyOn(adapter, 'select')
+    const selectOneSpy = vi.spyOn(adapter, 'selectOne')
+
+    User.setAdapter(adapter)
+    Image.setAdapter(adapter)
+
+    try {
+      const users = await User.query().with(['avatar', 'postImages']).orderBy({ id: 'asc' }).get()
+
+      expect(users.all()).toHaveLength(2)
+      expect(selectSpy).toHaveBeenCalledTimes(5)
+      expect(selectOneSpy).not.toHaveBeenCalled()
+
+      const firstUser = users.all()[0] as User
+      expect(firstUser.getAttribute('avatar')).toBeInstanceOf(Image)
+      expect((firstUser.getAttribute('postImages') as ArkormCollection<Image>).all()).toHaveLength(
+        2,
+      )
+    } finally {
+      User.setAdapter(undefined)
+      Image.setAdapter(undefined)
+    }
+  })
+
+  it('loads relations by string and list syntax', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    await user.load(['profile', 'posts'])
+
+    const profile = user.getAttribute('profile')
+    const posts = user.getAttribute('posts')
+
+    expect(profile).not.toBeNull()
+    expect(posts).toBeInstanceOf(ArkormCollection)
+    expect(posts.all().length).toBe(2)
+  })
+
+  it('loads relationship counts onto an existing model instance', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    await user.loadCount(['posts', 'roles', 'comments'])
+
+    expect(user.getAttribute('postsCount')).toBe(2)
+    expect(user.getAttribute('rolesCount')).toBe(2)
+    expect(user.getAttribute('commentsCount')).toBe(1)
+  })
+
+  it('loads missing relations and sum aggregates onto an existing model instance', async () => {
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    await user.load({
+      posts: true,
     })
+    const loadedPosts = user.getAttribute('posts')
 
-    it('supports belongsToMany pivot helpers for filtering and attached pivot payloads', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const roles = await user?.roles()
-            .withPivot('approved', 'priority', 'assignedAt', 'revokedAt')
-            .withTimestamps()
-            .as('membership')
-            .using(MembershipPivot)
-            .wherePivot('approved', true)
-            .wherePivotNotIn('roleId', [501])
-            .wherePivotBetween('priority', [1, 2])
-            .wherePivotNull('revokedAt')
-            .getResults()
-
-        expect(roles).toBeInstanceOf(ArkormCollection)
-        expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
-        expect((roles as ArkormCollection<Role>).all()[0]?.getAttribute('name')).toBe('admin')
-
-        const membership = (roles as ArkormCollection<Role>).all()[0]?.getAttribute('membership') as MembershipPivot
-        expect(membership).toBeInstanceOf(MembershipPivot)
-        expect(membership.getAttribute('userId')).toBe(1)
-        expect(membership.getAttribute('roleId')).toBe(500)
-        expect(membership.getAttribute('approved')).toBe(true)
-        expect(membership.getAttribute('assignedAt')).toBe('2026-03-05T12:00:00.000Z')
-        expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
-        expect(membership.getAttribute('updatedAt')).toBe('2026-03-06T12:00:00.000Z')
+    await user.loadMissing({
+      posts: true,
+      roles: true,
     })
-
-    it('supports negative and null pivot helpers on belongsToMany relations', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const roles = await user?.roles()
-            .wherePivotNotBetween('priority', [1, 2])
-            .wherePivotNotNull('revokedAt')
-            .getResults()
-
-        expect(roles).toBeInstanceOf(ArkormCollection)
-        expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
-        expect((roles as ArkormCollection<Role>).all()[0]?.getAttribute('name')).toBe('editor')
-    })
-
-    it('applies configured pivot metadata during eager loading for belongsToMany relations', async () => {
-        class UserWithMembershipRoles extends User {
-            public override roles () {
-                return this.belongsToMany(Role, 'roleUsers', 'userId', 'roleId')
-                    .withPivot('approved')
-                    .withTimestamps()
-                    .as('membership')
-                    .using(MembershipPivot)
-                    .wherePivot('approved', true)
-            }
-        }
-
-        const user = await UserWithMembershipRoles.query().find(1)
-        expect(user).not.toBeNull()
-
-        await user?.load('roles')
-
-        const roles = user?.getAttribute('roles') as ArkormCollection<Role>
-        expect(roles).toBeInstanceOf(ArkormCollection)
-        expect(roles.all()).toHaveLength(1)
-        expect(roles.all()[0]?.getAttribute('name')).toBe('admin')
-
-        const membership = roles.all()[0]?.getAttribute('membership') as MembershipPivot
-        expect(membership).toBeInstanceOf(MembershipPivot)
-        expect(membership.getAttribute('approved')).toBe(true)
-        expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
-        expect(membership.getAttribute('updatedAt')).toBe('2026-03-06T12:00:00.000Z')
-    })
-
-    it('supports relation get() and first() helpers', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const posts = await user?.posts().where({ title: 'A' }).get()
-        const firstPost = await user?.posts().orderBy({ id: 'asc' }).first()
-        const firstProfile = await user?.profile().first()
-
-        expect(posts).toBeInstanceOf(ArkormCollection)
-        expect((posts as ArkormCollection<Post>).all().length).toBe(1)
-        expect(firstPost).not.toBeNull()
-        expect((firstPost as Post).getAttribute('title')).toBe('A')
-        expect(firstProfile).not.toBeNull()
-        expect((firstProfile as Profile).getAttribute('id')).toBe(10)
-    })
-
-    it('supports getQuery() for continued query chaining', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const postsQuery = await user?.posts().getQuery()
-        const posts = await postsQuery?.where({ title: 'B' }).get()
-
-        expect(posts).toBeInstanceOf(ArkormCollection)
-        expect((posts as ArkormCollection<Post>).all()).toHaveLength(1)
-        expect((posts as ArkormCollection<Post>).all()[0]?.getAttribute('title')).toBe('B')
-
-        const rolesQuery = await user?.roles().getQuery()
-        const firstRole = await rolesQuery?.orderBy({ id: 'desc' }).first()
-
-        expect(firstRole).not.toBeNull()
-        expect((firstRole as Role).getAttribute('name')).toBe('editor')
-    })
-
-    it('preserves configured pivot payloads when executing terminal methods from getQuery()', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const rolesQuery = await user?.roles()
-            .withPivot('approved', 'priority')
-            .withTimestamps()
-            .as('membership')
-            .using(MembershipPivot)
-            .wherePivot('approved', true)
-            .getQuery()
-
-        const roles = await rolesQuery?.get()
-        expect(roles).toBeInstanceOf(ArkormCollection)
-        expect((roles as ArkormCollection<Role>).all()).toHaveLength(1)
-
-        const membership = (roles as ArkormCollection<Role>).all()[0]?.getAttribute('membership') as MembershipPivot
-        expect(membership).toBeInstanceOf(MembershipPivot)
-        expect(membership.getAttribute('approved')).toBe(true)
-        expect(membership.getAttribute('createdAt')).toBe('2026-03-05T12:00:00.000Z')
-
-        const paginated = await rolesQuery?.clone().paginate(10, 1)
-        expect(paginated?.data.all()).toHaveLength(1)
-
-        const paginatedMembership = paginated?.data.all()[0]?.getAttribute('membership') as MembershipPivot
-        expect(paginatedMembership).toBeInstanceOf(MembershipPivot)
-        expect(paginatedMembership.getAttribute('priority')).toBe(1)
-    })
-
-    it('supports relation exists() and count() helpers', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-
-        const postCount = await user?.posts().count()
-        const hasAvatar = await user?.avatar().exists()
-        const hasNoMissingProfile = await user?.profile().doesntExist()
-        const roleCount = await user?.roles().count()
-
-        expect(postCount).toBe(2)
-        expect(hasAvatar).toBe(true)
-        expect(hasNoMissingProfile).toBe(false)
-        expect(roleCount).toBe(2)
-
-        const missingUser = new User({ id: 999, name: 'Ghost', email: 'ghost@example.com', isActive: 0 })
-        const missingProfileCount = await missingUser.profile()
-            .withDefault({ id: 500 })
-            .count()
-        const missingProfileExists = await missingUser.profile()
-            .withDefault({ id: 500 })
-            .exists()
-        const missingProfileDoesntExist = await missingUser.profile()
-            .withDefault({ id: 500 })
-            .doesntExist()
-
-        expect(missingProfileCount).toBe(0)
-        expect(missingProfileExists).toBe(false)
-        expect(missingProfileDoesntExist).toBe(true)
-    })
-
-    it('supports constrained eager loading callbacks', async () => {
-        const user = await User.query().with({
-            posts: (query) => (query as QueryBuilder<Post>).where({ title: 'A' }),
-        }).find(1)
-
-        expect(user).not.toBeNull()
-        const posts = user?.getAttribute('posts') as ArkormCollection<Post>
-        expect(posts).toBeInstanceOf(ArkormCollection)
-        expect(posts.all().length).toBe(1)
-    })
-
-    it('batches hasOne and hasMany eager loads across parent models', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
-
-        User.setAdapter(adapter)
-        Profile.setAdapter(adapter)
-        Post.setAdapter(adapter)
-
-        try {
-            const users = await User.query()
-                .with(['profile', 'posts'])
-                .orderBy({ id: 'asc' })
-                .get()
-
-            expect(users.all()).toHaveLength(2)
-            expect(selectSpy).toHaveBeenCalledTimes(3)
-            expect(selectOneSpy).not.toHaveBeenCalled()
-
-            const firstUser = users.all()[0] as User
-            expect(firstUser.getAttribute('profile')).toBeInstanceOf(Profile)
-            expect((firstUser.getAttribute('posts') as ArkormCollection<Post>).all()).toHaveLength(2)
-        } finally {
-            User.setAdapter(undefined)
-            Profile.setAdapter(undefined)
-            Post.setAdapter(undefined)
-        }
-    })
-
-    it('uses adapter-owned eager loading when the adapter advertises relationLoads support', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-        const loadRelationsSpy = vi.spyOn(adapter, 'loadRelations').mockImplementation(async (spec) => {
-            spec.models.forEach((model) => {
-                ; (model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation('posts', new ArkormCollection([]))
-            })
-        })
-
-        Object.defineProperty(adapter, 'capabilities', {
-            value: {
-                ...(adapter.capabilities ?? {}),
-                relationLoads: true,
-            },
-            configurable: true,
-        })
-
-        User.setAdapter(adapter)
-
-        try {
-            const users = await User.query()
-                .with('posts')
-                .orderBy({ id: 'asc' })
-                .get()
-
-            expect(users.all()).toHaveLength(2)
-            expect(selectSpy).toHaveBeenCalledTimes(1)
-            expect(loadRelationsSpy).toHaveBeenCalledTimes(1)
-            expect(loadRelationsSpy).toHaveBeenCalledWith(expect.objectContaining({
-                relations: [{ relation: 'posts', relationLoads: undefined }],
-            }))
-            expect((users.all()[0]?.getAttribute('posts') as ArkormCollection<Post>).all()).toHaveLength(0)
-        } finally {
-            User.setAdapter(undefined)
-        }
-    })
-
-    it('batches belongsTo eager loads across parent models', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
-
-        User.setAdapter(adapter)
-        Profile.setAdapter(adapter)
-
-        try {
-            const profiles = await Profile.query()
-                .with('user')
-                .orderBy({ id: 'asc' })
-                .get()
-
-            expect(profiles.all()).toHaveLength(2)
-            expect(selectSpy).toHaveBeenCalledTimes(2)
-            expect(selectOneSpy).not.toHaveBeenCalled()
-
-            const firstProfile = profiles.all()[0] as Profile
-            expect(firstProfile.getAttribute('user')).toBeInstanceOf(User)
-        } finally {
-            User.setAdapter(undefined)
-            Profile.setAdapter(undefined)
-        }
-    })
-
-    it('batches belongsToMany eager loads across parent models', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
-
-        User.setAdapter(adapter)
-        Role.setAdapter(adapter)
-
-        try {
-            const users = await User.query()
-                .with('roles')
-                .orderBy({ id: 'asc' })
-                .get()
-
-            expect(users.all()).toHaveLength(2)
-            expect(selectSpy).toHaveBeenCalledTimes(3)
-            expect(selectOneSpy).not.toHaveBeenCalled()
-
-            const firstUser = users.all()[0] as User
-            expect(firstUser.getAttribute('roles')).toBeInstanceOf(ArkormCollection)
-            expect((firstUser.getAttribute('roles') as ArkormCollection<Role>).all()).toHaveLength(2)
-        } finally {
-            User.setAdapter(undefined)
-            Role.setAdapter(undefined)
-        }
-    })
-
-    it('batches through eager loads across parent models', async () => {
-        const prisma = createCoreClient()
-        const adapter = createPrismaDatabaseAdapter(prisma)
-        const selectSpy = vi.spyOn(adapter, 'select')
-        const selectOneSpy = vi.spyOn(adapter, 'selectOne')
-
-        User.setAdapter(adapter)
-        Image.setAdapter(adapter)
-
-        try {
-            const users = await User.query()
-                .with(['avatar', 'postImages'])
-                .orderBy({ id: 'asc' })
-                .get()
-
-            expect(users.all()).toHaveLength(2)
-            expect(selectSpy).toHaveBeenCalledTimes(5)
-            expect(selectOneSpy).not.toHaveBeenCalled()
-
-            const firstUser = users.all()[0] as User
-            expect(firstUser.getAttribute('avatar')).toBeInstanceOf(Image)
-            expect((firstUser.getAttribute('postImages') as ArkormCollection<Image>).all()).toHaveLength(2)
-        } finally {
-            User.setAdapter(undefined)
-            Image.setAdapter(undefined)
-        }
-    })
-
-    it('loads relations by string and list syntax', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
-
-        await user.load(['profile', 'posts'])
-
-        const profile = user.getAttribute('profile')
-        const posts = user.getAttribute('posts')
-
-        expect(profile).not.toBeNull()
-        expect(posts).toBeInstanceOf(ArkormCollection)
-        expect(posts.all().length).toBe(2)
-    })
-
-    it('loads relationship counts onto an existing model instance', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
-
-        await user.loadCount(['posts', 'roles', 'comments'])
-
-        expect(user.getAttribute('postsCount')).toBe(2)
-        expect(user.getAttribute('rolesCount')).toBe(2)
-        expect(user.getAttribute('commentsCount')).toBe(1)
-    })
-
-    it('loads missing relations and sum aggregates onto an existing model instance', async () => {
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
-
-        await user.load({
-            posts: true,
-        })
-        const loadedPosts = user.getAttribute('posts')
-
-        await user.loadMissing({
-            posts: true,
-            roles: true,
-        })
-        await user.loadSum({
-            'posts as published_post_ids': query => query.where({ title: 'A' }),
-        }, 'id')
-
-        expect(user.getAttribute('posts')).toBe(loadedPosts)
-        expect(user.getAttribute('roles')).toBeInstanceOf(ArkormCollection)
-        expect(user.getAttribute('published_post_ids')).toBe(100)
-    })
-
-    it('supports nested eager loading through with() and load()', async () => {
-        const user = await User.query()
-            .with(['profile.image', 'posts.comments'])
-            .find(1)
-
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
-
-        const profile = user.getAttribute('profile') as Profile
-        expect(profile).toBeInstanceOf(Profile)
-        expect(profile.getAttribute('image')).toBeInstanceOf(Image)
-
-        const posts = user.getAttribute('posts') as ArkormCollection<Post>
-        expect(posts).toBeInstanceOf(ArkormCollection)
-        expect(posts.all()).toHaveLength(2)
-        expect(posts.all()[0]?.getAttribute('comments')).toBeInstanceOf(ArkormCollection)
-        expect((posts.all()[0]?.getAttribute('comments') as ArkormCollection<Comment>).all()).toHaveLength(1)
-
-        const reloadUser = await User.query().find(1)
-        expect(reloadUser).not.toBeNull()
-        if (!reloadUser)
-            throw new Error('Expected reload user to exist.')
-
-        await reloadUser.load(['posts.comments'])
-
-        const reloadedPosts = reloadUser.getAttribute('posts') as ArkormCollection<Post>
-        expect(reloadedPosts.all()).toHaveLength(2)
-        expect((reloadedPosts.all()[0]?.getAttribute('comments') as ArkormCollection<Comment>).all()).toHaveLength(1)
-    })
-
-    it('throws when eager loaded relationships do not exist', async () => {
-        await expect(User.query().with(['posts.missing']).find(1)).rejects.toBeInstanceOf(RelationResolutionException)
-
-        const user = await User.query().find(1)
-        expect(user).not.toBeNull()
-        if (!user)
-            throw new Error('Expected user to exist.')
-
-        await expect(user.load(['missing'])).rejects.toBeInstanceOf(RelationResolutionException)
-        await expect(user.load(['posts.missing'])).rejects.toBeInstanceOf(RelationResolutionException)
-    })
+    await user.loadSum(
+      {
+        'posts as published_post_ids': (query) => query.where({ title: 'A' }),
+      },
+      'id',
+    )
+
+    expect(user.getAttribute('posts')).toBe(loadedPosts)
+    expect(user.getAttribute('roles')).toBeInstanceOf(ArkormCollection)
+    expect(user.getAttribute('published_post_ids')).toBe(100)
+  })
+
+  it('supports nested eager loading through with() and load()', async () => {
+    const user = await User.query().with(['profile.image', 'posts.comments']).find(1)
+
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    const profile = user.getAttribute('profile') as Profile
+    expect(profile).toBeInstanceOf(Profile)
+    expect(profile.getAttribute('image')).toBeInstanceOf(Image)
+
+    const posts = user.getAttribute('posts') as ArkormCollection<Post>
+    expect(posts).toBeInstanceOf(ArkormCollection)
+    expect(posts.all()).toHaveLength(2)
+    expect(posts.all()[0]?.getAttribute('comments')).toBeInstanceOf(ArkormCollection)
+    expect(
+      (posts.all()[0]?.getAttribute('comments') as ArkormCollection<Comment>).all(),
+    ).toHaveLength(1)
+
+    const reloadUser = await User.query().find(1)
+    expect(reloadUser).not.toBeNull()
+    if (!reloadUser) throw new Error('Expected reload user to exist.')
+
+    await reloadUser.load(['posts.comments'])
+
+    const reloadedPosts = reloadUser.getAttribute('posts') as ArkormCollection<Post>
+    expect(reloadedPosts.all()).toHaveLength(2)
+    expect(
+      (reloadedPosts.all()[0]?.getAttribute('comments') as ArkormCollection<Comment>).all(),
+    ).toHaveLength(1)
+  })
+
+  it('throws when eager loaded relationships do not exist', async () => {
+    await expect(User.query().with(['posts.missing']).find(1)).rejects.toBeInstanceOf(
+      RelationResolutionException,
+    )
+
+    const user = await User.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    await expect(user.load(['missing'])).rejects.toBeInstanceOf(RelationResolutionException)
+    await expect(user.load(['posts.missing'])).rejects.toBeInstanceOf(RelationResolutionException)
+  })
 })

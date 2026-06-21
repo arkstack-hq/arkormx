@@ -16,15 +16,15 @@ This guide assumes that you intentionally want Prisma compatibility. The normal
 adapter.
 
 ```ts
-import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 export default defineConfig({
   prisma: () => prisma,
   adapter: createPrismaDatabaseAdapter(prisma),
-});
+})
 ```
 
 If your Arkorm delegate names differ from Prisma delegate names, pass a mapping:
@@ -33,7 +33,7 @@ If your Arkorm delegate names differ from Prisma delegate names, pass a mapping:
 const adapter = createPrismaDatabaseAdapter(prisma, {
   users: 'user',
   articles: 'article',
-});
+})
 ```
 
 ## Deprecated runtime APIs

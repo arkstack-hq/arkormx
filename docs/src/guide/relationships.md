@@ -7,13 +7,13 @@ Arkorm supports relationships with eager loading and constrained relationship qu
 ```ts
 class User extends Model {
   posts() {
-    return this.hasMany(Post, 'authorId', 'id');
+    return this.hasMany(Post, 'authorId', 'id')
   }
 }
 
 class Post extends Model {
   author() {
-    return this.belongsTo(User, 'authorId', 'id');
+    return this.belongsTo(User, 'authorId', 'id')
   }
 }
 ```
@@ -53,7 +53,7 @@ profiles
 ```ts
 class User extends Model {
   profile() {
-    return this.hasOne(Profile, 'userId', 'id');
+    return this.hasOne(Profile, 'userId', 'id')
   }
 }
 ```
@@ -78,7 +78,7 @@ posts
 ```ts
 class User extends Model {
   posts() {
-    return this.hasMany(Post, 'authorId', 'id');
+    return this.hasMany(Post, 'authorId', 'id')
   }
 }
 ```
@@ -103,7 +103,7 @@ posts
 ```ts
 class Post extends Model {
   author() {
-    return this.belongsTo(User, 'authorId', 'id');
+    return this.belongsTo(User, 'authorId', 'id')
   }
 }
 ```
@@ -138,14 +138,7 @@ role_users
 ```ts
 class User extends Model {
   roles() {
-    return this.belongsToMany(
-      Role,
-      'roleUsers',
-      'userId',
-      'roleId',
-      'id',
-      'id',
-    );
+    return this.belongsToMany(Role, 'roleUsers', 'userId', 'roleId', 'id', 'id')
   }
 }
 ```
@@ -165,11 +158,11 @@ class User extends Model {
 - `wherePivotNotNull(column)` requires a non-null pivot column.
 
 ```ts
-import { PivotModel } from 'arkormx';
+import { PivotModel } from 'arkormx'
 
 class MembershipPivot extends PivotModel {
   isActive() {
-    return this.revokedAt == null;
+    return this.revokedAt == null
   }
 }
 
@@ -182,13 +175,13 @@ class User extends Model {
       .withTimestamps()
       .wherePivot('approved', true)
       .wherePivotBetween('priority', [1, 5])
-      .wherePivotNull('revokedAt');
+      .wherePivotNull('revokedAt')
   }
 }
 
-const roles = await user.roles().getResults();
+const roles = await user.roles().getResults()
 
-roles.all()[0]?.getAttribute('membership');
+roles.all()[0]?.getAttribute('membership')
 ```
 
 When you call `withPivot()`, `withTimestamps()`, `as()`, or `using()`, Arkorm attaches the pivot payload to the related model during direct relation execution and eager loading.
@@ -217,7 +210,7 @@ owners
 ```ts
 class Mechanic extends Model {
   carOwner() {
-    return this.hasOneThrough(Owner, Car, 'mechanicId', 'carId', 'id', 'id');
+    return this.hasOneThrough(Owner, Car, 'mechanicId', 'carId', 'id', 'id')
   }
 }
 ```
@@ -247,7 +240,7 @@ posts
 ```ts
 class Country extends Model {
   posts() {
-    return this.hasManyThrough(Post, User, 'countryId', 'authorId', 'id', 'id');
+    return this.hasManyThrough(Post, User, 'countryId', 'authorId', 'id', 'id')
   }
 }
 ```
@@ -273,7 +266,7 @@ images
 ```ts
 class User extends Model {
   avatar() {
-    return this.morphOne(Image, 'imageable');
+    return this.morphOne(Image, 'imageable')
   }
 }
 ```
@@ -282,13 +275,7 @@ Arkorm infers `imageable_id` and `imageable_type` using `naming.case`. Override
 the inferred columns and local key with positional arguments:
 
 ```ts
-return this.morphOne(
-  Image,
-  'imageable',
-  'owner_id',
-  'owner_type',
-  'uuid',
-);
+return this.morphOne(Image, 'imageable', 'owner_id', 'owner_type', 'uuid')
 ```
 
 ### morphMany
@@ -312,7 +299,7 @@ comments
 ```ts
 class Post extends Model {
   comments() {
-    return this.morphMany(Comment, 'commentable');
+    return this.morphMany(Comment, 'commentable')
   }
 }
 ```
@@ -330,7 +317,7 @@ Use `morphTo` on the inverse side of a polymorphic relation:
 ```ts
 class Image extends Model {
   imageable() {
-    return this.morphTo('imageable');
+    return this.morphTo('imageable')
   }
 }
 ```
@@ -340,7 +327,7 @@ override the type column, ID column, and related owner key with positional
 arguments:
 
 ```ts
-return this.morphTo('imageable', 'imageable_type', 'imageable_id', 'id');
+return this.morphTo('imageable', 'imageable_type', 'imageable_id', 'id')
 ```
 
 The second argument can instead be a model constructor. This keeps the
@@ -348,7 +335,7 @@ conventional type column, narrows the relation result type, and allows that
 model to resolve without runtime registration:
 
 ```ts
-return this.morphTo('imageable', User, 'imageable_id', 'id');
+return this.morphTo('imageable', User, 'imageable_id', 'id')
 ```
 
 The value in the type column must match a registered model class name. ArkORM
@@ -357,7 +344,7 @@ automatically registers exported model classes found in the configured
 models directly when they live outside those paths or are bundled:
 
 ```ts
-registerModels(User, Post);
+registerModels(User, Post)
 ```
 
 ### morphToMany
@@ -385,7 +372,7 @@ taggables
 ```ts
 class Post extends Model {
   tags() {
-    return this.morphToMany(Tag, 'taggable');
+    return this.morphToMany(Tag, 'taggable')
   }
 }
 ```
@@ -414,7 +401,7 @@ return this.morphToMany(
   'tag_reference_id',
   'uuid',
   'tag_uuid',
-);
+)
 ```
 
 The complete positional signature is:
@@ -449,7 +436,7 @@ class Profile extends Model {
     return this.belongsTo(User, 'userId').withDefault({
       name: 'Guest User',
       email: 'guest@example.com',
-    });
+    })
   }
 }
 ```
@@ -461,38 +448,36 @@ class Profile extends Model {
 - A callback that returns either of the above
 
 ```ts
-user.profile().withDefault(new Profile({ bio: 'Not provided yet' }));
+user.profile().withDefault(new Profile({ bio: 'Not provided yet' }))
 
 user.avatar().withDefault((parent) => ({
   url: `/images/default-${parent.getAttribute('id')}.png`,
-}));
+}))
 ```
 
 ## Eager loading
 
 ```ts
-await User.query().with('posts').get();
+await User.query().with('posts').get()
 
-await User.query()
-  .with(['requester', 'pocket', 'consents', 'consents.user'])
-  .get();
+await User.query().with(['requester', 'pocket', 'consents', 'consents.user']).get()
 
 await User.query()
   .with({
     profile: true,
     posts: (query) => query.latest().limit(5),
   })
-  .get();
+  .get()
 
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-await user.load(['posts.comments']);
-await user.loadCount(['posts', 'comments']);
-await user.loadMissing({ profile: true, posts: (query) => query.latest() });
+await user.load(['posts.comments'])
+await user.loadCount(['posts', 'comments'])
+await user.loadMissing({ profile: true, posts: (query) => query.latest() })
 await user.loadMorph('parentable', {
   Photo: ['tags'],
   Post: ['comments'],
-});
+})
 ```
 
 Use dotted relation paths when a child relationship should be eager loaded from
@@ -515,20 +500,20 @@ generic loader on the compatibility path.
 ## Relationship filters and aggregates
 
 ```ts
-await User.query().has('posts').get();
+await User.query().has('posts').get()
 await User.query()
   .whereHas('posts', (q) => q.whereKey('published', true))
-  .get();
-await User.query().withCount('posts').get();
-await User.query().withExists('posts').get();
-await User.query().withSum('posts', 'views').get();
+  .get()
+await User.query().withCount('posts').get()
+await User.query().withExists('posts').get()
+await User.query().withSum('posts', 'views').get()
 await User.query()
   .withCount({
     posts: true,
     comments: (query) => query.whereKey('approved', true),
   })
-  .get();
-await User.query().withSum('comments as total_votes', 'votes').get();
+  .get()
+await User.query().withSum('comments as total_votes', 'votes').get()
 ```
 
 Use `loadCount(...)` when you already have a model instance and want to attach
@@ -559,23 +544,23 @@ depends on `Model.getDelegate()`.
 ## Direct relation execution
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-await user.posts().get();
-await user.posts().first();
-await user.posts().where({ published: true }).getResults();
+await user.posts().get()
+await user.posts().first()
+await user.posts().where({ published: true }).getResults()
 ```
 
 Relation objects expose the query operations most commonly needed for related
 records:
 
 ```ts
-await user.posts().count();
-await user.posts().exists();
-await user.posts().firstOrFail();
-await user.posts().find(100);
-await user.posts().findMany([100, 101]);
-await user.posts().paginate(15);
+await user.posts().count()
+await user.posts().exists()
+await user.posts().firstOrFail()
+await user.posts().find(100)
+await user.posts().findMany([100, 101])
+await user.posts().paginate(15)
 ```
 
 ## Creating related records
@@ -586,11 +571,9 @@ without saving:
 ```ts
 const draft = user.posts().make({
   title: 'Draft',
-});
+})
 
-const drafts = user
-  .posts()
-  .makeMany([{ title: 'First draft' }, { title: 'Second draft' }]);
+const drafts = user.posts().makeMany([{ title: 'First draft' }, { title: 'Second draft' }])
 ```
 
 Use `create()` and `createMany()` to persist immediately:
@@ -598,18 +581,16 @@ Use `create()` and `createMany()` to persist immediately:
 ```ts
 const post = await user.posts().create({
   title: 'Published',
-});
+})
 
-const posts = await user
-  .posts()
-  .createMany([{ title: 'One' }, { title: 'Two' }]);
+const posts = await user.posts().createMany([{ title: 'One' }, { title: 'Two' }])
 ```
 
 Existing model instances can be persisted through the relation:
 
 ```ts
-await user.posts().save(post);
-await user.posts().saveMany(posts);
+await user.posts().save(post)
+await user.posts().saveMany(posts)
 ```
 
 Quiet variants, `saveQuietly()` and `saveManyQuietly()`, suppress model
@@ -618,17 +599,11 @@ lifecycle events.
 ## Find or create
 
 ```ts
-const unsaved = await user
-  .posts()
-  .firstOrNew({ slug: 'welcome' }, { title: 'Welcome' });
+const unsaved = await user.posts().firstOrNew({ slug: 'welcome' }, { title: 'Welcome' })
 
-const persisted = await user
-  .posts()
-  .firstOrCreate({ slug: 'welcome' }, { title: 'Welcome' });
+const persisted = await user.posts().firstOrCreate({ slug: 'welcome' }, { title: 'Welcome' })
 
-const updated = await user
-  .posts()
-  .updateOrCreate({ slug: 'welcome' }, { title: 'Updated welcome' });
+const updated = await user.posts().updateOrCreate({ slug: 'welcome' }, { title: 'Updated welcome' })
 ```
 
 Relation `upsert()` accepts the same unique-key and update-column arguments as
@@ -641,11 +616,11 @@ the query builder while automatically adding relationship creation attributes.
 ```ts
 await user.roles().attach(role, {
   approved: true,
-});
+})
 
-await user.roles().detach(role);
+await user.roles().detach(role)
 
-await user.roles().sync([role, anotherRole]);
+await user.roles().sync([role, anotherRole])
 ```
 
 `attach()` accepts a related model or key plus optional pivot attributes.

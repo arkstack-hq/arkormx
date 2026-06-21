@@ -8,10 +8,10 @@ For multi-step write flows that need atomic commit/rollback behavior, see
 ## Common reads
 
 ```ts
-await User.query().get();
-await User.query().first();
-await User.query().firstOrFail();
-await User.query().find(1);
+await User.query().get()
+await User.query().first()
+await User.query().firstOrFail()
+await User.query().find(1)
 ```
 
 ## Filtering
@@ -22,42 +22,42 @@ await User.query()
   .orWhere({ role: 'admin' })
   .whereNotNull('email')
   .whereIn('id', [1, 2, 3])
-  .get();
+  .get()
 ```
 
 ## Date and range helpers
 
 ```ts
-await User.query().whereBetween('id', [10, 100]).get();
-await User.query().whereDate('createdAt', '2026-03-01').get();
-await User.query().whereMonth('createdAt', 3, 2026).get();
-await User.query().whereYear('createdAt', 2026).get();
+await User.query().whereBetween('id', [10, 100]).get()
+await User.query().whereDate('createdAt', '2026-03-01').get()
+await User.query().whereMonth('createdAt', 3, 2026).get()
+await User.query().whereYear('createdAt', 2026).get()
 ```
 
 ## Ordering and pagination helpers
 
 ```ts
-await User.query().latest().limit(10).get();
-await User.query().oldest('updatedAt').offset(20).take(10).get();
-await User.query().forPage(2, 15).get();
+await User.query().latest().limit(10).get()
+await User.query().oldest('updatedAt').offset(20).take(10).get()
+await User.query().forPage(2, 15).get()
 ```
 
 ## Existence and aggregates
 
 ```ts
-await User.query().exists();
-await User.query().doesntExist();
-await User.query().count();
-await User.query().sum('score');
-await User.query().avg('score');
+await User.query().exists()
+await User.query().doesntExist()
+await User.query().count()
+await User.query().sum('score')
+await User.query().avg('score')
 ```
 
 ## Utility helpers
 
 ```ts
-await User.query().pluck('email');
-await User.query().value('email');
-await User.query().valueOrFail('email');
+await User.query().pluck('email')
+await User.query().value('email')
+await User.query().valueOrFail('email')
 ```
 
 ## Write helpers (insert/update/upsert)
@@ -70,7 +70,7 @@ await User.query().insert({
   isActive: true,
   createdAt: new Date(),
   updatedAt: new Date(),
-});
+})
 
 await User.query().insert([
   {
@@ -89,7 +89,7 @@ await User.query().insert([
     createdAt: new Date(),
     updatedAt: new Date(),
   },
-]);
+])
 
 await User.query().insertOrIgnore([
   {
@@ -100,7 +100,7 @@ await User.query().insertOrIgnore([
     createdAt: new Date(),
     updatedAt: new Date(),
   },
-]);
+])
 
 const id = await User.query().insertGetId({
   id: 7,
@@ -109,7 +109,7 @@ const id = await User.query().insertGetId({
   isActive: true,
   createdAt: new Date(),
   updatedAt: new Date(),
-});
+})
 
 await User.query().insertUsing(
   ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
@@ -123,7 +123,7 @@ await User.query().insertUsing(
       updatedAt: new Date(),
     },
   ],
-);
+)
 
 await User.query().insertOrIgnoreUsing(
   ['id', 'name', 'email', 'isActive', 'createdAt', 'updatedAt'],
@@ -137,11 +137,9 @@ await User.query().insertOrIgnoreUsing(
       updatedAt: new Date(),
     },
   ],
-);
+)
 
-await User.query()
-  .where({ email: 'jane@example.com' })
-  .updateFrom({ name: 'Jane Updated' });
+await User.query().where({ email: 'jane@example.com' }).updateFrom({ name: 'Jane Updated' })
 
 await User.query().updateOrInsert(
   { email: 'new-user@example.com' },
@@ -152,7 +150,7 @@ await User.query().updateOrInsert(
     createdAt: new Date(),
     updatedAt: new Date(),
   },
-);
+)
 
 await User.query().upsert(
   [
@@ -167,7 +165,7 @@ await User.query().upsert(
   ],
   'email',
   ['name'],
-);
+)
 ```
 
 - `insert(values)` inserts one or many rows.
@@ -184,5 +182,5 @@ await User.query().upsert(
 await User.query()
   .when(filters.active, (q) => q.whereKey('isActive', true))
   .unless(filters.includeGuests, (q) => q.whereNot({ role: 'guest' }))
-  .get();
+  .get()
 ```
