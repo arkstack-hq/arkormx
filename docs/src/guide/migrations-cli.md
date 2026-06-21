@@ -205,8 +205,8 @@ name is also the physical column name.
 
 ## Toggling foreign-key constraints
 
-When seeding interdependent data — or inserting rows in an order that would
-otherwise violate foreign keys — you can temporarily disable foreign-key
+When seeding interdependent data or inserting rows in an order that would
+otherwise violate foreign keys, you can temporarily disable foreign-key
 enforcement. On PostgreSQL, Arkorm does this by switching the connection's
 `session_replication_role` to `replica`, which suppresses the triggers that
 enforce foreign keys, and back to `origin` to restore them.
@@ -219,15 +219,15 @@ failure:
 ```ts
 import { SchemaBuilder } from 'arkormx'
 
-await SchemaBuilder.withoutForeignKeyConstraints(async () => {
-  await User.factory()
-    .hasAttached(
-      Tenant.factory().has(Project.factory(3)),
-      { status: 'active', roleId: roleBySlug.get('owner')!.id },
-      'tenantMemberships',
-    )
-    .create()
-})
+export class DatabaseSeeder extends Seeder {
+  async run(): Promise<void> {
+    await SchemaBuilder.withoutForeignKeyConstraints(async () => {
+      await User.factory()
+        .hasAttached(Tenant.factory().has(Project.factory(3)), { status: 'active' }, 'tenants')
+        .create()
+    })
+  }
+}
 ```
 
 Constraints are restored automatically even if the callback throws.

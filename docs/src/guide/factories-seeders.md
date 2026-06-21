@@ -245,11 +245,7 @@ export class DatabaseSeeder extends Seeder {
   async run(): Promise<void> {
     await SchemaBuilder.withoutForeignKeyConstraints(async () => {
       await User.factory()
-        .hasAttached(
-          Tenant.factory().has(Project.factory(3)),
-          { status: 'active', roleId: roleBySlug.get('owner')!.id },
-          'tenantMemberships',
-        )
+        .hasAttached(Tenant.factory().has(Project.factory(3)), { status: 'active' }, 'tenants')
         .create()
     })
   }
