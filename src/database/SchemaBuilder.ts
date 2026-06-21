@@ -1,15 +1,96 @@
 import { SchemaOperation } from 'src/types/migrations'
 import { TableBuilder } from './TableBuilder'
+import { ArkormException } from '../Exceptions/ArkormException'
+import { UnsupportedAdapterFeatureException } from '../Exceptions/UnsupportedAdapterFeatureException'
+import { getRuntimeAdapter, runArkormTransaction } from '../helpers/runtime-config'
 
 /**
- * The SchemaBuilder class provides methods for defining the operations to be 
- * performed in a migration, such as creating, altering, or dropping tables. 
+ * The SchemaBuilder class provides methods for defining the operations to be
+ * performed in a migration, such as creating, altering, or dropping tables.
  *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
 export class SchemaBuilder {
     private readonly operations: SchemaOperation[] = []
+
+    /**
+     * Disable foreign-key constraint enforcement on the active PostgreSQL
+     * connection by switching the session into replication mode, which
+     * suppresses the internal triggers that enforce foreign keys.
+     *
+     * The setting is connection-scoped, so the disable, the work that depends
+     * on it, and the matching {@link SchemaBuilder.enableForeignKeyConstraints}
+     * must run on the same connection. Prefer
+     * {@link SchemaBuilder.withoutForeignKeyConstraints}, which guarantees this
+     * by wrapping the work in a transaction. Requires a SQL-backed adapter and
+     * a database role permitted to set `session_replication_role`.
+     *
+     * @returns
+     */
+    public static async disableForeignKeyConstraints (): Promise<void> {
+        await SchemaBuilder.setSessionReplicationRole('replica')
+    }
+
+    /**
+     * Re-enable foreign-key constraint enforcement on the active PostgreSQL
+     * connection by restoring the default session replication role.
+     *
+     * @returns
+     */
+    public static async enableForeignKeyConstraints (): Promise<void> {
+        await SchemaBuilder.setSessionReplicationRole('origin')
+    }
+
+    /**
+     * Run the given callback with foreign-key constraints disabled, then
+     * restore them. The whole unit runs inside a transaction so the disable,
+     * the callback, and the re-enable share a single connection (required for
+     * the connection-scoped replication role to take effect) and roll back
+     * together on failure.
+     *
+     * @example
+     * await SchemaBuilder.withoutForeignKeyConstraints(async () => {
+     *   await User.factory()
+     *     .hasAttached(Tenant.factory().has(Project.factory(3)), { status: 'active' }, 'tenantMemberships')
+     *     .create()
+     * })
+     *
+     * @param callback
+     * @returns
+     */
+    public static async withoutForeignKeyConstraints<TResult> (
+        callback: () => TResult | Promise<TResult>,
+    ): Promise<TResult> {
+        return await runArkormTransaction(async () => {
+            await SchemaBuilder.disableForeignKeyConstraints()
+
+            try {
+                return await callback()
+            } finally {
+                await SchemaBuilder.enableForeignKeyConstraints()
+            }
+        })
+    }
+
+    private static async setSessionReplicationRole (role: 'replica' | 'origin'): Promise<void> {
+        const adapter = getRuntimeAdapter()
+        if (!adapter)
+            throw new ArkormException('Toggling foreign-key constraints requires a configured database adapter.', {
+                code: 'ADAPTER_NOT_CONFIGURED',
+                operation: 'schema.foreignKeyConstraints',
+            })
+
+        if (!adapter.rawQuery)
+            throw new UnsupportedAdapterFeatureException('Toggling foreign-key constraints requires an adapter that supports raw queries.', {
+                operation: 'schema.foreignKeyConstraints',
+                meta: {
+                    feature: 'rawQuery',
+                },
+            })
+
+        await adapter.rawQuery({ sql: `SET session_replication_role = '${role}'` })
+    }
 
     /**
      * Defines a new table to be created in the migration.
