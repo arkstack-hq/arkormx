@@ -1,61 +1,61 @@
 {
-    "name": "@arkormx/plugin-clear-router",
-    "version": "0.1.46",
-    "description": "Clear Router plugin for resolving Arkormx models from route parameters.",
-    "publishConfig": {
-        "access": "public"
+  "name": "@arkormx/plugin-clear-router",
+  "version": "0.1.46",
+  "description": "Clear Router plugin for resolving Arkormx models from route parameters.",
+  "publishConfig": {
+    "access": "public"
+  },
+  "keywords": [
+    "resora",
+    "clear-router",
+    "express",
+    "h3",
+    "plugin",
+    "typescript"
+  ],
+  "readme": "README.md",
+  "license": "MIT",
+  "homepage": "https://arkorm.toneflix.net/plugins/plugin-clear-router",
+  "bugs": {
+    "url": "https://github.com/arkstack-hq/arkormx/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/arkstack-hq/arkormx.git",
+    "directory": "packages/plugin-clear-router"
+  },
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
     },
-    "keywords": [
-        "resora",
-        "clear-router",
-        "express",
-        "h3",
-        "plugin",
-        "typescript"
-    ],
-    "readme": "README.md",
-    "license": "MIT",
-    "homepage": "https://arkorm.toneflix.net/plugins/plugin-clear-router",
-    "bugs": {
-        "url": "https://github.com/arkstack-hq/arkormx/issues"
-    },
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/arkstack-hq/arkormx.git",
-        "directory": "packages/plugin-clear-router"
-    },
-    "type": "module",
-    "main": "./dist/index.cjs",
-    "module": "./dist/index.mjs",
-    "types": "./dist/index.d.cts",
-    "exports": {
-        ".": {
-            "import": "./dist/index.mjs",
-            "require": "./dist/index.cjs"
-        },
-        "./package.json": "./package.json"
-    },
-    "files": [
-        "dist",
-        "README.md"
-    ],
-    "scripts": {
-        "test": "vitest run tests/*.spec.ts",
-        "build": "tsdown",
-        "lint": "eslint src tests --ext .ts",
-        "version:patch": "pnpm version patch",
-        "prepublishOnly": "pnpm build && pnpm test"
-    },
-    "dependencies": {
-        "reflect-metadata": "^0.2.2",
-        "arkormx": "workspace:^"
-    },
-    "peerDependencies": {
-        "clear-router": "^2.8.8"
-    },
-    "devDependencies": {
-        "express": "^5.2.1",
-        "parasito": "^0.1.8"
-    },
-    "packageManager": "pnpm@10.0.0"
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "vitest run tests/*.spec.ts",
+    "build": "tsdown",
+    "lint": "eslint src tests --ext .ts",
+    "version:patch": "pnpm version patch",
+    "prepublishOnly": "pnpm build && pnpm test"
+  },
+  "dependencies": {
+    "reflect-metadata": "^0.2.2",
+    "arkormx": "workspace:^"
+  },
+  "peerDependencies": {
+    "clear-router": "^2.8.8"
+  },
+  "devDependencies": {
+    "express": "^5.2.1",
+    "parasito": "^0.1.8"
+  },
+  "packageManager": "pnpm@10.0.0"
 }

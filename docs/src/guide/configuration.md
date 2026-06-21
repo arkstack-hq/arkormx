@@ -9,10 +9,10 @@ transactions on the supported 2.x compatibility path.
 ## defineConfig
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
-import { createKyselyAdapter } from 'arkormx';
+import { defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
+import { createKyselyAdapter } from 'arkormx'
 
 export default defineConfig({
   adapter: createKyselyAdapter(
@@ -24,15 +24,15 @@ export default defineConfig({
       }),
     }),
   ),
-});
+})
 ```
 
 ## Full configuration shape
 
 ```ts
-import { createKyselyAdapter, defineConfig, URLDriver } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig, URLDriver } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 const db = new Kysely<Record<string, never>>({
   dialect: new PostgresDialect({
@@ -40,7 +40,7 @@ const db = new Kysely<Record<string, never>>({
       connectionString: process.env.DATABASE_URL,
     }),
   }),
-});
+})
 
 class AppURLDriver extends URLDriver {}
 
@@ -54,7 +54,7 @@ export default defineConfig({
     persistedEnums: true,
   },
   debug: (event) => {
-    console.debug(event);
+    console.debug(event)
   },
   pagination: {
     urlDriver: (options) => new AppURLDriver(options),
@@ -68,21 +68,21 @@ export default defineConfig({
     buildOutput: './dist',
   },
   outputExt: 'ts',
-});
+})
 ```
 
 If you still need Prisma compatibility, add it alongside the adapter instead of
 replacing the adapter-first setup:
 
 ```ts
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 export default defineConfig({
   client: () => prisma,
   adapter: createKyselyAdapter(db),
-});
+})
 ```
 
 ## Config reference
@@ -92,7 +92,7 @@ export default defineConfig({
 | `client` (optional)                   | Runtime client instance or resolver function for compatibility mode, CLI flows, and transaction fallback when no adapter transaction path is available.         |
 | `prisma` (optional, deprecated alias) | Prisma client instance or resolver function kept for 2.x compatibility with older config.                                                                       |
 | `adapter`                             | Optional global adapter applied automatically to models that do not define their own adapter.                                                                   |
-| `naming.case`                         | Casing strategy for inferred database identifiers (`'snake'` default, also supports `'camel'`, `'kebab'`, and `'studly'`).                                    |
+| `naming.case`                         | Casing strategy for inferred database identifiers (`'snake'` default, also supports `'camel'`, `'kebab'`, and `'studly'`).                                      |
 | `features.persistedColumnMappings`    | Enable or disable persisted non-Prisma column mapping metadata written to `.arkormx/column-mappings.json` during adapter-backed migrations. Defaults to `true`. |
 | `features.persistedEnums`             | Enable or disable persisted non-Prisma enum metadata used by adapter-backed `models:sync`. Defaults to `true`.                                                  |
 | `boot`                                | Optional low-level synchronous hook for advanced runtime binding work.                                                                                          |
@@ -125,28 +125,28 @@ import {
   loadModelsFrom,
   loadSeedersFrom,
   registerPaths,
-} from 'arkormx';
+} from 'arkormx'
 
-loadMigrationsFrom('./packages/audit/database/migrations');
-loadSeedersFrom('./packages/audit/database/seeders');
-loadModelsFrom('./packages/audit/src/models');
-loadFactoriesFrom('./packages/audit/database/factories');
+loadMigrationsFrom('./packages/audit/database/migrations')
+loadSeedersFrom('./packages/audit/database/seeders')
+loadModelsFrom('./packages/audit/src/models')
+loadFactoriesFrom('./packages/audit/database/factories')
 
 registerPaths({
   migrations: ['./packages/billing/database/migrations'],
   seeders: './packages/billing/database/seeders',
-});
+})
 ```
 
 The same focused path helpers are also available on the `Arkorm` class:
 
 ```ts
-import { Arkorm } from 'arkormx';
+import { Arkorm } from 'arkormx'
 
-Arkorm.loadMigrationsFrom('./packages/audit/database/migrations');
-Arkorm.loadSeedersFrom('./packages/audit/database/seeders');
-Arkorm.loadModelsFrom('./packages/audit/src/models');
-Arkorm.loadFactoriesFrom('./packages/audit/database/factories');
+Arkorm.loadMigrationsFrom('./packages/audit/database/migrations')
+Arkorm.loadSeedersFrom('./packages/audit/database/seeders')
+Arkorm.loadModelsFrom('./packages/audit/src/models')
+Arkorm.loadFactoriesFrom('./packages/audit/database/factories')
 ```
 
 These helpers augment runtime discovery only. They do not mutate
@@ -160,35 +160,30 @@ test harnesses, or bundled packages where the files may not live in a normal
 discovery directory:
 
 ```ts
-import {
-  registerFactories,
-  registerMigrations,
-  registerModels,
-  registerSeeders,
-} from 'arkormx';
-import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration';
-import { AuditSeeder } from './database/seeders/AuditSeeder';
-import { AuditLog } from './src/models/AuditLog';
-import { AuditLogFactory } from './database/factories/AuditLogFactory';
+import { registerFactories, registerMigrations, registerModels, registerSeeders } from 'arkormx'
+import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration'
+import { AuditSeeder } from './database/seeders/AuditSeeder'
+import { AuditLog } from './src/models/AuditLog'
+import { AuditLogFactory } from './database/factories/AuditLogFactory'
 
-registerMigrations(CreateAuditTablesMigration);
-registerSeeders(AuditSeeder);
-registerModels(AuditLog);
-registerFactories(AuditLogFactory);
+registerMigrations(CreateAuditTablesMigration)
+registerSeeders(AuditSeeder)
+registerModels(AuditLog)
+registerFactories(AuditLogFactory)
 ```
 
 Or use the `Arkorm` class when you are already bootstrapping extensions through
 an Arkorm instance:
 
 ```ts
-import { Arkorm } from 'arkormx';
+import { Arkorm } from 'arkormx'
 
-const arkorm = new Arkorm();
+const arkorm = new Arkorm()
 
-arkorm.registerMigrations(CreateAuditTablesMigration);
-arkorm.registerSeeders(AuditSeeder);
-arkorm.registerModels(AuditLog);
-arkorm.registerFactories(AuditLogFactory);
+arkorm.registerMigrations(CreateAuditTablesMigration)
+arkorm.registerSeeders(AuditSeeder)
+arkorm.registerModels(AuditLog)
+arkorm.registerFactories(AuditLogFactory)
 ```
 
 The migration and seeder CLI commands include explicitly registered classes
@@ -200,11 +195,11 @@ migration or seeder directory exists.
 For frameworks that bootstrap Prisma elsewhere, use runtime configuration:
 
 ```ts
-import { configureArkormRuntime } from 'arkormx';
+import { configureArkormRuntime } from 'arkormx'
 
 configureArkormRuntime(() => prisma, {
   outputExt: 'js',
-});
+})
 ```
 
 Runtime configuration does not replace `defineConfig({ adapter })`. Prefer the
@@ -213,12 +208,12 @@ your model layer, and use the lower-level binding APIs only for advanced cases
 such as transaction-scoped adapter overrides.
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
 
 export default defineConfig({
   client: () => prisma,
   adapter: createKyselyAdapter(db),
-});
+})
 ```
 
 Runtime configuration also enables transaction scopes through

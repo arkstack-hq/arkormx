@@ -8,14 +8,14 @@ typed query and attribute APIs.
 Use a model generic when you want stricter query and attribute typing:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 type UserAttributes = {
-  id: number;
-  email: string;
-  name: string;
-  isActive: boolean;
-};
+  id: number
+  email: string
+  name: string
+  isActive: boolean
+}
 
 export class User extends Model<UserAttributes> {}
 ```
@@ -36,23 +36,23 @@ compatibility.
 ## Typed accessors
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-user.getAttribute('email');
-user.setAttribute('name', 'Jane');
+user.getAttribute('email')
+user.setAttribute('name', 'Jane')
 ```
 
 ## Typed query helpers
 
 ```ts
-await User.query().whereKey('isActive', true).whereIn('id', [1, 2, 3]).get();
+await User.query().whereKey('isActive', true).whereIn('id', [1, 2, 3]).get()
 ```
 
 `find` supports key-safe usage:
 
 ```ts
-await User.query().find(1);
-await User.query().find('jane@example.com', 'email');
+await User.query().find(1)
+await User.query().find('jane@example.com', 'email')
 ```
 
 ## Direct property access

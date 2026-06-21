@@ -1,4 +1,16 @@
-import { ModelQuerySchemaLike, PrismaLikeInclude, PrismaLikeOrderBy, PrismaLikeScalarFilter, PrismaLikeSelect, PrismaLikeSortOrder, PrismaLikeWhereInput, QuerySchemaCreateData, QuerySchemaRow, QuerySchemaUpdateData, RelationshipModelStatic } from './core'
+import {
+  ModelQuerySchemaLike,
+  PrismaLikeInclude,
+  PrismaLikeOrderBy,
+  PrismaLikeScalarFilter,
+  PrismaLikeSelect,
+  PrismaLikeSortOrder,
+  PrismaLikeWhereInput,
+  QuerySchemaCreateData,
+  QuerySchemaRow,
+  QuerySchemaUpdateData,
+  RelationshipModelStatic,
+} from './core'
 
 import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
@@ -9,277 +21,296 @@ type Simplify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & {}
 type ConventionalAutoManagedKeys = 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'
 
 type SingularKey<T extends string> =
-    LowercaseString<T> extends `${infer Base}s`
-    ? Base
-    : LowercaseString<T>
+  LowercaseString<T> extends `${infer Base}s` ? Base : LowercaseString<T>
 
 type PluralKey<T extends string> = `${SingularKey<T>}s`
 
 type PrismaClientDelegates = {
-    [TKey in keyof PrismaClient as PrismaClient[TKey] extends ModelQuerySchemaLike ? TKey : never]: PrismaClient[TKey]
+  [TKey in keyof PrismaClient as PrismaClient[TKey] extends ModelQuerySchemaLike
+    ? TKey
+    : never]: PrismaClient[TKey]
 }
 
 type DelegateFromPrismaClient<TKey extends string> =
-    LowercaseString<TKey> extends keyof PrismaClientDelegates
+  LowercaseString<TKey> extends keyof PrismaClientDelegates
     ? PrismaClientDelegates[LowercaseString<TKey>]
     : SingularKey<TKey> extends keyof PrismaClientDelegates
-    ? PrismaClientDelegates[SingularKey<TKey>]
-    : PluralKey<TKey> extends keyof PrismaClientDelegates
-    ? PrismaClientDelegates[PluralKey<TKey>]
-    : never
+      ? PrismaClientDelegates[SingularKey<TKey>]
+      : PluralKey<TKey> extends keyof PrismaClientDelegates
+        ? PrismaClientDelegates[PluralKey<TKey>]
+        : never
 
-type AttributeScalarFilter<TValue> = Omit<PrismaLikeScalarFilter, 'equals' | 'not' | 'in' | 'notIn' | 'lt' | 'lte' | 'gt' | 'gte' | 'contains' | 'startsWith' | 'endsWith'> & {
-    equals?: TValue
-    not?: TValue | AttributeScalarFilter<TValue>
-    in?: TValue[]
-    notIn?: TValue[]
-    lt?: TValue
-    lte?: TValue
-    gt?: TValue
-    gte?: TValue
-    contains?: Extract<TValue, string>
-    startsWith?: Extract<TValue, string>
-    endsWith?: Extract<TValue, string>
+type AttributeScalarFilter<TValue> = Omit<
+  PrismaLikeScalarFilter,
+  | 'equals'
+  | 'not'
+  | 'in'
+  | 'notIn'
+  | 'lt'
+  | 'lte'
+  | 'gt'
+  | 'gte'
+  | 'contains'
+  | 'startsWith'
+  | 'endsWith'
+> & {
+  equals?: TValue
+  not?: TValue | AttributeScalarFilter<TValue>
+  in?: TValue[]
+  notIn?: TValue[]
+  lt?: TValue
+  lte?: TValue
+  gt?: TValue
+  gte?: TValue
+  contains?: Extract<TValue, string>
+  startsWith?: Extract<TValue, string>
+  endsWith?: Extract<TValue, string>
 }
 
 export type AttributeWhereInput<TAttributes extends Record<string, unknown>> = {
-    AND?: AttributeWhereInput<TAttributes>[]
-    OR?: AttributeWhereInput<TAttributes>[]
-    NOT?: AttributeWhereInput<TAttributes> | AttributeWhereInput<TAttributes>[]
+  AND?: AttributeWhereInput<TAttributes>[]
+  OR?: AttributeWhereInput<TAttributes>[]
+  NOT?: AttributeWhereInput<TAttributes> | AttributeWhereInput<TAttributes>[]
 } & {
-    [TKey in keyof TAttributes]?: TAttributes[TKey] | AttributeScalarFilter<NonNullable<TAttributes[TKey]>> | null
+  [TKey in keyof TAttributes]?:
+    | TAttributes[TKey]
+    | AttributeScalarFilter<NonNullable<TAttributes[TKey]>>
+    | null
 }
 
 export type AttributeOrderBy<TAttributes extends Record<string, unknown>> =
-    | Partial<Record<keyof TAttributes & string, PrismaLikeSortOrder>>
-    | Array<Partial<Record<keyof TAttributes & string, PrismaLikeSortOrder>>>
+  | Partial<Record<keyof TAttributes & string, PrismaLikeSortOrder>>
+  | Array<Partial<Record<keyof TAttributes & string, PrismaLikeSortOrder>>>
 
 export type AttributeSelect<TAttributes extends Record<string, unknown>> = {
-    [TKey in keyof TAttributes]?: boolean
+  [TKey in keyof TAttributes]?: boolean
 }
 
-type RequiredCreateKeys<TAttributes extends Record<string, unknown>> = Exclude<{
+type RequiredCreateKeys<TAttributes extends Record<string, unknown>> = Exclude<
+  {
     [TKey in keyof TAttributes]-?: undefined extends TAttributes[TKey]
-    ? never
-    : null extends TAttributes[TKey]
-    ? never
-    : TKey
-}[keyof TAttributes], ConventionalAutoManagedKeys>
+      ? never
+      : null extends TAttributes[TKey]
+        ? never
+        : TKey
+  }[keyof TAttributes],
+  ConventionalAutoManagedKeys
+>
 
 type AtLeastOne<TValue extends Record<string, unknown>> = {
-    [TKey in keyof TValue]-?: Required<Pick<TValue, TKey>> & Partial<Omit<TValue, TKey>>
+  [TKey in keyof TValue]-?: Required<Pick<TValue, TKey>> & Partial<Omit<TValue, TKey>>
 }[keyof TValue]
 
 export type AttributeCreateInput<TAttributes extends Record<string, unknown>> = Simplify<
-    Pick<TAttributes, RequiredCreateKeys<TAttributes>>
-    & Partial<Omit<TAttributes, RequiredCreateKeys<TAttributes>>>
+  Pick<TAttributes, RequiredCreateKeys<TAttributes>> &
+    Partial<Omit<TAttributes, RequiredCreateKeys<TAttributes>>>
 >
 
-export type AttributeUpdateInput<TAttributes extends Record<string, unknown>> = AtLeastOne<Partial<TAttributes>>
+export type AttributeUpdateInput<TAttributes extends Record<string, unknown>> = AtLeastOne<
+  Partial<TAttributes>
+>
 
-export interface AttributeQuerySchema<TAttributes extends Record<string, unknown>> extends ModelQuerySchemaLike {
-    findMany: (args?: {
-        where?: AttributeWhereInput<TAttributes>
-        include?: PrismaLikeInclude
-        orderBy?: AttributeOrderBy<TAttributes>
-        select?: AttributeSelect<TAttributes>
-        skip?: number
-        take?: number
-    }) => Promise<TAttributes[]>
-    findFirst: (args?: {
-        where?: AttributeWhereInput<TAttributes>
-        include?: PrismaLikeInclude
-        orderBy?: AttributeOrderBy<TAttributes>
-        select?: AttributeSelect<TAttributes>
-        skip?: number
-        take?: number
-    }) => Promise<TAttributes | null>
-    create: (args: {
-        data: AttributeCreateInput<TAttributes>
-        select?: PrismaLikeSelect
-    }) => Promise<TAttributes>
-    update: (args: {
-        where: Partial<TAttributes>
-        data: AttributeUpdateInput<TAttributes>
-        select?: PrismaLikeSelect
-    }) => Promise<TAttributes>
-    delete: (args: {
-        where: Partial<TAttributes>
-        select?: PrismaLikeSelect
-    }) => Promise<TAttributes>
-    count: (args?: {
-        where?: AttributeWhereInput<TAttributes>
-    }) => Promise<number>
+export interface AttributeQuerySchema<
+  TAttributes extends Record<string, unknown>,
+> extends ModelQuerySchemaLike {
+  findMany: (args?: {
+    where?: AttributeWhereInput<TAttributes>
+    include?: PrismaLikeInclude
+    orderBy?: AttributeOrderBy<TAttributes>
+    select?: AttributeSelect<TAttributes>
+    skip?: number
+    take?: number
+  }) => Promise<TAttributes[]>
+  findFirst: (args?: {
+    where?: AttributeWhereInput<TAttributes>
+    include?: PrismaLikeInclude
+    orderBy?: AttributeOrderBy<TAttributes>
+    select?: AttributeSelect<TAttributes>
+    skip?: number
+    take?: number
+  }) => Promise<TAttributes | null>
+  create: (args: {
+    data: AttributeCreateInput<TAttributes>
+    select?: PrismaLikeSelect
+  }) => Promise<TAttributes>
+  update: (args: {
+    where: Partial<TAttributes>
+    data: AttributeUpdateInput<TAttributes>
+    select?: PrismaLikeSelect
+  }) => Promise<TAttributes>
+  delete: (args: { where: Partial<TAttributes>; select?: PrismaLikeSelect }) => Promise<TAttributes>
+  count: (args?: { where?: AttributeWhereInput<TAttributes> }) => Promise<number>
 }
 
 export type QuerySchemaForModel<
-    TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string,
-    TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
-> =
-    TSchema extends ModelQuerySchemaLike
-    ? TSchema
-    : TSchema extends string
+  TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string,
+  TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>,
+> = TSchema extends ModelQuerySchemaLike
+  ? TSchema
+  : TSchema extends string
     ? DelegateFromPrismaClient<TSchema> extends ModelQuerySchemaLike
-    ? DelegateFromPrismaClient<TSchema>
-    : ModelQuerySchemaLike
+      ? DelegateFromPrismaClient<TSchema>
+      : ModelQuerySchemaLike
     : AttributeQuerySchema<TAttributes>
 
 /**
  * @deprecated Use AttributeQuerySchema instead.
  */
-export type AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> = AttributeQuerySchema<TAttributes>
+export type AttributeSchemaDelegate<TAttributes extends Record<string, unknown>> =
+  AttributeQuerySchema<TAttributes>
 
 /**
  * @deprecated Use QuerySchemaForModel instead.
  */
 export type DelegateForModelSchema<
-    TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string,
-    TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
+  TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string,
+  TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>,
 > = QuerySchemaForModel<TSchema, TAttributes>
 
-export type ModelAttributesOf<TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string> =
-    TSchema extends ModelQuerySchemaLike
-    ? QuerySchemaRow<TSchema> extends Record<string, unknown>
+export type ModelAttributesOf<
+  TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string,
+> = TSchema extends ModelQuerySchemaLike
+  ? QuerySchemaRow<TSchema> extends Record<string, unknown>
     ? QuerySchemaRow<TSchema>
     : Record<string, any>
-    : TSchema extends string
+  : TSchema extends string
     ? DelegateFromPrismaClient<TSchema> extends ModelQuerySchemaLike
-    ? QuerySchemaRow<DelegateFromPrismaClient<TSchema>> extends Record<string, unknown>
-    ? QuerySchemaRow<DelegateFromPrismaClient<TSchema>>
-    : Record<string, any>
-    : Record<string, any>
+      ? QuerySchemaRow<DelegateFromPrismaClient<TSchema>> extends Record<string, unknown>
+        ? QuerySchemaRow<DelegateFromPrismaClient<TSchema>>
+        : Record<string, any>
+      : Record<string, any>
     : TSchema extends Record<string, unknown>
-    ? TSchema
-    : Record<string, any>
+      ? TSchema
+      : Record<string, any>
 
 type BaseModelInstance = Model<any, any>
 
 export type ModelDeclaredAttributeKey<TModel> = {
-    [TKey in keyof TModel & string]: TKey extends keyof BaseModelInstance
+  [TKey in keyof TModel & string]: TKey extends keyof BaseModelInstance
     ? never
     : TModel[TKey] extends (...args: any[]) => any
-    ? never
-    : TKey
+      ? never
+      : TKey
 }[keyof TModel & string]
 
 type ModelDeclaredAttributes<TModel> = {
-    [TKey in ModelDeclaredAttributeKey<TModel>]: TModel[TKey]
+  [TKey in ModelDeclaredAttributeKey<TModel>]: TModel[TKey]
 }
 
-type ResolveModelAttributes<
-    TModel,
-    TAttributes extends Record<string, unknown>,
-> = [ModelDeclaredAttributeKey<TModel>] extends [never]
-    ? TAttributes
-    : string extends keyof TAttributes
+type ResolveModelAttributes<TModel, TAttributes extends Record<string, unknown>> = [
+  ModelDeclaredAttributeKey<TModel>,
+] extends [never]
+  ? TAttributes
+  : string extends keyof TAttributes
     ? ModelDeclaredAttributes<TModel>
     : TAttributes & ModelDeclaredAttributes<TModel>
 
 export type ModelAttributes<TModel> =
-    TModel extends Model<any, infer TAttributes>
+  TModel extends Model<any, infer TAttributes>
     ? ResolveModelAttributes<TModel, TAttributes>
     : Record<string, any>
 
 export type QuerySchemaForModelInstance<TModel> =
-    TModel extends Model<infer TSchema, infer TAttributes>
+  TModel extends Model<infer TSchema, infer TAttributes>
     ? TSchema extends ModelQuerySchemaLike | string
-    ? QuerySchemaForModel<TSchema, TAttributes>
-    : AttributeQuerySchema<ResolveModelAttributes<TModel, TAttributes>>
+      ? QuerySchemaForModel<TSchema, TAttributes>
+      : AttributeQuerySchema<ResolveModelAttributes<TModel, TAttributes>>
     : ModelQuerySchemaLike
 
-export type ModelWhereInput<TModel> =
-    string extends keyof ModelAttributes<TModel>
-    ? PrismaLikeWhereInput
-    : AttributeWhereInput<ModelAttributes<TModel>>
+export type ModelWhereInput<TModel> = string extends keyof ModelAttributes<TModel>
+  ? PrismaLikeWhereInput
+  : AttributeWhereInput<ModelAttributes<TModel>>
 
-export type ModelOrderByInput<TModel> =
-    string extends keyof ModelAttributes<TModel>
-    ? PrismaLikeOrderBy
-    : AttributeOrderBy<ModelAttributes<TModel>>
+export type ModelOrderByInput<TModel> = string extends keyof ModelAttributes<TModel>
+  ? PrismaLikeOrderBy
+  : AttributeOrderBy<ModelAttributes<TModel>>
 
 type RelationshipResultProvider<TResult = unknown> = {
-    getResults: (...args: any[]) => Promise<TResult>
+  getResults: (...args: any[]) => Promise<TResult>
 }
 
 export type ModelRelationshipKey<TModel> = {
-    [TKey in keyof TModel & string]: TKey extends keyof BaseModelInstance
+  [TKey in keyof TModel & string]: TKey extends keyof BaseModelInstance
     ? never
     : TModel[TKey] extends (...args: any[]) => infer TReturn
-    ? Parameters<TModel[TKey]> extends []
-    ? TReturn extends RelationshipResultProvider<any>
-    ? TKey
-    : never
-    : never
-    : never
+      ? Parameters<TModel[TKey]> extends []
+        ? TReturn extends RelationshipResultProvider<any>
+          ? TKey
+          : never
+        : never
+      : never
 }[keyof TModel & string]
 
 export type ModelRelationshipResult<
-    TModel,
-    TKey extends ModelRelationshipKey<TModel>,
+  TModel,
+  TKey extends ModelRelationshipKey<TModel>,
 > = TModel[TKey] extends (...args: any[]) => infer TReturn
-    ? TReturn extends RelationshipResultProvider<infer TResult>
+  ? TReturn extends RelationshipResultProvider<infer TResult>
     ? TResult
     : never
-    : never
+  : never
 
 export type ModelAttributeValue<
-    TModel,
-    TAttributes extends Record<string, unknown>,
-    TKey extends string,
-> = TKey extends ModelRelationshipKey<TModel>
+  TModel,
+  TAttributes extends Record<string, unknown>,
+  TKey extends string,
+> =
+  TKey extends ModelRelationshipKey<TModel>
     ? ModelRelationshipResult<TModel, TKey>
     : TKey extends ModelDeclaredAttributeKey<TModel>
-    ? TModel[TKey]
-    : TKey extends keyof TAttributes & string
-    ? TAttributes[TKey]
-    : unknown
+      ? TModel[TKey]
+      : TKey extends keyof TAttributes & string
+        ? TAttributes[TKey]
+        : unknown
 
 export type ModelCreateData<TModel, TDelegate extends ModelQuerySchemaLike> =
-    TModel extends Model<any, infer TAttributes>
+  TModel extends Model<any, infer TAttributes>
     ? TDelegate extends AttributeQuerySchema<TAttributes>
-    ? AttributeCreateInput<TAttributes>
-    : QuerySchemaCreateData<TDelegate>
+      ? AttributeCreateInput<TAttributes>
+      : QuerySchemaCreateData<TDelegate>
     : QuerySchemaCreateData<TDelegate>
 
 export type ModelUpdateData<TModel, TDelegate extends ModelQuerySchemaLike> =
-    TModel extends Model<any, infer TAttributes>
+  TModel extends Model<any, infer TAttributes>
     ? TDelegate extends AttributeQuerySchema<TAttributes>
-    ? AttributeUpdateInput<TAttributes>
+      ? AttributeUpdateInput<TAttributes>
+      : QuerySchemaUpdateData<TDelegate>
     : QuerySchemaUpdateData<TDelegate>
-    : QuerySchemaUpdateData<TDelegate>
 
-
-
-export type RelatedModelClass<TInstance = unknown> =
-    (abstract new (attributes?: Record<string, unknown>) => TInstance)
-    & RelationshipModelStatic
+export type RelatedModelClass<TInstance = unknown> = (abstract new (
+  attributes?: Record<string, unknown>,
+) => TInstance) &
+  RelationshipModelStatic
 
 export type GlobalScope = (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void
 export type ModelEventName =
-    | 'retrieved'
-    | 'saving'
-    | 'saved'
-    | 'creating'
-    | 'created'
-    | 'updating'
-    | 'updated'
-    | 'deleting'
-    | 'deleted'
-    | 'restoring'
-    | 'restored'
-    | 'forceDeleting'
-    | 'forceDeleted'
-export type ModelEventListener<TModel extends Model = Model> = (model: TModel) => void | Promise<void>
+  | 'retrieved'
+  | 'saving'
+  | 'saved'
+  | 'creating'
+  | 'created'
+  | 'updating'
+  | 'updated'
+  | 'deleting'
+  | 'deleted'
+  | 'restoring'
+  | 'restored'
+  | 'forceDeleting'
+  | 'forceDeleted'
+export type ModelEventListener<TModel extends Model = Model> = (
+  model: TModel,
+) => void | Promise<void>
 export type ModelEventHandler<TModel extends Model = Model> = {
-    handle: (model: TModel) => void | Promise<void>
+  handle: (model: TModel) => void | Promise<void>
 }
-export type ModelEventHandlerConstructor<TModel extends Model = Model> = new () => ModelEventHandler<TModel>
+export type ModelEventHandlerConstructor<TModel extends Model = Model> =
+  new () => ModelEventHandler<TModel>
 export type ModelEventDispatcher<TModel extends Model = Model> =
-    | ModelEventHandler<TModel>
-    | ModelEventHandlerConstructor<TModel>
+  | ModelEventHandler<TModel>
+  | ModelEventHandlerConstructor<TModel>
 
 export type ModelLifecycleState = {
-    booted: boolean
-    booting: boolean
-    globalScopesSuppressed: number
+  booted: boolean
+  booting: boolean
+  globalScopesSuppressed: number
 }

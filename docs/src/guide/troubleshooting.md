@@ -31,9 +31,9 @@ Enable structured query events:
 export default defineConfig({
   adapter,
   debug: (event) => {
-    console.debug(event);
+    console.debug(event)
   },
-});
+})
 ```
 
 See [Observability and Errors](./observability-errors.md) for exception context

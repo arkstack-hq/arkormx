@@ -11,19 +11,17 @@ threading a transaction object through every method.
 ## Basic usage
 
 ```ts
-import { User } from './models/User';
+import { User } from './models/User'
 
 await User.transaction(async () => {
   await User.query().create({
     name: 'Mia',
     email: 'mia@example.com',
     isActive: 1,
-  });
+  })
 
-  await User.query()
-    .where({ email: 'john@example.com' })
-    .updateFrom({ isActive: 1 });
-});
+  await User.query().where({ email: 'john@example.com' }).updateFrom({ isActive: 1 })
+})
 ```
 
 If the callback completes successfully, Arkorm commits the transaction.
@@ -37,10 +35,10 @@ await User.transaction(async () => {
     name: 'Rollback Example',
     email: 'rollback@example.com',
     isActive: 1,
-  });
+  })
 
-  throw new Error('abort transaction');
-});
+  throw new Error('abort transaction')
+})
 ```
 
 The insert above is discarded because the callback throws before the
@@ -56,10 +54,10 @@ const createdUser = await User.transaction(async () => {
     name: 'Nina',
     email: 'nina@example.com',
     isActive: 1,
-  });
+  })
 
-  return user;
-});
+  return user
+})
 ```
 
 ## Nested transactions
@@ -73,16 +71,16 @@ await User.transaction(async () => {
     name: 'Outer User',
     email: 'outer@example.com',
     isActive: 1,
-  });
+  })
 
   await User.transaction(async () => {
     await User.query().create({
       name: 'Inner User',
       email: 'inner@example.com',
       isActive: 1,
-    });
-  });
-});
+    })
+  })
+})
 ```
 
 If the outer transaction rolls back, the inner work rolls back with it.
@@ -98,12 +96,12 @@ await User.transaction(async (tx) => {
     name: 'Mixed Flow',
     email: 'mixed@example.com',
     isActive: 1,
-  });
+  })
 
   await (tx as any).userProfile.create({
     data: { userId: 1 },
-  });
-});
+  })
+})
 ```
 
 In most Arkorm flows you do not need the `tx` argument because `Model.query()`
@@ -117,14 +115,14 @@ interactive transaction call.
 ```ts
 await User.transaction(
   async () => {
-    await User.query().whereKey('id', 1).updateFrom({ isActive: 1 });
+    await User.query().whereKey('id', 1).updateFrom({ isActive: 1 })
   },
   {
     timeout: 10_000,
     maxWait: 5_000,
     isolationLevel: 'Serializable',
   },
-);
+)
 ```
 
 Use this when you need to control transaction timeouts or isolation semantics.
@@ -136,9 +134,9 @@ Use `defineConfig({ prisma })` or `configureArkormRuntime(...)` during
 application boot so Arkorm can start and scope transactions correctly.
 
 ```ts
-import { configureArkormRuntime } from 'arkormx';
+import { configureArkormRuntime } from 'arkormx'
 
-configureArkormRuntime(() => prisma);
+configureArkormRuntime(() => prisma)
 ```
 
 If your current adapter does not expose transaction support, Arkorm throws an

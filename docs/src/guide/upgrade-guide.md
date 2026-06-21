@@ -35,26 +35,26 @@ manual runtime hooks. In 2.x, start from a central config file.
 Typical 1.x style:
 
 ```ts
-import { Model } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { Model } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
-Model.setClient(prisma);
+Model.setClient(prisma)
 ```
 
 Recommended 2.x Prisma compatibility bootstrap:
 
 ```ts
-import { PrismaClient } from '@prisma/client';
-import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
+import { PrismaClient } from '@prisma/client'
+import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 export default defineConfig({
   client: () => prisma,
   adapter: createPrismaDatabaseAdapter(prisma),
-});
+})
 ```
 
 This keeps Prisma available for compatibility features while using the standard
@@ -68,9 +68,9 @@ to individual models.
 In 2.x, the preferred setup is one top-level adapter:
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 const db = new Kysely<Record<string, never>>({
   dialect: new PostgresDialect({
@@ -78,11 +78,11 @@ const db = new Kysely<Record<string, never>>({
       connectionString: process.env.DATABASE_URL,
     }),
   }),
-});
+})
 
 export default defineConfig({
   adapter: createKyselyAdapter(db),
-});
+})
 ```
 
 Keep explicit `Model.setAdapter(...)` calls only when you intentionally need a
@@ -111,7 +111,7 @@ longer the preferred default.
 2.x model declarations should usually be minimal:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model {}
 ```
@@ -121,7 +121,7 @@ match your storage name:
 
 ```ts
 export class User extends Model {
-  protected static override table = 'users';
+  protected static override table = 'users'
 }
 ```
 
@@ -129,7 +129,7 @@ Soft-delete configuration is still model-level:
 
 ```ts
 export class Article extends Model {
-  protected static override softDeletes = true;
+  protected static override softDeletes = true
 }
 ```
 
@@ -141,14 +141,14 @@ generic patterns, move toward attribute-driven model typing.
 Recommended 2.x style:
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 type UserAttributes = {
-  id: number;
-  name: string;
-  email: string;
-  isActive: boolean;
-};
+  id: number
+  name: string
+  email: string
+  isActive: boolean
+}
 
 export class User extends Model<UserAttributes> {}
 ```
@@ -189,34 +189,34 @@ If your migrations use mapped columns or enum definitions outside Prisma, keep t
 ### Before: 1.x Prisma-first bootstrap
 
 ```ts
-import { Model } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { Model } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
-Model.setClient(prisma);
+Model.setClient(prisma)
 ```
 
 ### After: 2.x Prisma compatibility bootstrap
 
 ```ts
-import { PrismaClient } from '@prisma/client';
-import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx';
+import { PrismaClient } from '@prisma/client'
+import { createPrismaDatabaseAdapter, defineConfig } from 'arkormx'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 export default defineConfig({
   client: () => prisma,
   adapter: createPrismaDatabaseAdapter(prisma),
-});
+})
 ```
 
 ### After: 2.x adapter-first SQL bootstrap
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 export default defineConfig({
   adapter: createKyselyAdapter(
@@ -228,7 +228,7 @@ export default defineConfig({
       }),
     }),
   ),
-});
+})
 ```
 
 ## Recommended migration paths

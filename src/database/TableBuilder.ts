@@ -1,4 +1,13 @@
-import { SchemaColumn, SchemaColumnType, SchemaForeignKey, SchemaIndex, SchemaPrimaryKey, SchemaUniqueConstraint, TimestampNames, TimestampNaming } from 'src/types'
+import {
+  SchemaColumn,
+  SchemaColumnType,
+  SchemaForeignKey,
+  SchemaIndex,
+  SchemaPrimaryKey,
+  SchemaUniqueConstraint,
+  TimestampNames,
+  TimestampNaming,
+} from 'src/types'
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
@@ -6,33 +15,34 @@ import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlan
 const PRISMA_ENUM_MEMBER_REGEX = /^[A-Za-z][A-Za-z0-9_]*$/
 
 const defaultTimestampNames: TimestampNames = {
-    createdAt: 'createdAt',
-    updatedAt: 'updatedAt',
+  createdAt: 'createdAt',
+  updatedAt: 'updatedAt',
 }
 
 const normalizeEnumMember = (columnName: string, value: string): string => {
-    const normalized = value.trim()
-    if (!normalized)
-        throw new Error(`Enum column [${columnName}] must define only non-empty values.`)
+  const normalized = value.trim()
+  if (!normalized) throw new Error(`Enum column [${columnName}] must define only non-empty values.`)
 
-    if (!PRISMA_ENUM_MEMBER_REGEX.test(normalized))
-        throw new Error(`Enum column [${columnName}] contains invalid Prisma enum value [${normalized}].`)
+  if (!PRISMA_ENUM_MEMBER_REGEX.test(normalized))
+    throw new Error(
+      `Enum column [${columnName}] contains invalid Prisma enum value [${normalized}].`,
+    )
 
-    return normalized
+  return normalized
 }
 
 const normalizeEnumMembers = (columnName: string, values: string[]): string[] => {
-    const normalizedValues = values.map(value => normalizeEnumMember(columnName, value))
-    const seen = new Set<string>()
+  const normalizedValues = values.map((value) => normalizeEnumMember(columnName, value))
+  const seen = new Set<string>()
 
-    for (const value of normalizedValues) {
-        if (seen.has(value))
-            throw new Error(`Enum column [${columnName}] contains duplicate enum value [${value}].`)
+  for (const value of normalizedValues) {
+    if (seen.has(value))
+      throw new Error(`Enum column [${columnName}] contains duplicate enum value [${value}].`)
 
-        seen.add(value)
-    }
+    seen.add(value)
+  }
 
-    return normalizedValues
+  return normalizedValues
 }
 
 /**
@@ -43,752 +53,743 @@ const normalizeEnumMembers = (columnName: string, values: string[]): string[] =>
  * @since 0.2.3
  */
 export class EnumBuilder {
-    private readonly tableBuilder: TableBuilder
-    private readonly columnName: string
+  private readonly tableBuilder: TableBuilder
+  private readonly columnName: string
 
-    public constructor(tableBuilder: TableBuilder, columnName: string) {
-        this.tableBuilder = tableBuilder
-        this.columnName = columnName
-    }
+  public constructor(tableBuilder: TableBuilder, columnName: string) {
+    this.tableBuilder = tableBuilder
+    this.columnName = columnName
+  }
 
-    /**
-     * Defines the Prisma enum name for this column.
-     *
-     * @param name
-     * @returns
-     */
-    public enumName (name: string): this {
-        this.tableBuilder.enumName(name, this.columnName)
+  /**
+   * Defines the Prisma enum name for this column.
+   *
+   * @param name
+   * @returns
+   */
+  public enumName(name: string): this {
+    this.tableBuilder.enumName(name, this.columnName)
 
-        return this
-    }
+    return this
+  }
 
-    /**
-     * Marks the enum column as nullable.
-     *
-     * @returns
-     */
-    public nullable (): this {
-        this.tableBuilder.nullable(this.columnName)
+  /**
+   * Marks the enum column as nullable.
+   *
+   * @returns
+   */
+  public nullable(): this {
+    this.tableBuilder.nullable(this.columnName)
 
-        return this
-    }
+    return this
+  }
 
-    /**
-     * Marks the enum column as unique.
-     *
-     * @returns
-     */
-    public unique (): this {
-        this.tableBuilder.unique(this.columnName)
+  /**
+   * Marks the enum column as unique.
+   *
+   * @returns
+   */
+  public unique(): this {
+    this.tableBuilder.unique(this.columnName)
 
-        return this
-    }
+    return this
+  }
 
-    /**
-     * Sets a default value for the enum column.
-     *
-     * @param value
-     * @returns
-     */
-    public default (value: unknown): this {
-        this.tableBuilder.default(value, this.columnName)
+  /**
+   * Sets a default value for the enum column.
+   *
+   * @param value
+   * @returns
+   */
+  public default(value: unknown): this {
+    this.tableBuilder.default(value, this.columnName)
 
-        return this
-    }
+    return this
+  }
 
-    /**
-     * Positions the enum column after another column when supported.
-     *
-     * @param referenceColumn
-     * @returns
-     */
-    public after (referenceColumn: string): this {
-        this.tableBuilder.after(referenceColumn, this.columnName)
+  /**
+   * Positions the enum column after another column when supported.
+   *
+   * @param referenceColumn
+   * @returns
+   */
+  public after(referenceColumn: string): this {
+    this.tableBuilder.after(referenceColumn, this.columnName)
 
-        return this
-    }
+    return this
+  }
 
-    /**
-     * Maps the enum column to a custom database column name.
-     *
-     * @param name
-     * @returns
-     */
-    public map (name: string): this {
-        this.tableBuilder.map(name, this.columnName)
+  /**
+   * Maps the enum column to a custom database column name.
+   *
+   * @param name
+   * @returns
+   */
+  public map(name: string): this {
+    this.tableBuilder.map(name, this.columnName)
 
-        return this
-    }
+    return this
+  }
 }
 
 /**
- * The TableBuilder class provides a fluent interface for defining 
+ * The TableBuilder class provides a fluent interface for defining
  * the structure of a database table in a migration, including columns to add or drop.
  *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
 export class TableBuilder {
-    private readonly columns: SchemaColumn[] = []
-    private readonly dropColumnNames: string[] = []
-    private readonly indexes: SchemaIndex[] = []
-    private readonly foreignKeys: SchemaForeignKey[] = []
-    private readonly compositeUniqueConstraints: SchemaUniqueConstraint[] = []
-    private compositePrimaryKey?: SchemaPrimaryKey
-    private latestColumnName: string | undefined
+  private readonly columns: SchemaColumn[] = []
+  private readonly dropColumnNames: string[] = []
+  private readonly indexes: SchemaIndex[] = []
+  private readonly foreignKeys: SchemaForeignKey[] = []
+  private readonly compositeUniqueConstraints: SchemaUniqueConstraint[] = []
+  private compositePrimaryKey?: SchemaPrimaryKey
+  private latestColumnName: string | undefined
 
-    /**
-     * Defines a primary key column in the table.
-     * 
-     * @param columnNameOrOptions 
-     * @param options 
-     * @returns 
-     */
-    public primary (columns: string[], name?: string): this
-    public primary (
-        columnNameOrOptions?: string | {
-            columnName?: string
-            autoIncrement?: boolean
-            default?: unknown
+  /**
+   * Defines a primary key column in the table.
+   *
+   * @param columnNameOrOptions
+   * @param options
+   * @returns
+   */
+  public primary(columns: string[], name?: string): this
+  public primary(
+    columnNameOrOptions?:
+      | string
+      | {
+          columnName?: string
+          autoIncrement?: boolean
+          default?: unknown
         },
-        options?: {
-            autoIncrement?: boolean
-            default?: unknown
-        }
-    ): this
-    public primary (
-        columnNameOrOptions?: string | string[] | {
-            columnName?: string
-            autoIncrement?: boolean
-            default?: unknown
+    options?: {
+      autoIncrement?: boolean
+      default?: unknown
+    },
+  ): this
+  public primary(
+    columnNameOrOptions?:
+      | string
+      | string[]
+      | {
+          columnName?: string
+          autoIncrement?: boolean
+          default?: unknown
         },
-        options?: {
-            autoIncrement?: boolean
-            default?: unknown
-        } | string
-    ): this {
-        if (Array.isArray(columnNameOrOptions)) {
-            const columns = this.normalizeCompositeColumns(columnNameOrOptions, 'primary key')
-            if (this.compositePrimaryKey)
-                throw new Error('A composite primary key has already been defined for this table.')
-
-            this.compositePrimaryKey = {
-                columns,
-                ...(typeof options === 'string' && options.trim()
-                    ? { name: options.trim() }
-                    : {}),
-            }
-
-            return this
+    options?:
+      | {
+          autoIncrement?: boolean
+          default?: unknown
         }
+      | string,
+  ): this {
+    if (Array.isArray(columnNameOrOptions)) {
+      const columns = this.normalizeCompositeColumns(columnNameOrOptions, 'primary key')
+      if (this.compositePrimaryKey)
+        throw new Error('A composite primary key has already been defined for this table.')
 
-        const config = typeof columnNameOrOptions === 'string'
-            ? {
-                columnName: columnNameOrOptions,
-                ...(typeof options === 'object' ? options : {}),
-            }
-            : (columnNameOrOptions ?? {})
-        const column = this.resolveColumn(config.columnName)
-        column.primary = true
+      this.compositePrimaryKey = {
+        columns,
+        ...(typeof options === 'string' && options.trim() ? { name: options.trim() } : {}),
+      }
 
-        if (typeof config.autoIncrement === 'boolean')
-            column.autoIncrement = config.autoIncrement
-
-        if (Object.prototype.hasOwnProperty.call(config, 'default'))
-            column.default = config.default
-
-        column.primaryKeyGeneration = PrimaryKeyGenerationPlanner.plan(column)
-
-        return this
+      return this
     }
 
-    /**
-     * Defines an auto-incrementing primary key column.
-     * 
-     * @param name  The name of the primary key column.
-     * @default 'id'
-     * @returns     The current TableBuilder instance for chaining.
-     */
-    public id (
-        name = 'id',
-        type: Exclude<SchemaColumnType, 'boolean' | 'timestamp' | 'date' | 'json'> = 'id'
-    ): this {
-        return this.column(name, type, { primary: true })
+    const config =
+      typeof columnNameOrOptions === 'string'
+        ? {
+            columnName: columnNameOrOptions,
+            ...(typeof options === 'object' ? options : {}),
+          }
+        : (columnNameOrOptions ?? {})
+    const column = this.resolveColumn(config.columnName)
+    column.primary = true
+
+    if (typeof config.autoIncrement === 'boolean') column.autoIncrement = config.autoIncrement
+
+    if (Object.prototype.hasOwnProperty.call(config, 'default')) column.default = config.default
+
+    column.primaryKeyGeneration = PrimaryKeyGenerationPlanner.plan(column)
+
+    return this
+  }
+
+  /**
+   * Defines an auto-incrementing primary key column.
+   *
+   * @param name  The name of the primary key column.
+   * @default 'id'
+   * @returns     The current TableBuilder instance for chaining.
+   */
+  public id(
+    name = 'id',
+    type: Exclude<SchemaColumnType, 'boolean' | 'timestamp' | 'date' | 'json'> = 'id',
+  ): this {
+    return this.column(name, type, { primary: true })
+  }
+
+  /**
+   * Defines a UUID column in the table.
+   *
+   * @param name      The name of the UUID column.
+   * @param options   Additional options for the UUID column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public uuid(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'uuid', options)
+  }
+
+  /**
+   * Defines an enum column in the table.
+   *
+   * @param name      The name of the enum column.
+   * @param values    Either an array of string values for the enum or the name of an existing enum to reuse.
+   * @param options   Additional options for the enum column.
+   * @returns
+   */
+  public enum(
+    name: string,
+    valuesOrEnumName: string[] | string,
+    options: Partial<SchemaColumn> & { enumName?: string } = {},
+  ): EnumBuilder {
+    const isEnumReuse = typeof valuesOrEnumName === 'string'
+
+    if (!isEnumReuse && valuesOrEnumName.length === 0)
+      throw new Error(`Enum column [${name}] must define at least one value.`)
+
+    const normalizedEnumValues = isEnumReuse
+      ? undefined
+      : normalizeEnumMembers(name, valuesOrEnumName)
+
+    const enumName = isEnumReuse ? valuesOrEnumName.trim() : options.enumName?.trim()
+
+    if (isEnumReuse && !enumName) throw new Error(`Enum column [${name}] must define an enum name.`)
+
+    this.column(name, 'enum', {
+      ...options,
+      enumName,
+      enumValues: normalizedEnumValues,
+    })
+
+    return new EnumBuilder(this, name)
+  }
+
+  /**
+   * Defines a string column in the table.
+   *
+   * @param name      The name of the string column.
+   * @param options   Additional options for the string column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public string(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'string', options)
+  }
+
+  /**
+   * Defines a text column in the table.
+   *
+   * @param name      The name of the text column.
+   * @param options   Additional options for the text column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public text(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'text', options)
+  }
+
+  /**
+   * Defines an integer column in the table.
+   *
+   * @param name      The name of the integer column.
+   * @param options   Additional options for the integer column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public integer(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'integer', options)
+  }
+
+  /**
+   * Defines a big integer column in the table.
+   *
+   * @param name      The name of the big integer column.
+   * @param options   Additional options for the big integer column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public bigInteger(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'bigInteger', options)
+  }
+
+  /**
+   * Defines a float column in the table.
+   *
+   * @param name      The name of the float column.
+   * @param options   Additional options for the float column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public float(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'float', options)
+  }
+
+  /**
+   * Marks a column as unique in the table.
+   *
+   * @param name Optional explicit column name.
+   * When omitted, applies to the latest defined column.
+   * @returns The current TableBuilder instance for chaining.
+   */
+  public unique(columns: string[], name?: string): this
+  public unique(name?: string): this
+  public unique(columnsOrName?: string | string[], name?: string): this {
+    if (Array.isArray(columnsOrName)) {
+      const columns = this.normalizeCompositeColumns(columnsOrName, 'unique constraint')
+      const normalizedName = name?.trim()
+      const duplicate = this.compositeUniqueConstraints.find(
+        (constraint) =>
+          constraint.columns.length === columns.length &&
+          constraint.columns.every((column, index) => column === columns[index]),
+      )
+      if (duplicate)
+        throw new Error(
+          `A unique constraint for columns [${columns.join(', ')}] has already been defined for this table.`,
+        )
+      if (
+        normalizedName &&
+        this.compositeUniqueConstraints.some((constraint) => constraint.name === normalizedName)
+      )
+        throw new Error(
+          `A unique constraint named [${normalizedName}] has already been defined for this table.`,
+        )
+
+      this.compositeUniqueConstraints.push({
+        columns,
+        ...(normalizedName ? { name: normalizedName } : {}),
+      })
+
+      return this
     }
 
-    /**
-     * Defines a UUID column in the table.
-     * 
-     * @param name      The name of the UUID column.
-     * @param options   Additional options for the UUID column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public uuid (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'uuid', options)
+    const column = this.resolveColumn(columnsOrName)
+    column.unique = true
+
+    return this
+  }
+
+  /**
+   * Defines a boolean column in the table.
+   *
+   * @param name      The name of the boolean column.
+   * @param options   Additional options for the boolean column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public boolean(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'boolean', options)
+  }
+
+  /**
+   * Defines a JSON column in the table.
+   *
+   * @param name      The name of the JSON column.
+   * @param options   Additional options for the JSON column.
+   * @returns
+   */
+  public json(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'json', options)
+  }
+
+  /**
+   * Defines a date column in the table.
+   *
+   * @param name      The name of the date column.
+   * @param options   Additional options for the date column.
+   * @returns
+   */
+  public date(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'date', options)
+  }
+
+  /**
+   * Defines colonns for a polymorphic relationship in the table.
+   *
+   * @param name    The base name for the polymorphic relationship columns.
+   * @returns
+   */
+  public morphs(name: string, nullable = false): this {
+    this.string(`${name}Type`, { nullable })
+    this.integer(`${name}Id`, { nullable })
+
+    return this
+  }
+
+  /**
+   * Defines columns for a polymorphic relationship in the table with UUID ID.
+   *
+   * @param name    The base name for the polymorphic relationship columns.
+   * @returns
+   */
+  public uuidMorphs(name: string, nullable = false): this {
+    this.string(`${name}Type`, { nullable })
+    this.uuid(`${name}Id`, { nullable })
+
+    return this
+  }
+
+  /**
+   * Defines nullable columns for a polymorphic relationship in the table.
+   *
+   * @param name  The base name for the polymorphic relationship columns.
+   * @returns
+   */
+  public nullableMorphs(name: string): this {
+    return this.morphs(name, true)
+  }
+
+  /**
+   * Defines nullable columns for a polymorphic relationship in the table with UUID ID.
+   *
+   * @param name  The base name for the polymorphic relationship columns.
+   * @returns
+   */
+  public nullableUuidMorphs(name: string): this {
+    return this.uuidMorphs(name, true)
+  }
+
+  /**
+   * Defines a timestamp column in the table.
+   *
+   * @param name      The name of the timestamp column.
+   * @param options   Additional options for the timestamp column.
+   * @returns
+   */
+  public timestamp(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'timestamp', options)
+  }
+
+  /**
+   * Defines both createdAt and updatedAt timestamp columns in the table.
+   *
+   * The attribute casing (the names exposed on the model) is controlled by the
+   * first argument, while the optional second argument controls the casing used
+   * for the persisted database column names via `.map()`.
+   *
+   * @example
+   * table.timestamps()                       // createdAt / updatedAt
+   * table.timestamps('snake')                // created_at / updated_at
+   * table.timestamps('camel', 'snake')       // createdAt -> created_at (mapped)
+   * table.timestamps({ createdAt: 'createdOn' })
+   * table.timestamps('camel', { createdAt: 'created_on' })
+   *
+   * @param casing    The casing (or explicit names) used for the attribute names.
+   * @param mapCasing The casing (or explicit names) used for the mapped database columns.
+   * @returns
+   */
+  public timestamps(casing: TimestampNaming = 'camel', mapCasing?: TimestampNaming): this {
+    const names = this.resolveTimestampNames(casing, defaultTimestampNames)
+    const maps = mapCasing === undefined ? undefined : this.resolveTimestampNames(mapCasing, names)
+
+    this.timestamp(names.createdAt, {
+      nullable: false,
+      default: 'now()',
+      ...(maps && maps.createdAt !== names.createdAt ? { map: maps.createdAt } : {}),
+    })
+    this.timestamp(names.updatedAt, {
+      nullable: false,
+      updatedAt: true,
+      ...(maps && maps.updatedAt !== names.updatedAt ? { map: maps.updatedAt } : {}),
+    })
+
+    return this
+  }
+
+  /**
+   * Resolves a timestamp naming option into concrete createdAt / updatedAt names.
+   *
+   * @param naming    The casing keyword or explicit name overrides.
+   * @param fallback  The names used when an explicit override is omitted.
+   * @returns
+   */
+  private resolveTimestampNames(naming: TimestampNaming, fallback: TimestampNames): TimestampNames {
+    if (naming === 'snake') return { createdAt: 'created_at', updatedAt: 'updated_at' }
+
+    if (naming === 'camel') return { createdAt: 'createdAt', updatedAt: 'updatedAt' }
+
+    return {
+      createdAt: naming.createdAt ?? fallback.createdAt,
+      updatedAt: naming.updatedAt ?? fallback.updatedAt,
     }
+  }
 
-    /**
-     * Defines an enum column in the table.
-     *
-     * @param name      The name of the enum column.
-     * @param values    Either an array of string values for the enum or the name of an existing enum to reuse.
-     * @param options   Additional options for the enum column.
-     * @returns
-     */
-    public enum (
-        name: string,
-        valuesOrEnumName: string[] | string,
-        options: Partial<SchemaColumn> & { enumName?: string } = {}
-    ): EnumBuilder {
-        const isEnumReuse = typeof valuesOrEnumName === 'string'
+  /**
+   * Defines a soft delete timestamp column in the table.
+   *
+   * @param column    The name of the soft delete column.
+   * @returns
+   */
+  public softDeletes(column = 'deletedAt'): this {
+    this.timestamp(column, { nullable: true })
 
-        if (!isEnumReuse && valuesOrEnumName.length === 0)
-            throw new Error(`Enum column [${name}] must define at least one value.`)
+    return this
+  }
 
-        const normalizedEnumValues = isEnumReuse
-            ? undefined
-            : normalizeEnumMembers(name, valuesOrEnumName)
+  /**
+   * Defines a column to be dropped from the table in an alterTable operation.
+   *
+   * @param name   The name of the column to drop.
+   * @returns
+   */
+  public dropColumn(name: string): this {
+    this.dropColumnNames.push(name)
 
-        const enumName = isEnumReuse
-            ? valuesOrEnumName.trim()
-            : options.enumName?.trim()
+    return this
+  }
 
-        if (isEnumReuse && !enumName)
-            throw new Error(`Enum column [${name}] must define an enum name.`)
+  /**
+   * Marks a column as nullable.
+   *
+   * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
+   * @returns          The current TableBuilder instance for chaining.
+   */
+  public nullable(columnName?: string): this {
+    const column = this.resolveColumn(columnName)
+    column.nullable = true
 
-        this.column(name, 'enum', {
-            ...options,
-            enumName,
-            enumValues: normalizedEnumValues,
-        })
+    return this
+  }
 
-        return new EnumBuilder(this, name)
+  /**
+   * Sets the Prisma enum name for an enum column.
+   *
+   * @param name       The enum name to assign.
+   * @param columnName Optional explicit target column name. When omitted, applies to the latest defined column.
+   * @returns          The current TableBuilder instance for chaining.
+   */
+  public enumName(name: string, columnName?: string): this {
+    const column = this.resolveColumn(columnName)
+    if (column.type !== 'enum') throw new Error(`Column [${column.name}] is not an enum column.`)
+
+    const enumName = name.trim()
+    if (!enumName) throw new Error(`Enum column [${column.name}] must define an enum name.`)
+
+    column.enumName = enumName
+
+    return this
+  }
+
+  /**
+   * Sets a default value for a column.
+   *
+   * @param value      The default scalar value or Prisma expression (e.g. 'now()').
+   * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
+   * @returns          The current TableBuilder instance for chaining.
+   */
+  public default(value: unknown, columnName?: string): this {
+    const column = this.resolveColumn(columnName)
+    column.default = value
+
+    return this
+  }
+
+  /**
+   * Sets the column position to appear after another column when possible.
+   *
+   * @param referenceColumn The column that the target column should be placed after.
+   * @param columnName      Optional explicit target column name. When omitted, applies to the latest defined column.
+   * @returns               The current TableBuilder instance for chaining.
+   */
+  public after(referenceColumn: string, columnName?: string): this {
+    const column = this.resolveColumn(columnName)
+    column.after = referenceColumn
+
+    return this
+  }
+
+  /**
+   * Maps the column to a custom database column name.
+   *
+   * @param name       The custom database column name.
+   * @param columnName Optional explicit target column name. When omitted, applies to the latest defined column.
+   * @returns          The current TableBuilder instance for chaining.
+   */
+  public map(name: string, columnName?: string): this {
+    const column = this.resolveColumn(columnName)
+    column.map = name
+
+    return this
+  }
+
+  /**
+   * Defines an index on one or more columns.
+   *
+   * @param columns Optional target columns. When omitted, applies to the latest defined column.
+   * @param name    Optional index name.
+   * @returns       The current TableBuilder instance for chaining.
+   */
+  public index(columns?: string | string[], name?: string): this {
+    const columnList = Array.isArray(columns)
+      ? columns
+      : typeof columns === 'string'
+        ? [columns]
+        : [this.resolveColumn().name]
+
+    this.indexes.push({
+      columns: [...columnList],
+      name,
+    })
+
+    return this
+  }
+
+  /**
+   * Defines a foreign key relation for an existing column.
+   *
+   * @param column The local foreign key column name.
+   * @returns A fluent foreign key builder.
+   */
+  public foreignKey(column: string): ForeignKeyBuilder {
+    const entry: SchemaForeignKey = {
+      column,
+      referencesTable: '',
+      referencesColumn: 'id',
     }
+    this.foreignKeys.push(entry)
 
-    /**
-     * Defines a string column in the table.
-     * 
-     * @param name      The name of the string column.
-     * @param options   Additional options for the string column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public string (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'string', options)
-    }
+    return new ForeignKeyBuilder(entry)
+  }
 
-    /**
-     * Defines a text column in the table.
-     * 
-     * @param name      The name of the text column.
-     * @param options   Additional options for the text column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public text (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'text', options)
-    }
+  /**
+   * Defines a foreign key relation for a column, using a
+   * conventional naming pattern.
+   *
+   * @param column
+   * @returns
+   */
+  public foreign(column?: string): ForeignKeyBuilder {
+    const columnName = this.resolveColumn(column).name
 
-    /**
-     * Defines an integer column in the table.
-     * 
-     * @param name      The name of the integer column.
-     * @param options   Additional options for the integer column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public integer (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'integer', options)
-    }
+    return this.foreignKey(column ?? columnName)
+  }
 
-    /**
-     * Defines a big integer column in the table.
-     * 
-     * @param name      The name of the big integer column.
-     * @param options   Additional options for the big integer column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public bigInteger (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'bigInteger', options)
-    }
+  /**
+   * Returns a deep copy of the defined columns for the table.
+   *
+   * @returns
+   */
+  public getColumns(): SchemaColumn[] {
+    return this.columns.map((column) => ({
+      ...column,
+      enumValues: column.enumValues ? [...column.enumValues] : undefined,
+    }))
+  }
 
-    /**
-     * Defines a float column in the table.
-     * 
-     * @param name      The name of the float column.
-     * @param options   Additional options for the float column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public float (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'float', options)
-    }
+  /**
+   * Returns a copy of the defined column names to be dropped from the table.
+   *
+   * @returns
+   */
+  public getDropColumns(): string[] {
+    return [...this.dropColumnNames]
+  }
 
-    /**
-     * Marks a column as unique in the table.
-     * 
-     * @param name Optional explicit column name. 
-     * When omitted, applies to the latest defined column.
-     * @returns The current TableBuilder instance for chaining.
-     */
-    public unique (columns: string[], name?: string): this
-    public unique (name?: string): this
-    public unique (columnsOrName?: string | string[], name?: string): this {
-        if (Array.isArray(columnsOrName)) {
-            const columns = this.normalizeCompositeColumns(columnsOrName, 'unique constraint')
-            const normalizedName = name?.trim()
-            const duplicate = this.compositeUniqueConstraints.find(constraint =>
-                constraint.columns.length === columns.length
-                && constraint.columns.every((column, index) => column === columns[index])
-            )
-            if (duplicate)
-                throw new Error(`A unique constraint for columns [${columns.join(', ')}] has already been defined for this table.`)
-            if (normalizedName && this.compositeUniqueConstraints.some(constraint => constraint.name === normalizedName))
-                throw new Error(`A unique constraint named [${normalizedName}] has already been defined for this table.`)
+  /**
+   * Returns a deep copy of the defined indexes for the table.
+   *
+   * @returns
+   */
+  public getIndexes(): SchemaIndex[] {
+    return this.indexes.map((index) => ({
+      ...index,
+      columns: [...index.columns],
+    }))
+  }
 
-            this.compositeUniqueConstraints.push({
-                columns,
-                ...(normalizedName ? { name: normalizedName } : {}),
-            })
+  /**
+   * Returns a deep copy of the defined foreign keys for the table.
+   *
+   * @returns
+   */
+  public getForeignKeys(): SchemaForeignKey[] {
+    return this.foreignKeys.map((foreignKey) => ({ ...foreignKey }))
+  }
 
-            return this
+  /**
+   * Returns a copy of the table-level composite primary key.
+   */
+  public getPrimaryKey(): SchemaPrimaryKey | undefined {
+    return this.compositePrimaryKey
+      ? {
+          ...this.compositePrimaryKey,
+          columns: [...this.compositePrimaryKey.columns],
         }
+      : undefined
+  }
 
-        const column = this.resolveColumn(columnsOrName)
-        column.unique = true
+  /**
+   * Returns copies of table-level composite unique constraints.
+   */
+  public getUniqueConstraints(): SchemaUniqueConstraint[] {
+    return this.compositeUniqueConstraints.map((constraint) => ({
+      ...constraint,
+      columns: [...constraint.columns],
+    }))
+  }
 
-        return this
-    }
+  /**
+   * Defines a column in the table with the given name.
+   *
+   * @param name      The name of the column.
+   * @param type      The type of the column.
+   * @param options   Additional options for the column.
+   * @returns
+   */
+  private column(name: string, type: SchemaColumnType, options: Partial<SchemaColumn>): this {
+    this.columns.push({
+      name,
+      type,
+      enumName: options.enumName,
+      enumValues: options.enumValues ? [...options.enumValues] : undefined,
+      map: options.map,
+      nullable: options.nullable,
+      unique: options.unique,
+      primary: options.primary,
+      autoIncrement: options.autoIncrement,
+      after: options.after,
+      default: options.default,
+      updatedAt: options.updatedAt,
+      primaryKeyGeneration: options.primaryKeyGeneration,
+    })
+    const column = this.columns[this.columns.length - 1]
+    column.primaryKeyGeneration = PrimaryKeyGenerationPlanner.plan(column)
+    this.latestColumnName = name
 
-    /**
-     * Defines a boolean column in the table.
-     * 
-     * @param name      The name of the boolean column. 
-     * @param options   Additional options for the boolean column.
-     * @returns         The current TableBuilder instance for chaining.
-     */
-    public boolean (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'boolean', options)
-    }
+    return this
+  }
 
-    /**
-     * Defines a JSON column in the table.
-     * 
-     * @param name      The name of the JSON column.
-     * @param options   Additional options for the JSON column.
-     * @returns 
-     */
-    public json (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'json', options)
-    }
+  /**
+   * Resolve a target column by name or fallback to the latest defined column.
+   *
+   * @param columnName
+   * @returns
+   */
+  private resolveColumn(columnName?: string): SchemaColumn {
+    const targetName = columnName ?? this.latestColumnName
+    if (!targetName) throw new Error('No column available for this operation.')
 
-    /**
-     * Defines a date column in the table.
-     * 
-     * @param name      The name of the date column.
-     * @param options   Additional options for the date column.
-     * @returns 
-     */
-    public date (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'date', options)
-    }
+    const column = this.columns.find((item) => item.name === targetName)
+    if (!column) throw new Error(`Column [${targetName}] was not found in the table definition.`)
 
-    /**
-     * Defines colonns for a polymorphic relationship in the table.
-     * 
-     * @param name    The base name for the polymorphic relationship columns.
-     * @returns 
-     */
-    public morphs (name: string, nullable = false): this {
-        this.string(`${name}Type`, { nullable })
-        this.integer(`${name}Id`, { nullable })
+    return column
+  }
 
-        return this
-    }
+  private normalizeCompositeColumns(columns: string[], label: string): string[] {
+    const normalized = columns.map((column) => column.trim())
+    if (normalized.length < 2)
+      throw new Error(`A composite ${label} must contain at least two columns.`)
+    if (normalized.some((column) => !column))
+      throw new Error(`Composite ${label} columns must be non-empty strings.`)
+    if (new Set(normalized).size !== normalized.length)
+      throw new Error(`Composite ${label} columns must be unique.`)
 
-    /**
-     * Defines columns for a polymorphic relationship in the table with UUID ID.
-     * 
-     * @param name    The base name for the polymorphic relationship columns.
-     * @returns 
-     */
-    public uuidMorphs (name: string, nullable = false): this {
-        this.string(`${name}Type`, { nullable })
-        this.uuid(`${name}Id`, { nullable })
-
-        return this
-    }
-
-    /**
-     * Defines nullable columns for a polymorphic relationship in the table.
-     * 
-     * @param name  The base name for the polymorphic relationship columns.
-     * @returns 
-     */
-    public nullableMorphs (name: string): this {
-        return this.morphs(name, true)
-    }
-
-    /**
-     * Defines nullable columns for a polymorphic relationship in the table with UUID ID.
-     * 
-     * @param name  The base name for the polymorphic relationship columns.
-     * @returns 
-     */
-    public nullableUuidMorphs (name: string): this {
-        return this.uuidMorphs(name, true)
-    }
-
-    /**
-     * Defines a timestamp column in the table.
-     * 
-     * @param name      The name of the timestamp column.
-     * @param options   Additional options for the timestamp column.
-     * @returns 
-     */
-    public timestamp (name: string, options: Partial<SchemaColumn> = {}): this {
-        return this.column(name, 'timestamp', options)
-    }
-
-    /**
-     * Defines both createdAt and updatedAt timestamp columns in the table.
-     *
-     * The attribute casing (the names exposed on the model) is controlled by the
-     * first argument, while the optional second argument controls the casing used
-     * for the persisted database column names via `.map()`.
-     *
-     * @example
-     * table.timestamps()                       // createdAt / updatedAt
-     * table.timestamps('snake')                // created_at / updated_at
-     * table.timestamps('camel', 'snake')       // createdAt -> created_at (mapped)
-     * table.timestamps({ createdAt: 'createdOn' })
-     * table.timestamps('camel', { createdAt: 'created_on' })
-     *
-     * @param casing    The casing (or explicit names) used for the attribute names.
-     * @param mapCasing The casing (or explicit names) used for the mapped database columns.
-     * @returns
-     */
-    public timestamps (
-        casing: TimestampNaming = 'camel',
-        mapCasing?: TimestampNaming,
-    ): this {
-        const names = this.resolveTimestampNames(casing, defaultTimestampNames)
-        const maps = mapCasing === undefined
-            ? undefined
-            : this.resolveTimestampNames(mapCasing, names)
-
-        this.timestamp(names.createdAt, {
-            nullable: false,
-            default: 'now()',
-            ...(maps && maps.createdAt !== names.createdAt ? { map: maps.createdAt } : {}),
-        })
-        this.timestamp(names.updatedAt, {
-            nullable: false,
-            updatedAt: true,
-            ...(maps && maps.updatedAt !== names.updatedAt ? { map: maps.updatedAt } : {}),
-        })
-
-        return this
-    }
-
-    /**
-     * Resolves a timestamp naming option into concrete createdAt / updatedAt names.
-     *
-     * @param naming    The casing keyword or explicit name overrides.
-     * @param fallback  The names used when an explicit override is omitted.
-     * @returns
-     */
-    private resolveTimestampNames (
-        naming: TimestampNaming,
-        fallback: TimestampNames,
-    ): TimestampNames {
-        if (naming === 'snake')
-            return { createdAt: 'created_at', updatedAt: 'updated_at' }
-
-        if (naming === 'camel')
-            return { createdAt: 'createdAt', updatedAt: 'updatedAt' }
-
-        return {
-            createdAt: naming.createdAt ?? fallback.createdAt,
-            updatedAt: naming.updatedAt ?? fallback.updatedAt,
-        }
-    }
-
-    /**
-     * Defines a soft delete timestamp column in the table.
-     * 
-     * @param column    The name of the soft delete column.
-     * @returns 
-     */
-    public softDeletes (column = 'deletedAt'): this {
-        this.timestamp(column, { nullable: true })
-
-        return this
-    }
-
-    /**
-     * Defines a column to be dropped from the table in an alterTable operation.
-     * 
-     * @param name   The name of the column to drop.
-     * @returns 
-     */
-    public dropColumn (name: string): this {
-        this.dropColumnNames.push(name)
-
-        return this
-    }
-
-    /**
-     * Marks a column as nullable.
-     * 
-     * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
-     * @returns          The current TableBuilder instance for chaining.
-     */
-    public nullable (columnName?: string): this {
-        const column = this.resolveColumn(columnName)
-        column.nullable = true
-
-        return this
-    }
-
-    /**
-     * Sets the Prisma enum name for an enum column.
-     *
-     * @param name       The enum name to assign.
-     * @param columnName Optional explicit target column name. When omitted, applies to the latest defined column.
-     * @returns          The current TableBuilder instance for chaining.
-     */
-    public enumName (name: string, columnName?: string): this {
-        const column = this.resolveColumn(columnName)
-        if (column.type !== 'enum')
-            throw new Error(`Column [${column.name}] is not an enum column.`)
-
-        const enumName = name.trim()
-        if (!enumName)
-            throw new Error(`Enum column [${column.name}] must define an enum name.`)
-
-        column.enumName = enumName
-
-        return this
-    }
-
-    /**
-     * Sets a default value for a column.
-     *
-     * @param value      The default scalar value or Prisma expression (e.g. 'now()').
-     * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
-     * @returns          The current TableBuilder instance for chaining.
-     */
-    public default (value: unknown, columnName?: string): this {
-        const column = this.resolveColumn(columnName)
-        column.default = value
-
-        return this
-    }
-
-    /**
-     * Sets the column position to appear after another column when possible.
-     * 
-     * @param referenceColumn The column that the target column should be placed after.
-     * @param columnName      Optional explicit target column name. When omitted, applies to the latest defined column.
-     * @returns               The current TableBuilder instance for chaining.
-     */
-    public after (referenceColumn: string, columnName?: string): this {
-        const column = this.resolveColumn(columnName)
-        column.after = referenceColumn
-
-        return this
-    }
-
-    /**
-     * Maps the column to a custom database column name.
-     * 
-     * @param name       The custom database column name.
-     * @param columnName Optional explicit target column name. When omitted, applies to the latest defined column.
-     * @returns          The current TableBuilder instance for chaining.
-     */
-    public map (name: string, columnName?: string): this {
-        const column = this.resolveColumn(columnName)
-        column.map = name
-
-        return this
-    }
-
-    /**
-     * Defines an index on one or more columns.
-     * 
-     * @param columns Optional target columns. When omitted, applies to the latest defined column.
-     * @param name    Optional index name.
-     * @returns       The current TableBuilder instance for chaining.
-     */
-    public index (columns?: string | string[], name?: string): this {
-        const columnList = Array.isArray(columns)
-            ? columns
-            : typeof columns === 'string'
-                ? [columns]
-                : [this.resolveColumn().name]
-
-        this.indexes.push({
-            columns: [...columnList],
-            name,
-        })
-
-        return this
-    }
-
-    /**
-     * Defines a foreign key relation for an existing column.
-     *
-     * @param column The local foreign key column name.
-     * @returns A fluent foreign key builder.
-     */
-    public foreignKey (column: string): ForeignKeyBuilder {
-        const entry: SchemaForeignKey = {
-            column,
-            referencesTable: '',
-            referencesColumn: 'id',
-        }
-        this.foreignKeys.push(entry)
-
-        return new ForeignKeyBuilder(entry)
-    }
-
-    /**
-     * Defines a foreign key relation for a column, using a 
-     * conventional naming pattern.
-     * 
-     * @param column 
-     * @returns 
-     */
-    public foreign (column?: string): ForeignKeyBuilder {
-        const columnName = this.resolveColumn(column).name
-
-        return this.foreignKey(column ?? columnName)
-    }
-
-    /**
-     * Returns a deep copy of the defined columns for the table.
-     * 
-     * @returns 
-     */
-    public getColumns (): SchemaColumn[] {
-        return this.columns.map(column => ({
-            ...column,
-            enumValues: column.enumValues ? [...column.enumValues] : undefined,
-        }))
-    }
-
-    /**
-     * Returns a copy of the defined column names to be dropped from the table.
-     * 
-     * @returns 
-     */
-    public getDropColumns (): string[] {
-        return [...this.dropColumnNames]
-    }
-
-    /**
-     * Returns a deep copy of the defined indexes for the table.
-     * 
-     * @returns
-     */
-    public getIndexes (): SchemaIndex[] {
-        return this.indexes.map(index => ({
-            ...index,
-            columns: [...index.columns],
-        }))
-    }
-
-    /**
-     * Returns a deep copy of the defined foreign keys for the table.
-     *
-     * @returns
-     */
-    public getForeignKeys (): SchemaForeignKey[] {
-        return this.foreignKeys.map(foreignKey => ({ ...foreignKey }))
-    }
-
-    /**
-     * Returns a copy of the table-level composite primary key.
-     */
-    public getPrimaryKey (): SchemaPrimaryKey | undefined {
-        return this.compositePrimaryKey
-            ? {
-                ...this.compositePrimaryKey,
-                columns: [...this.compositePrimaryKey.columns],
-            }
-            : undefined
-    }
-
-    /**
-     * Returns copies of table-level composite unique constraints.
-     */
-    public getUniqueConstraints (): SchemaUniqueConstraint[] {
-        return this.compositeUniqueConstraints.map(constraint => ({
-            ...constraint,
-            columns: [...constraint.columns],
-        }))
-    }
-
-    /**
-     * Defines a column in the table with the given name.
-     * 
-     * @param name      The name of the column.
-     * @param type      The type of the column.
-     * @param options   Additional options for the column.
-     * @returns 
-     */
-    private column (
-        name: string,
-        type: SchemaColumnType,
-        options: Partial<SchemaColumn>
-    ): this {
-        this.columns.push({
-            name,
-            type,
-            enumName: options.enumName,
-            enumValues: options.enumValues ? [...options.enumValues] : undefined,
-            map: options.map,
-            nullable: options.nullable,
-            unique: options.unique,
-            primary: options.primary,
-            autoIncrement: options.autoIncrement,
-            after: options.after,
-            default: options.default,
-            updatedAt: options.updatedAt,
-            primaryKeyGeneration: options.primaryKeyGeneration,
-        })
-        const column = this.columns[this.columns.length - 1]
-        column.primaryKeyGeneration = PrimaryKeyGenerationPlanner.plan(column)
-        this.latestColumnName = name
-
-        return this
-    }
-
-    /**
-     * Resolve a target column by name or fallback to the latest defined column.
-     * 
-     * @param columnName 
-     * @returns 
-     */
-    private resolveColumn (columnName?: string): SchemaColumn {
-        const targetName = columnName ?? this.latestColumnName
-        if (!targetName)
-            throw new Error('No column available for this operation.')
-
-        const column = this.columns.find(item => item.name === targetName)
-        if (!column)
-            throw new Error(`Column [${targetName}] was not found in the table definition.`)
-
-        return column
-    }
-
-    private normalizeCompositeColumns (columns: string[], label: string): string[] {
-        const normalized = columns.map(column => column.trim())
-        if (normalized.length < 2)
-            throw new Error(`A composite ${label} must contain at least two columns.`)
-        if (normalized.some(column => !column))
-            throw new Error(`Composite ${label} columns must be non-empty strings.`)
-        if (new Set(normalized).size !== normalized.length)
-            throw new Error(`Composite ${label} columns must be unique.`)
-
-        return normalized
-    }
+    return normalized
+  }
 }

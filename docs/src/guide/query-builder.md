@@ -10,13 +10,11 @@ For multi-step writes that need atomic commit and rollback behavior, see
 ## Raw table access
 
 ```ts
-import { DB } from 'arkormx';
+import { DB } from 'arkormx'
 
-const users = await DB.table<{ id: number; name: string }>('users')
-  .where({ name: 'Jane' })
-  .get();
+const users = await DB.table<{ id: number; name: string }>('users').where({ name: 'Jane' }).get()
 
-const rows = users.all();
+const rows = users.all()
 ```
 
 You can pass table metadata when the builder needs help resolving mapped
@@ -32,7 +30,7 @@ const users = DB.table('users', {
     enabled: true,
     column: 'deletedAt',
   },
-});
+})
 ```
 
 ## Selecting columns
@@ -47,17 +45,17 @@ const users = await User.query()
     name: true,
     email: true,
   })
-  .get();
+  .get()
 ```
 
 The result is still hydrated into model instances, but attributes that were
 not selected are absent:
 
 ```ts
-const user = await User.query().select({ id: true, email: true }).firstOrFail();
+const user = await User.query().select({ id: true, email: true }).firstOrFail()
 
-user.getAttribute('email'); // selected value
-user.getAttribute('name'); // undefined
+user.getAttribute('email') // selected value
+user.getAttribute('name') // undefined
 ```
 
 ### Distinct and grouping
@@ -66,23 +64,19 @@ Use `distinct()` to remove duplicate selected rows and `groupBy()` to group
 results by one or more model attributes:
 
 ```ts
-const statuses = await User.query()
-  .select({ isActive: true })
-  .distinct()
-  .groupBy('isActive')
-  .get();
+const statuses = await User.query().select({ isActive: true }).distinct().groupBy('isActive').get()
 
 const totals = await Order.query()
   .select(['customerId', 'count(*) as "orderCount"'])
   .groupBy('customerId')
-  .get();
+  .get()
 ```
 
 `groupBy()` accepts either separate attributes or an array:
 
 ```ts
-query.groupBy('customerId', 'status');
-query.groupBy(['customerId', 'status']);
+query.groupBy('customerId', 'status')
+query.groupBy(['customerId', 'status'])
 ```
 
 Filter grouped rows with `having()`. It accepts either `having(column, value)`
@@ -91,16 +85,13 @@ calls combine with AND. Use `orHaving()` to combine with OR, and `havingRaw()` /
 `orHavingRaw()` to filter on aggregate expressions such as `count(*)`:
 
 ```ts
-const activeGroups = await User.query()
-  .groupBy('isActive')
-  .having('isActive', '>=', 1)
-  .get();
+const activeGroups = await User.query().groupBy('isActive').having('isActive', '>=', 1).get()
 
 const popularCustomers = await Order.query()
   .select(['customerId'])
   .groupBy('customerId')
   .havingRaw('count(*) > ?', [10])
-  .get();
+  .get()
 ```
 
 `distinct()`, `groupBy()`, `having()`, `orHaving()`, `havingRaw()`, and
@@ -116,21 +107,16 @@ const users = await User.query()
     name: true,
     '1': 'isActive',
   })
-  .get();
+  .get()
 ```
 
 The object key is emitted as a raw SQL expression and the string value is its
 result alias. String and string-array overloads are also available:
 
 ```ts
-await User.query().select('1 as "isActive"').get();
+await User.query().select('1 as "isActive"').get()
 
-await User.query()
-  .select([
-    'id',
-    'COALESCE("display_name", "name") as "displayName"',
-  ])
-  .get();
+await User.query().select(['id', 'COALESCE("display_name", "name") as "displayName"']).get()
 ```
 
 Use `addSelect()` to append projections without replacing the existing
@@ -141,7 +127,7 @@ const users = await User.query()
   .select({ id: true, name: true })
   .addSelect({ '1': 'isActive' })
   .addSelect('COUNT(*) OVER () as "totalRows"')
-  .get();
+  .get()
 ```
 
 `addSelect()` accepts the same object, string, and string-array forms as
@@ -151,9 +137,7 @@ When no `select()` call precedes it, `addSelect()` preserves the implicit
 wildcard selection:
 
 ```ts
-await User.query()
-  .addSelect({ '1': 'isActive' })
-  .get();
+await User.query().addSelect({ '1': 'isActive' }).get()
 ```
 
 This produces a projection equivalent to:
@@ -183,26 +167,26 @@ Use `with()` or `include()` for relationships. A nested selection such as
 ## Reading records
 
 ```ts
-const users = await User.query().get(); // ArkormCollection<User>
-const first = await User.query().first(); // User | null
-const required = await User.query().firstOrFail(); // User or throws
-const user = await User.query().find(1); // primary key lookup
-const byEmail = await User.query().find('jane@example.com', 'email');
+const users = await User.query().get() // ArkormCollection<User>
+const first = await User.query().first() // User | null
+const required = await User.query().firstOrFail() // User or throws
+const user = await User.query().find(1) // primary key lookup
+const byEmail = await User.query().find('jane@example.com', 'email')
 ```
 
 `firstWhere()` combines a comparison with `first()`:
 
 ```ts
-await User.query().firstWhere('email', 'jane@example.com');
-await User.query().firstWhere('score', '>=', 100);
+await User.query().firstWhere('email', 'jane@example.com')
+await User.query().firstWhere('score', '>=', 100)
 ```
 
 Use `findOr()` when a missing record should produce a fallback value:
 
 ```ts
 const result = await User.query().findOr(999, async () => {
-  return { missing: true };
-});
+  return { missing: true }
+})
 ```
 
 ## Filtering
@@ -216,7 +200,7 @@ await User.query()
   .orWhere({ role: 'admin' })
   .whereNot({ suspended: true })
   .orWhereNot({ role: 'guest' })
-  .get();
+  .get()
 ```
 
 Pass a callback to `where()` or `orWhere()` to build a parenthesized group of
@@ -227,34 +211,34 @@ surrounding `AND`/`OR`:
 // isActive = true AND (role = 'admin' OR role = 'editor')
 await User.query()
   .where({ isActive: true })
-  .where(query => query.where({ role: 'admin' }).orWhere({ role: 'editor' }))
-  .get();
+  .where((query) => query.where({ role: 'admin' }).orWhere({ role: 'editor' }))
+  .get()
 ```
 
 Common helpers:
 
 ```ts
-await User.query().whereNull('deletedAt').get();
-await User.query().whereNotNull('email').get();
-await User.query().whereIn('id', [1, 2, 3]).get();
-await User.query().orWhereIn('id', [4, 5]).get();
-await User.query().whereNotIn('role', ['guest']).get();
-await User.query().orWhereNotIn('role', ['guest']).get();
-await User.query().whereKeyNot('status', 'blocked').get();
-await User.query().whereBetween('score', [80, 100]).get();
+await User.query().whereNull('deletedAt').get()
+await User.query().whereNotNull('email').get()
+await User.query().whereIn('id', [1, 2, 3]).get()
+await User.query().orWhereIn('id', [4, 5]).get()
+await User.query().whereNotIn('role', ['guest']).get()
+await User.query().orWhereNotIn('role', ['guest']).get()
+await User.query().whereKeyNot('status', 'blocked').get()
+await User.query().whereBetween('score', [80, 100]).get()
 ```
 
 String matching helpers are available on model, table, and relation queries:
 
 ```ts
-await User.query().whereLike('email', '@example.com').get();
-await User.query().orWhereLike('email', '@example.org').get();
-await User.query().whereNotLike('email', '@spam.test').get();
-await User.query().orWhereNotLike('email', '@spam.test').get();
-await User.query().whereStartsWith('email', 'jane').get();
-await User.query().whereEndsWith('email', '@example.com').get();
+await User.query().whereLike('email', '@example.com').get()
+await User.query().orWhereLike('email', '@example.org').get()
+await User.query().whereNotLike('email', '@spam.test').get()
+await User.query().orWhereNotLike('email', '@spam.test').get()
+await User.query().whereStartsWith('email', 'jane').get()
+await User.query().whereEndsWith('email', '@example.com').get()
 
-await user.posts().whereStartsWith('title', 'Ann').getResults();
+await user.posts().whereStartsWith('title', 'Ann').getResults()
 ```
 
 The `whereLike`/`whereNotLike` family is portable: it works on the Kysely
@@ -263,31 +247,35 @@ adapter and the Prisma compatibility adapter.
 Date helpers build UTC ranges:
 
 ```ts
-await User.query().whereDate('createdAt', '2026-03-01').get();
-await User.query().whereMonth('createdAt', 3, 2026).get();
-await User.query().whereYear('createdAt', 2026).get();
-await User.query().whereTime('createdAt', '>=', '09:30').get();
-await User.query().whereDay('createdAt', 15).get();
-await User.query().wherePast('expiresAt').get();
-await User.query().whereFuture('startsAt').get();
-await User.query().whereNowOrPast('publishedAt').get();
-await User.query().whereNowOrFuture('availableAt').get();
-await User.query().whereToday('createdAt').get();
-await User.query().whereBeforeToday('createdAt').get();
-await User.query().whereAfterToday('createdAt').get();
-await User.query().whereTodayOrBefore('createdAt').get();
-await User.query().whereTodayOrAfter('createdAt').get();
+await User.query().whereDate('createdAt', '2026-03-01').get()
+await User.query().whereMonth('createdAt', 3, 2026).get()
+await User.query().whereYear('createdAt', 2026).get()
+await User.query().whereTime('createdAt', '>=', '09:30').get()
+await User.query().whereDay('createdAt', 15).get()
+await User.query().wherePast('expiresAt').get()
+await User.query().whereFuture('startsAt').get()
+await User.query().whereNowOrPast('publishedAt').get()
+await User.query().whereNowOrFuture('availableAt').get()
+await User.query().whereToday('createdAt').get()
+await User.query().whereBeforeToday('createdAt').get()
+await User.query().whereAfterToday('createdAt').get()
+await User.query().whereTodayOrBefore('createdAt').get()
+await User.query().whereTodayOrAfter('createdAt').get()
 ```
 
 Compare columns, add EXISTS subqueries, or perform PostgreSQL full-text search:
 
 ```ts
-await User.query().whereColumn('firstName', 'lastName').get();
-await User.query().whereColumn('updatedAt', '>', 'createdAt').get();
-await User.query().whereExists(Post.query().where({ published: true })).get();
-await User.query().whereExists(query => query.whereColumn('id', 'managerId')).get();
-await User.query().whereFullText(['name', 'bio'], 'database engineer').get();
-await User.query().orWhereFullText(['name', 'bio'], 'data scientist').get();
+await User.query().whereColumn('firstName', 'lastName').get()
+await User.query().whereColumn('updatedAt', '>', 'createdAt').get()
+await User.query()
+  .whereExists(Post.query().where({ published: true }))
+  .get()
+await User.query()
+  .whereExists((query) => query.whereColumn('id', 'managerId'))
+  .get()
+await User.query().whereFullText(['name', 'bio'], 'database engineer').get()
+await User.query().orWhereFullText(['name', 'bio'], 'data scientist').get()
 ```
 
 `whereTime`, `whereDay`, `whereColumn`, `whereExists`, `whereFullText`, and
@@ -303,17 +291,17 @@ are available on model, table, and relation queries.
 
 ```ts
 // Containment (@>)
-await User.query().whereJsonContains('meta', { tier: 'pro' }).get();
-await User.query().whereJsonContains('meta->roles', ['admin']).get();
-await User.query().whereJsonDoesntContain('meta', { tier: 'free' }).get();
+await User.query().whereJsonContains('meta', { tier: 'pro' }).get()
+await User.query().whereJsonContains('meta->roles', ['admin']).get()
+await User.query().whereJsonDoesntContain('meta', { tier: 'free' }).get()
 
 // Key / path existence
-await User.query().whereJsonContainsKey('meta->tier').get();
-await User.query().whereJsonDoesntContainKey('meta->legacyFlag').get();
+await User.query().whereJsonContainsKey('meta->tier').get()
+await User.query().whereJsonDoesntContainKey('meta->legacyFlag').get()
 
 // Array length and overlap
-await User.query().whereJsonLength('meta->roles', '>=', 2).get();
-await User.query().whereJsonOverlaps('meta->roles', ['admin', 'editor']).get();
+await User.query().whereJsonLength('meta->roles', '>=', 2).get()
+await User.query().whereJsonOverlaps('meta->roles', ['admin', 'editor']).get()
 ```
 
 The JSON predicates compile to PostgreSQL JSONB operators and require a
@@ -328,14 +316,14 @@ filter helpers:
 const users = await User.query()
   .whereRaw('LOWER("email") = ?', ['jane@example.com'])
   .orWhereRaw('"last_login_at" > NOW() - INTERVAL \'7 days\'')
-  .get();
+  .get()
 ```
 
 `whereRaw()` and `orWhereRaw()` require the adapter's `rawWhere` capability.
 They are supported by the Kysely adapter and intentionally unsupported by the
 Prisma compatibility adapter.
 
-**Identifier casing.** PostgreSQL folds *unquoted* identifiers to lower case, so
+**Identifier casing.** PostgreSQL folds _unquoted_ identifiers to lower case, so
 a bare camelCase column in raw SQL (`createdAt < ?`) would resolve to a
 non-existent `createdat` column. The Kysely adapter automatically wraps bare
 mixed-case identifiers in double quotes, so `whereRaw('createdAt < ?', [before])`
@@ -349,7 +337,7 @@ For a complete raw query, use `DB.raw()`:
 const rows = await DB.raw<{ id: number; email: string }>(
   'select id, email from users where is_active = ?',
   [true],
-);
+)
 ```
 
 `DB.raw()` returns an `ArkormCollection` and requires an adapter that implements
@@ -375,7 +363,7 @@ await DB.raw(`
         check (amount > 0);
     end if;
   end $$;
-`);
+`)
 ```
 
 The rows returned are those of the last statement that produces any.
@@ -390,7 +378,7 @@ const rows = await User.query()
   .join('posts', 'users.id', '=', 'posts.userId')
   .leftJoin('profiles', 'users.id', 'profiles.userId')
   .select(['users.id', 'posts.title'])
-  .get();
+  .get()
 ```
 
 A two-argument `on` defaults the operator to `=`, so
@@ -400,13 +388,13 @@ above. Pass a closure to build a compound `on` condition through a
 
 ```ts
 await User.query()
-  .join('posts', join =>
+  .join('posts', (join) =>
     join
       .on('users.id', 'posts.userId')
       .where('posts.published', '=', true)
       .whereNotNull('posts.publishedAt'),
   )
-  .get();
+  .get()
 ```
 
 The full family is available: `join` / `innerJoin`, `leftJoin`, `rightJoin`,
@@ -415,11 +403,9 @@ variants, the subquery joins `joinSub` / `leftJoinSub` / `rightJoinSub` /
 `crossJoinSub`, and the lateral joins `joinLateral` / `leftJoinLateral`.
 
 ```ts
-const recent = Post.query().where({ status: 'published' });
+const recent = Post.query().where({ status: 'published' })
 
-await User.query()
-  .joinSub(recent, 'recent_posts', 'users.id', '=', 'recent_posts.userId')
-  .get();
+await User.query().joinSub(recent, 'recent_posts', 'users.id', '=', 'recent_posts.userId').get()
 ```
 
 Joins require the adapter's `joins` capability. They are supported by the Kysely
@@ -431,21 +417,21 @@ result set.
 ## Ordering and limits
 
 ```ts
-await User.query().orderBy({ name: 'asc' }).get();
-await User.query().latest().limit(10).get();
-await User.query().oldest('updatedAt').offset(20).take(10).get();
-await User.query().forPage(2, 15).get();
-await User.query().inRandomOrder().first();
+await User.query().orderBy({ name: 'asc' }).get()
+await User.query().latest().limit(10).get()
+await User.query().oldest('updatedAt').offset(20).take(10).get()
+await User.query().forPage(2, 15).get()
+await User.query().inRandomOrder().first()
 ```
 
 `orderBy()` replaces the existing order. `reorder()` clears it and can
 optionally apply a replacement:
 
 ```ts
-const query = User.query().orderBy({ createdAt: 'desc' });
+const query = User.query().orderBy({ createdAt: 'desc' })
 
-query.reorder('name', 'asc');
-query.reorder(); // clear ordering entirely
+query.reorder('name', 'asc')
+query.reorder() // clear ordering entirely
 ```
 
 `skip()` and `offset()` are aliases. `take()` and `limit()` are aliases.
@@ -460,7 +446,7 @@ await User.query()
     profile: true,
     posts: (query) => query.latest().limit(5),
   })
-  .get();
+  .get()
 ```
 
 `include()` accepts a Prisma-like relation plan and replaces the current include
@@ -476,7 +462,7 @@ await User.query()
       take: 5,
     },
   })
-  .get();
+  .get()
 ```
 
 See [Relationships](./relationships.md) for relation filters, aggregates, and
@@ -485,13 +471,13 @@ polymorphic loading.
 ## Existence and aggregates
 
 ```ts
-await User.query().exists();
-await User.query().doesntExist();
-await User.query().count();
-await User.query().min('score');
-await User.query().max('score');
-await User.query().sum('score');
-await User.query().avg('score');
+await User.query().exists()
+await User.query().doesntExist()
+await User.query().count()
+await User.query().min('score')
+await User.query().max('score')
+await User.query().sum('score')
+await User.query().avg('score')
 ```
 
 `sum()` returns `0` when there are no numeric values. `avg()`, `min()`, and
@@ -502,20 +488,20 @@ The callback helpers execute only for the opposite existence state:
 ```ts
 await User.query()
   .where({ email })
-  .existsOr(() => createMissingUser(email));
+  .existsOr(() => createMissingUser(email))
 
 await User.query()
   .where({ email })
-  .doesntExistOr(() => notifyExistingUser(email));
+  .doesntExistOr(() => notifyExistingUser(email))
 ```
 
 ## Values and plucking
 
 ```ts
-const email = await User.query().value('email'); // value | null
-const requiredEmail = await User.query().valueOrFail('email');
-const emails = await User.query().pluck('email');
-const emailsOrderedById = await User.query().pluck('email', 'id');
+const email = await User.query().value('email') // value | null
+const requiredEmail = await User.query().valueOrFail('email')
+const emails = await User.query().pluck('email')
+const emailsOrderedById = await User.query().pluck('email', 'id')
 ```
 
 `valueOrFail()` throws `ModelNotFoundException` when no value is found.
@@ -527,7 +513,7 @@ const emailsOrderedById = await User.query().pluck('email', 'id');
 const query = User.query()
   .when(filters.active, (q) => q.whereKey('isActive', true))
   .unless(filters.includeGuests, (q) => q.whereNot({ role: 'guest' }))
-  .tap((q) => auditQueryShape(q));
+  .tap((q) => auditQueryShape(q))
 ```
 
 - `when()` applies its callback when the value is truthy.
@@ -539,16 +525,16 @@ const query = User.query()
 ```ts
 const count = await User.query()
   .whereKey('isActive', true)
-  .pipe((q) => q.count());
+  .pipe((q) => q.count())
 ```
 
 Use `clone()` when branching from a shared base query:
 
 ```ts
-const active = User.query().whereKey('isActive', true);
+const active = User.query().whereKey('isActive', true)
 
-const admins = await active.clone().where({ role: 'admin' }).get();
-const members = await active.clone().where({ role: 'member' }).get();
+const admins = await active.clone().where({ role: 'admin' }).get()
+const members = await active.clone().where({ role: 'member' }).get()
 ```
 
 ## Inspecting queries
@@ -557,13 +543,10 @@ const members = await active.clone().where({ role: 'member' }).get();
 current query:
 
 ```ts
-const inspection = User.query()
-  .whereKey('id', 1)
-  .select({ id: true, email: true })
-  .inspect();
+const inspection = User.query().whereKey('id', 1).select({ id: true, email: true }).inspect()
 
-console.log(inspection?.sql);
-console.log(inspection?.parameters);
+console.log(inspection?.sql)
+console.log(inspection?.parameters)
 ```
 
 Supported operation hints are `select`, `selectOne`, `count`, and `exists`.
@@ -580,12 +563,12 @@ const user = await User.query().create({
   name: 'Alice',
   email: 'alice@example.com',
   isActive: true,
-});
+})
 
 const users = await User.query().createMany([
   { name: 'Bob', email: 'bob@example.com', isActive: true },
   { name: 'Carol', email: 'carol@example.com', isActive: false },
-]);
+])
 ```
 
 `insert()` returns `boolean` and does not return hydrated models:
@@ -595,19 +578,19 @@ await User.query().insert({
   name: 'Dylan',
   email: 'dylan@example.com',
   isActive: true,
-});
+})
 
 await User.query().insert([
   { name: 'Eve', email: 'eve@example.com', isActive: true },
   { name: 'Frank', email: 'frank@example.com', isActive: false },
-]);
+])
 ```
 
 Additional insert helpers:
 
 ```ts
-const inserted = await User.query().insertOrIgnore(values); // affected count
-const id = await User.query().insertGetId(values); // primary key value
+const inserted = await User.query().insertOrIgnore(values) // affected count
+const id = await User.query().insertGetId(values) // primary key value
 
 const count = await User.query().insertUsing(
   ['name', 'email', 'isActive'],
@@ -616,7 +599,7 @@ const count = await User.query().insertUsing(
     email: true,
     isActive: true,
   }),
-);
+)
 ```
 
 `insertUsing()` and `insertOrIgnoreUsing()` accept another query builder, an
@@ -627,17 +610,13 @@ array of records, or an async resolver. Only the listed columns are copied.
 `update()` updates the first matching record and returns it as a hydrated model:
 
 ```ts
-const user = await User.query()
-  .whereKey('id', 1)
-  .update({ name: 'Jane Updated' });
+const user = await User.query().whereKey('id', 1).update({ name: 'Jane Updated' })
 ```
 
 `updateFrom()` uses update-many semantics and returns an affected-row count:
 
 ```ts
-const affected = await User.query()
-  .where({ role: 'guest' })
-  .updateFrom({ isActive: false });
+const affected = await User.query().where({ role: 'guest' }).updateFrom({ isActive: false })
 ```
 
 Both methods require a `where` clause. Arkorm throws
@@ -649,7 +628,7 @@ Use `updateOrInsert()` or `upsert()` for create-or-update flows:
 await User.query().updateOrInsert(
   { email: 'new-user@example.com' },
   { name: 'New User', isActive: true },
-);
+)
 
 await User.query().upsert(
   [
@@ -661,7 +640,7 @@ await User.query().upsert(
   ],
   'email',
   ['name', 'isActive'],
-);
+)
 ```
 
 `updateOrInsert()` returns `boolean`. `upsert()` returns an affected-row count
@@ -670,9 +649,9 @@ and uses an optimized adapter path when the adapter advertises `upsert`.
 ## Deleting records
 
 ```ts
-const deleted = await User.query().whereKey('id', 1).delete(); // User | null
+const deleted = await User.query().whereKey('id', 1).delete() // User | null
 
-const required = await User.query().whereKey('id', 2).deleteOrFail(); // User or throws
+const required = await User.query().whereKey('id', 2).deleteOrFail() // User or throws
 ```
 
 Deletes require a `where` clause. `deleteOrFail()` throws

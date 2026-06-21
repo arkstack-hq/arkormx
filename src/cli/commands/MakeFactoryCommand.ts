@@ -8,28 +8,27 @@ import { Command } from '@h3ravel/musket'
  * @since 0.1.0
  */
 export class MakeFactoryCommand extends Command<CliApp> {
-    protected signature = `make:factory
+  protected signature = `make:factory
         {name : Name of the factory to create}
         {--f|force : Overwrite existing file}
     `
 
-    protected description = 'Create a new model factory class'
+  protected description = 'Create a new model factory class'
 
-    /**
-     * Command handler for the make:factory command.
-     * 
-     * @returns 
-     */
-    async handle () {
-        this.app.command = this
-        const name = this.argument('name')
-        if (!name)
-            return void this.error('Error: Name argument is required.')
+  /**
+   * Command handler for the make:factory command.
+   *
+   * @returns
+   */
+  async handle() {
+    this.app.command = this
+    const name = this.argument('name')
+    if (!name) return void this.error('Error: Name argument is required.')
 
-        const created = this.app.makeFactory(name, {
-            force: this.option('force'),
-        })
+    const created = this.app.makeFactory(name, {
+      force: this.option('force'),
+    })
 
-        this.success(`Created factory: ${this.app.formatPathForLog(created.path)}`)
-    }
+    this.success(`Created factory: ${this.app.formatPathForLog(created.path)}`)
+  }
 }

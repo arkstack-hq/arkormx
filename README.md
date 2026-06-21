@@ -41,9 +41,9 @@ pnpm add arkormx@next kysely pg
 Primary runtime path:
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 export default defineConfig({
   adapter: createKyselyAdapter(
@@ -55,7 +55,7 @@ export default defineConfig({
       }),
     }),
   ),
-});
+})
 ```
 
 Optional compatibility/runtime config for CLI and transaction helpers:
@@ -63,14 +63,14 @@ Optional compatibility/runtime config for CLI and transaction helpers:
 Create `arkormx.config.js` in your project root:
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { defineConfig } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 export default defineConfig({
   prisma: () => prisma,
-});
+})
 ```
 
 Or run the Arkormˣ CLI command `npx arkorm init` to initialize your project along with configuration.
@@ -78,14 +78,14 @@ Or run the Arkormˣ CLI command `npx arkorm init` to initialize your project alo
 ### Define a model
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 type UserAttributes = {
-  id: number;
-  email: string;
-  name: string;
-  isActive: boolean;
-};
+  id: number
+  email: string
+  name: string
+  isActive: boolean
+}
 
 export class User extends Model<UserAttributes> {}
 ```
@@ -100,11 +100,7 @@ pnpm add -D prisma
 ### Run queries
 
 ```ts
-const users = await User.query()
-  .whereKey('isActive', true)
-  .latest()
-  .limit(10)
-  .get();
+const users = await User.query().whereKey('isActive', true).latest().limit(10).get()
 ```
 
 ### Run a transaction
@@ -115,12 +111,10 @@ await User.transaction(async () => {
     name: 'Mia',
     email: 'mia@example.com',
     isActive: 1,
-  });
+  })
 
-  await User.query()
-    .where({ email: 'john@example.com' })
-    .updateFrom({ isActive: 1 });
-});
+  await User.query().where({ email: 'john@example.com' }).updateFrom({ isActive: 1 })
+})
 ```
 
 ## Next steps

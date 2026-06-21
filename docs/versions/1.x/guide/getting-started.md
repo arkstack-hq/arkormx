@@ -28,14 +28,14 @@ yarn add -D prisma
 Create `arkormx.config.ts` in your project root:
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { defineConfig } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 export default defineConfig({
   prisma: () => prisma as unknown as Record<string, unknown>,
-});
+})
 ```
 
 Or run the Arkorm CLI command `npx arkormx init` to initialize your project along with the configuration.
@@ -43,21 +43,17 @@ Or run the Arkorm CLI command `npx arkormx init` to initialize your project alon
 ## 3. Define a model
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 }
 ```
 
 ## 4. Run queries
 
 ```ts
-const users = await User.query()
-  .whereKey('isActive', true)
-  .latest()
-  .limit(10)
-  .get();
+const users = await User.query().whereKey('isActive', true).latest().limit(10).get()
 ```
 
 ## 5. Generate Prisma client

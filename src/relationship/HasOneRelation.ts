@@ -5,56 +5,59 @@ import { SingleResultRelation } from './SingleResultRelation'
 
 /**
  * Represents a "has one" relationship between two models.
- * 
+ *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export class HasOneRelation<TParent, TRelated> extends SingleResultRelation<TParent & { getAttribute: (key: string) => unknown }, TRelated> {
-    public constructor(
-        parent: TParent & { getAttribute: (key: string) => unknown },
-        related: RelatedModelClass<TRelated>,
-        private readonly foreignKey: string,
-        private readonly localKey: string,
-    ) {
-        super(parent, related)
+export class HasOneRelation<TParent, TRelated> extends SingleResultRelation<
+  TParent & { getAttribute: (key: string) => unknown },
+  TRelated
+> {
+  public constructor(
+    parent: TParent & { getAttribute: (key: string) => unknown },
+    related: RelatedModelClass<TRelated>,
+    private readonly foreignKey: string,
+    private readonly localKey: string,
+  ) {
+    super(parent, related)
+  }
+
+  /**
+   * Build the relationship query.
+   *
+   * @returns
+   */
+  public async getQuery(): Promise<QueryBuilder<TRelated>> {
+    const localValue = this.parent.getAttribute(this.localKey)
+
+    return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+  }
+
+  protected override getCreationAttributes(): Record<string, unknown> {
+    return {
+      [this.foreignKey]: this.parent.getAttribute(this.localKey),
     }
+  }
 
-    /**
-     * Build the relationship query.
-     *
-     * @returns
-     */
-    public async getQuery (): Promise<QueryBuilder<TRelated>> {
-        const localValue = this.parent.getAttribute(this.localKey)
-
-        return this.applyConstraint(this.related.query().where({ [this.foreignKey]: localValue }))
+  public getMetadata(): HasOneRelationMetadata {
+    return {
+      type: 'hasOne',
+      relatedModel: this.related,
+      foreignKey: this.foreignKey,
+      localKey: this.localKey,
     }
+  }
 
-    protected override getCreationAttributes (): Record<string, unknown> {
-        return {
-            [this.foreignKey]: this.parent.getAttribute(this.localKey),
-        }
-    }
+  /**
+   * Fetches the related models for this relationship.
+   *
+   * @returns
+   */
+  public async getResults(): Promise<TRelated | null> {
+    const query = await this.getQuery()
 
-    public getMetadata (): HasOneRelationMetadata {
-        return {
-            type: 'hasOne',
-            relatedModel: this.related,
-            foreignKey: this.foreignKey,
-            localKey: this.localKey,
-        }
-    }
+    const result = await query.first()
 
-    /**
-     * Fetches the related models for this relationship.
-     * 
-     * @returns 
-     */
-    public async getResults (): Promise<TRelated | null> {
-        const query = await this.getQuery()
-
-        const result = await query.first()
-
-        return result ?? this.resolveDefaultResult()
-    }
+    return result ?? this.resolveDefaultResult()
+  }
 }

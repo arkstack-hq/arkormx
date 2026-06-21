@@ -1,11 +1,16 @@
 import { configureArkormRuntime, defineConfig, isQuerySchemaLike } from './runtime-config'
-import { createPrismaCompatibilityAdapter, createPrismaDatabaseAdapter, type PrismaDelegateNameMapping } from '../adapters/PrismaDatabaseAdapter'
+import {
+  createPrismaCompatibilityAdapter,
+  createPrismaDatabaseAdapter,
+  type PrismaDelegateNameMapping,
+} from '../adapters/PrismaDatabaseAdapter'
 
 import type { ModelQuerySchemaLike, RuntimeClientLike } from '../types/core'
 
 export type PrismaDelegateMap<TClient extends RuntimeClientLike> = {
-    [K in keyof TClient as TClient[K] extends ModelQuerySchemaLike ? K : never]:
-    TClient[K] extends ModelQuerySchemaLike ? TClient[K] : never
+  [K in keyof TClient as TClient[K] extends ModelQuerySchemaLike
+    ? K
+    : never]: TClient[K] extends ModelQuerySchemaLike ? TClient[K] : never
 }
 
 /**
@@ -18,19 +23,19 @@ export type PrismaDelegateMap<TClient extends RuntimeClientLike> = {
  * @param mapping An optional mapping of Prisma delegate names to ArkORM delegate names.
  * @returns A record of adapted Prisma compatibility query schemas.
  */
-export function createPrismaAdapter (
-    prisma: RuntimeClientLike
+export function createPrismaAdapter(
+  prisma: RuntimeClientLike,
 ): Record<string, ModelQuerySchemaLike> {
-    return Object
-        .entries(prisma)
-        .reduce<Record<string, ModelQuerySchemaLike>>((accumulator, [key, value]) => {
-            if (!isQuerySchemaLike(value))
-                return accumulator
+  return Object.entries(prisma).reduce<Record<string, ModelQuerySchemaLike>>(
+    (accumulator, [key, value]) => {
+      if (!isQuerySchemaLike(value)) return accumulator
 
-            accumulator[key] = value
+      accumulator[key] = value
 
-            return accumulator
-        }, {})
+      return accumulator
+    },
+    {},
+  )
 }
 
 /**
@@ -43,39 +48,40 @@ export function createPrismaAdapter (
  * @param mapping Optional mapping of Arkormˣ delegate names to Prisma delegate names.
  * @returns A compatibility map keyed by Arkormˣ query-schema names.
  */
-export function createPrismaDelegateMap (
-    prisma: RuntimeClientLike,
-    mapping: PrismaDelegateNameMapping = {}
+export function createPrismaDelegateMap(
+  prisma: RuntimeClientLike,
+  mapping: PrismaDelegateNameMapping = {},
 ): Record<string, ModelQuerySchemaLike> {
-    const delegates = createPrismaAdapter(prisma)
+  const delegates = createPrismaAdapter(prisma)
 
-    if (Object.keys(mapping).length === 0)
-        return delegates
+  if (Object.keys(mapping).length === 0) return delegates
 
-    return Object.entries(mapping).reduce<Record<string, ModelQuerySchemaLike>>((accumulator, [arkormDelegate, prismaDelegate]) => {
-        const resolved = delegates[prismaDelegate]
-        if (!resolved)
-            return accumulator
+  return Object.entries(mapping).reduce<Record<string, ModelQuerySchemaLike>>(
+    (accumulator, [arkormDelegate, prismaDelegate]) => {
+      const resolved = delegates[prismaDelegate]
+      if (!resolved) return accumulator
 
-        accumulator[arkormDelegate] = resolved
+      accumulator[arkormDelegate] = resolved
 
-        return accumulator
-    }, {})
+      return accumulator
+    },
+    {},
+  )
 }
 
 /**
  * Infer the Prisma delegate name for a given model name using a simple convention.
- * 
+ *
  * @param modelName The name of the model to infer the delegate name for.
  * @returns The inferred Prisma delegate name.
  */
-export function inferDelegateName (modelName: string): string {
-    return `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}s`
+export function inferDelegateName(modelName: string): string {
+  return `${modelName.charAt(0).toLowerCase()}${modelName.slice(1)}s`
 }
 
 export {
-    configureArkormRuntime,
-    createPrismaCompatibilityAdapter,
-    createPrismaDatabaseAdapter,
-    defineConfig,
+  configureArkormRuntime,
+  createPrismaCompatibilityAdapter,
+  createPrismaDatabaseAdapter,
+  defineConfig,
 }

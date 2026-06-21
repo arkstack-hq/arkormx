@@ -6,136 +6,136 @@ import type { QueryCondition } from './adapter'
 export type ColumnMap = Record<string, string>
 
 export interface PivotModelStatic {
-    new(attributes?: Record<string, unknown>): any
-    hydrate?: (attributes: Record<string, unknown>) => any
+  new (attributes?: Record<string, unknown>): any
+  hydrate?: (attributes: Record<string, unknown>) => any
 }
 
 export interface ModelMetadata {
-    table: string
-    primaryKey: string
-    columns: ColumnMap
-    softDelete: SoftDeleteConfig
-    primaryKeyGeneration?: PrimaryKeyGeneration
-    timestampColumns?: TimestampColumnBehavior[]
+  table: string
+  primaryKey: string
+  columns: ColumnMap
+  softDelete: SoftDeleteConfig
+  primaryKeyGeneration?: PrimaryKeyGeneration
+  timestampColumns?: TimestampColumnBehavior[]
 }
 
 export type RelationMetadataType =
-    | 'hasOne'
-    | 'hasMany'
-    | 'belongsTo'
-    | 'belongsToMany'
-    | 'hasOneThrough'
-    | 'hasManyThrough'
-    | 'morphOne'
-    | 'morphMany'
-    | 'morphTo'
-    | 'morphToMany'
+  | 'hasOne'
+  | 'hasMany'
+  | 'belongsTo'
+  | 'belongsToMany'
+  | 'hasOneThrough'
+  | 'hasManyThrough'
+  | 'morphOne'
+  | 'morphMany'
+  | 'morphTo'
+  | 'morphToMany'
 
 interface BaseRelationMetadata {
-    type: RelationMetadataType
-    relatedModel: RelationshipModelStatic
+  type: RelationMetadataType
+  relatedModel: RelationshipModelStatic
 }
 
 export interface HasOneRelationMetadata extends BaseRelationMetadata {
-    type: 'hasOne'
-    foreignKey: string
-    localKey: string
+  type: 'hasOne'
+  foreignKey: string
+  localKey: string
 }
 
 export interface HasManyRelationMetadata extends BaseRelationMetadata {
-    type: 'hasMany'
-    foreignKey: string
-    localKey: string
+  type: 'hasMany'
+  foreignKey: string
+  localKey: string
 }
 
 export interface BelongsToRelationMetadata extends BaseRelationMetadata {
-    type: 'belongsTo'
-    foreignKey: string
-    ownerKey: string
+  type: 'belongsTo'
+  foreignKey: string
+  ownerKey: string
 }
 
 export interface BelongsToManyRelationMetadata extends BaseRelationMetadata {
-    type: 'belongsToMany'
-    throughTable: string
-    foreignPivotKey: string
-    relatedPivotKey: string
-    parentKey: string
-    relatedKey: string
-    pivotAccessor?: string
-    pivotColumns?: string[]
-    pivotCreatedAtColumn?: string
-    pivotUpdatedAtColumn?: string
-    pivotWhere?: QueryCondition
-    pivotModel?: PivotModelStatic
+  type: 'belongsToMany'
+  throughTable: string
+  foreignPivotKey: string
+  relatedPivotKey: string
+  parentKey: string
+  relatedKey: string
+  pivotAccessor?: string
+  pivotColumns?: string[]
+  pivotCreatedAtColumn?: string
+  pivotUpdatedAtColumn?: string
+  pivotWhere?: QueryCondition
+  pivotModel?: PivotModelStatic
 }
 
 export interface HasOneThroughRelationMetadata extends BaseRelationMetadata {
-    type: 'hasOneThrough'
-    throughTable: string
-    firstKey: string
-    secondKey: string
-    localKey: string
-    secondLocalKey: string
+  type: 'hasOneThrough'
+  throughTable: string
+  firstKey: string
+  secondKey: string
+  localKey: string
+  secondLocalKey: string
 }
 
 export interface HasManyThroughRelationMetadata extends BaseRelationMetadata {
-    type: 'hasManyThrough'
-    throughTable: string
-    firstKey: string
-    secondKey: string
-    localKey: string
-    secondLocalKey: string
+  type: 'hasManyThrough'
+  throughTable: string
+  firstKey: string
+  secondKey: string
+  localKey: string
+  secondLocalKey: string
 }
 
 export interface MorphOneRelationMetadata extends BaseRelationMetadata {
-    type: 'morphOne'
-    morphName: string
-    morphIdColumn: string
-    morphTypeColumn: string
-    localKey: string
+  type: 'morphOne'
+  morphName: string
+  morphIdColumn: string
+  morphTypeColumn: string
+  localKey: string
 }
 
 export interface MorphManyRelationMetadata extends BaseRelationMetadata {
-    type: 'morphMany'
-    morphName: string
-    morphIdColumn: string
-    morphTypeColumn: string
-    localKey: string
+  type: 'morphMany'
+  morphName: string
+  morphIdColumn: string
+  morphTypeColumn: string
+  localKey: string
 }
 
 export interface MorphToRelationMetadata {
-    type: 'morphTo'
-    morphName: string
-    morphIdColumn: string
-    morphTypeColumn: string
-    ownerKey?: string
-    /**
-     * Resolve the related model class for a given morph type value, using the
-     * same registry lookup (and error) as single-record resolution. Lets the
-     * set-based eager loader resolve a model per distinct type.
-     */
-    resolveModel: (morphType: string) => RelationshipModelStatic
+  type: 'morphTo'
+  morphName: string
+  morphIdColumn: string
+  morphTypeColumn: string
+  ownerKey?: string
+  /**
+   * Resolve the related model class for a given morph type value, using the
+   * same registry lookup (and error) as single-record resolution. Lets the
+   * set-based eager loader resolve a model per distinct type.
+   */
+  resolveModel: (morphType: string) => RelationshipModelStatic
 }
 
 export interface MorphToManyRelationMetadata extends BaseRelationMetadata {
-    type: 'morphToMany'
-    throughTable: string
-    morphName: string
-    morphIdColumn: string
-    morphTypeColumn: string
-    relatedPivotKey: string
-    parentKey: string
-    relatedKey: string
+  type: 'morphToMany'
+  throughTable: string
+  morphName: string
+  morphIdColumn: string
+  morphTypeColumn: string
+  relatedPivotKey: string
+  parentKey: string
+  relatedKey: string
 }
 
 export type RelationMetadata =
-    | HasOneRelationMetadata
-    | HasManyRelationMetadata
-    | BelongsToRelationMetadata
-    | BelongsToManyRelationMetadata
-    | HasOneThroughRelationMetadata
-    | HasManyThroughRelationMetadata
-    | MorphOneRelationMetadata
-    | MorphManyRelationMetadata
-    | MorphToRelationMetadata
-    | MorphToManyRelationMetadata
+  | HasOneRelationMetadata
+  | HasManyRelationMetadata
+  | BelongsToRelationMetadata
+  | BelongsToManyRelationMetadata
+  | HasOneThroughRelationMetadata
+  | HasManyThroughRelationMetadata
+  | MorphOneRelationMetadata
+  | MorphManyRelationMetadata
+  | MorphToRelationMetadata
+  | MorphToManyRelationMetadata

@@ -200,8 +200,8 @@ Possible direction:
 
 ```ts
 class User extends Model {
-  protected static override table = 'users';
-  protected static override primaryKey = 'id';
+  protected static override table = 'users'
+  protected static override primaryKey = 'id'
 }
 ```
 
@@ -323,13 +323,13 @@ The runtime should move from client-first to adapter-first configuration.
 Target primary setup:
 
 ```ts
-Model.setAdapter(createKyselyAdapter(db, config));
+Model.setAdapter(createKyselyAdapter(db, config))
 ```
 
 Transition setup:
 
 ```ts
-Model.setAdapter(createPrismaCompatibilityAdapter(prisma));
+Model.setAdapter(createPrismaCompatibilityAdapter(prisma))
 ```
 
 Compatibility support can continue to infer delegates for a transition period, but that should stop being the primary documented runtime path.

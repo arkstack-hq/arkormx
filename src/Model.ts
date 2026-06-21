@@ -1,46 +1,65 @@
-import type { GlobalScope, ModelAttributeValue, ModelAttributesOf, ModelCreateData, ModelEventDispatcher, ModelEventName, ModelLifecycleState, ModelUpdateData, QuerySchemaForModel, RelatedModelClass } from './types/model'
+import type {
+  GlobalScope,
+  ModelAttributeValue,
+  ModelAttributesOf,
+  ModelCreateData,
+  ModelEventDispatcher,
+  ModelEventName,
+  ModelLifecycleState,
+  ModelUpdateData,
+  QuerySchemaForModel,
+  RelatedModelClass,
+} from './types/model'
 import {
-    BelongsToManyRelation,
-    BelongsToRelation,
-    HasManyRelation,
-    HasManyThroughRelation,
-    HasOneRelation,
-    HasOneThroughRelation,
-    MorphManyRelation,
-    MorphOneRelation,
-    MorphToRelation,
-    MorphToManyRelation,
-    Relation,
+  BelongsToManyRelation,
+  BelongsToRelation,
+  HasManyRelation,
+  HasManyThroughRelation,
+  HasOneRelation,
+  HasOneThroughRelation,
+  MorphManyRelation,
+  MorphOneRelation,
+  MorphToRelation,
+  MorphToManyRelation,
+  Relation,
 } from './relationship'
 import { PrismaDatabaseAdapter } from './adapters/PrismaDatabaseAdapter'
 import type { ModelFactory } from './database/factories'
 import type { DatabaseAdapter } from './types/adapter'
 import type {
-    CastMap,
-    EagerLoadMap,
-    ModelQuerySchemaLike,
-    ModelStatic,
-    NamingCase,
-    QuerySchemaWhere,
-    Serializable,
-    SoftDeleteConfig,
-    TransactionContext,
-    TransactionOptions,
+  CastMap,
+  EagerLoadMap,
+  ModelQuerySchemaLike,
+  ModelStatic,
+  NamingCase,
+  QuerySchemaWhere,
+  Serializable,
+  SoftDeleteConfig,
+  TransactionContext,
+  TransactionOptions,
 } from './types/core'
 import {
-    ensureArkormConfigLoading,
-    getRuntimeAdapter,
-    getUserConfig,
-    runArkormTransaction,
+  ensureArkormConfigLoading,
+  getRuntimeAdapter,
+  getUserConfig,
+  runArkormTransaction,
 } from './helpers/runtime-config'
 import {
-    getRuntimeCompatibilityAdapter,
-    resolveRuntimeCompatibilityQuerySchemaOrThrow,
+  getRuntimeCompatibilityAdapter,
+  resolveRuntimeCompatibilityQuerySchemaOrThrow,
 } from './helpers/runtime-compatibility'
 
-import { ModelEventHandlerConstructor, ModelEventListener, ModelMetadata, RelationMetadata } from './types'
+import {
+  ModelEventHandlerConstructor,
+  ModelEventListener,
+  ModelMetadata,
+  RelationMetadata,
+} from './types'
 import { Attribute } from './Attribute'
-import { getPersistedTableMetadata, resolvePersistedMetadataFeatures } from './helpers/column-mappings'
+import {
+  getPersistedTableMetadata,
+  resolvePersistedMetadataFeatures,
+} from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
 import { ArkormCollection } from './Collection'
 import { resolveCast } from './casts'
@@ -49,2299 +68,2360 @@ import { ArkormException } from './Exceptions/ArkormException'
 import type { EagerLoadRelations } from './types/query-builder'
 
 /**
- * Base model class that all models should extend. 
- * 
+ * Base model class that all models should extend.
+ *
  * @template TModel The type of the model extending this base class.
- * 
+ *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
 export abstract class Model<
-    TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string = Record<string, any>,
-    TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>
+  TSchema extends ModelQuerySchemaLike | Record<string, unknown> | string = Record<string, any>,
+  TAttributes extends Record<string, unknown> = ModelAttributesOf<TSchema>,
 > {
-    private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
-    private static readonly castMapCache = new WeakMap<object, CastMap>()
-    private static readonly emittedDeprecationWarnings = new Set<string>()
-    private static eventsSuppressed = 0
-
-    protected static factoryClass?: new () => ModelFactory<any, any>
-    protected static adapter?: DatabaseAdapter
-
-    /**
-     * Compatibility-only runtime state retained for 2.x transition window.
-     * New setups should use adapter-first setup via `setAdapter(...)` or runtime config.
-     */
-    protected static client: Record<string, unknown>
-
-    /**
-     * @deprecated Use `table` instead. This remains as a compatibility alias during the transition.
-     */
-    protected static delegate: string
-
-    protected static table?: string
-    protected static primaryKey = 'id'
-    protected static columns: Record<string, string> = {}
-    protected static softDeletes = false
-    protected static deletedAtColumn = 'deletedAt'
-    protected static globalScopes: Record<string, GlobalScope> = {}
-    protected static eventListeners: Partial<Record<ModelEventName, ModelEventListener<any>[]>> = {}
-    protected static dispatchesEvents: Partial<Record<ModelEventName, ModelEventDispatcher<any> | ModelEventDispatcher<any>[]>> = {}
-
-    protected casts: CastMap = {}
-    protected hidden: string[] = []
-    protected visible: string[] = []
-    protected appends: string[] = []
-
-    protected readonly attributes: Record<string, unknown>
-    protected original: Record<string, unknown>
-    protected changes: Record<string, unknown>
-    protected previous: Record<string, unknown>
-    protected readonly touchedAttributes: Set<string>
-
-    /**
-     * Indicates whether the model corresponds to a row that exists in the
-     * database. Hydrated and freshly inserted models are marked as existing;
-     * models built with `new Model(...)` are not until they are saved.
-     */
-    public exists = false
-
-    /**
-     * Indicates whether the model was inserted during the current lifecycle
-     * (i.e. the last successful save performed a create rather than an update).
-     */
-    public wasRecentlyCreated = false
-
-    public constructor(attributes: Record<string, unknown> = {}) {
-        this.attributes = {}
-        this.original = {}
-        this.changes = {}
-        this.previous = {}
-        this.touchedAttributes = new Set()
-        this.fill(attributes)
-
-        return new Proxy(this, {
-            get: (target, key, receiver) => {
-                if (typeof key !== 'string')
-                    return Reflect.get(target, key, receiver)
-
-                const attributeMutator = target.resolveAttributeMutator(key)
-                if (key in target && !attributeMutator)
-                    return Reflect.get(target, key, receiver)
-
-                return target.getAttribute(key)
-            },
-            set: (target, key, value, receiver) => {
-                if (typeof key !== 'string')
-                    return Reflect.set(target, key, value, receiver)
-
-                const attributeMutator = target.resolveAttributeMutator(key)
-                if (key in target && !attributeMutator)
-                    return Reflect.set(target, key, value, receiver)
-
-                target.setAttribute(key, value)
-
-                return true
-            },
-        }) as this
-    }
-
-    private static emitDeprecationWarning (code: string, message: string): void {
-        if (Model.emittedDeprecationWarnings.has(code))
-            return
-
-        Model.emittedDeprecationWarnings.add(code)
-        process.emitWarning(message, {
-            type: 'DeprecationWarning',
-            code,
-        })
-    }
-
-    /**
-        * Compatibility-only runtime API retained for the 2.x transition window.
-        * This is no longer part of the supported runtime bootstrap path.
-     *
-     * @deprecated Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another
-     * adapter-first bootstrap path instead.
-     *
-     * @param client
-     */
-    protected static setClient (
-        client: Record<string, unknown>
-    ): void {
-        Model.emitDeprecationWarning(
-            'ARKORM_SET_CLIENT_DEPRECATED',
-            'Model.setClient() is deprecated and will be removed in Arkorm 3.0. Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another adapter-first setup path instead.'
-        )
-
-        this.client = client
-    }
-
-    /**
-     * Primary runtime API: bind an adapter directly to the model class.
-     */
-    public static setAdapter (adapter?: DatabaseAdapter): void {
-        this.adapter = adapter
-    }
-
-    public static getTable (): string {
-        ensureArkormConfigLoading()
-
-        if (this.table)
-            return this.table
-
-        if (this.delegate) {
-            Model.emitDeprecationWarning(
-                'ARKORM_MODEL_DELEGATE_DEPRECATED',
-                'Model.delegate is deprecated and will be removed in Arkorm 3.0. Use Model.table instead.'
-            )
-
-            return this.delegate
-        }
-
-        const namingCase = Model.getNamingCase()
-        const modelName = str(this.name)
-
-        if (namingCase === 'camel')
-            return `${modelName.camel().plural()}`
-
-        if (namingCase === 'kebab')
-            return `${modelName.kebab().plural()}`
-
-        if (namingCase === 'studly')
-            return `${modelName.studly().plural()}`
-
-        return `${modelName.snake().plural()}`
-    }
-
-    public static getPrimaryKey (): string {
-        return this.primaryKey || 'id'
-    }
-
-    public static getColumnMap (): Record<string, string> {
-        const adapter = this.getAdapter()
-        const shouldStrictlyValidatePersistedMappings = Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
-        const persistedMetadata = getPersistedTableMetadata(this.getTable(), {
-            features: resolvePersistedMetadataFeatures(getUserConfig('features')),
-            strict: shouldStrictlyValidatePersistedMappings,
-        })
-
-        return {
-            ...persistedMetadata.columns,
-            ...this.columns,
-        }
-    }
-
-    public static getColumnName (attribute: string): string {
-        return this.getColumnMap()[attribute] ?? attribute
-    }
-
-    public static getModelMetadata (): ModelMetadata {
-        const adapter = this.getAdapter()
-        const shouldStrictlyValidatePersistedMappings = Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
-        const persistedMetadata = getPersistedTableMetadata(this.getTable(), {
-            features: resolvePersistedMetadataFeatures(getUserConfig('features')),
-            strict: shouldStrictlyValidatePersistedMappings,
-        })
-
-        return {
-            table: this.getTable(),
-            primaryKey: this.getPrimaryKey(),
-            columns: {
-                ...persistedMetadata.columns,
-                ...this.columns,
-            },
-            softDelete: this.getSoftDeleteConfig(),
-            primaryKeyGeneration: persistedMetadata.primaryKeyGeneration?.column === this.getPrimaryKey()
-                ? {
-                    strategy: persistedMetadata.primaryKeyGeneration.strategy,
-                    prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
-                    databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
-                    runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
-                }
-                : undefined,
-            timestampColumns: persistedMetadata.timestampColumns?.map(column => ({ ...column })),
-        }
-    }
-
-    /**
-     * The model's cast map. Resolved from a throwaway instance (casts are an
-     * instance field) and cached per model class.
-     */
-    public static getCasts (): CastMap {
-        const cached = Model.castMapCache.get(this)
-        if (cached)
-            return cached
-
-        const instance = new (this as unknown as new (attributes?: Record<string, unknown>) => Model)({})
-        const casts: CastMap = { ...instance.casts }
-        Model.castMapCache.set(this, casts)
-
-        return casts
-    }
-
-    /**
-     * Apply built-in persistence casts (currently `json` serialisation) to a raw
-     * attribute payload, without re-running arbitrary custom setters. Used by
-     * both instance `save()` and the query-builder insert/update paths so a JS
-     * object/array destined for a `json`/`jsonb` column is serialised to a string
-     * rather than bound as a Postgres array.
-     */
-    public static castAttributesForPersistence (
-        attributes: Record<string, unknown>,
-    ): Record<string, unknown> {
-        const casts = this.getCasts()
-
-        return Object.entries(attributes).reduce<Record<string, unknown>>((normalized, [key, value]) => {
-            normalized[key] = casts[key] === 'json'
-                ? resolveCast('json').set(value)
-                : value
-
-            return normalized
-        }, {})
-    }
-
-    public static getRelationMetadata (name: string): RelationMetadata | null {
-        const resolver = (this.prototype as unknown as Record<string, unknown>)[name]
-        if (typeof resolver !== 'function')
-            return null
-
-        const instance = new (this as unknown as new (attributes?: Record<string, unknown>) => Model)({})
-        const relation = (resolver as (this: Model) => unknown).call(instance)
-        if (!(relation instanceof Relation))
-            return null
-
-        return relation.getMetadata()
-    }
-
-    public static setFactory<TFactory extends ModelFactory<any, any>> (
-        factoryClass: new () => TFactory
-    ): void {
-        this.factoryClass = factoryClass as unknown as new () => ModelFactory<any, any>
-    }
-
-    public static factory<TFactory extends ModelFactory<any, any>> (count?: number): TFactory {
-        const factoryClass = this.factoryClass as (new () => TFactory) | undefined
-        if (!factoryClass)
-            throw new ArkormException(`Factory is not configured for model [${this.name}].`, {
-                code: 'FACTORY_NOT_CONFIGURED',
-                operation: 'factory',
-                model: this.name,
-            })
-
-        const factory = new factoryClass()
-        if (typeof count === 'number')
-            factory.count(count)
-
-        return factory
-    }
-
-    /**
-     * Register a global scope for the model.
-     *
-     * @param name
-     * @param scope
-     */
-    public static addGlobalScope (name: string, scope: GlobalScope): void {
-        this.ensureOwnGlobalScopes()
-        this.globalScopes[name] = scope
-    }
-
-    /**
-     * Execute a callback without applying global scopes for the current model class.
-     *
-     * @param callback
-     * @returns
-     */
-    public static async withoutGlobalScopes<T> (callback: () => T | Promise<T>): Promise<Awaited<T>> {
-        const state = Model.getLifecycleState(this)
-        state.globalScopesSuppressed += 1
-
-        try {
-            return await callback()
-        } finally {
-            state.globalScopesSuppressed = Math.max(0, state.globalScopesSuppressed - 1)
-        }
-    }
-
-    /**
-     * Remove a global scope by name.
-     *
-     * @param name
-     */
-    public static removeGlobalScope (name: string): void {
-        this.ensureOwnGlobalScopes()
-        delete this.globalScopes[name]
-    }
-
-    /**
-     * Clear all global scopes for the model.
-     */
-    public static clearGlobalScopes (): void {
-        this.globalScopes = {}
-    }
-
-    /**
-     * Register an event listener for a model lifecycle event.
-     *
-     * @param event
-     * @param listener
-     */
-    public static on<TModel extends Model = Model> (
-        event: ModelEventName,
-        listener: ModelEventListener<TModel>
-    ): void {
-        Model.ensureModelBooted(this as unknown as typeof Model)
-        this.ensureOwnEventListeners()
-        if (!this.eventListeners[event])
-            this.eventListeners[event] = []
-
-        this.eventListeners[event]?.push(listener as ModelEventListener<any>)
-    }
-
-    /**
-     * Register a model lifecycle callback listener.
-     *
-     * @param event
-     * @param listener
-     */
-    public static event<TModel extends Model = Model> (
-        event: ModelEventName,
-        listener: ModelEventListener<TModel>
-    ): void {
-        this.on(event, listener)
-    }
-
-    public static retrieved<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('retrieved', listener)
-    }
-
-    public static saving<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('saving', listener)
-    }
-
-    public static saved<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('saved', listener)
-    }
-
-    public static creating<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('creating', listener)
-    }
-
-    public static created<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('created', listener)
-    }
-
-    public static updating<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('updating', listener)
-    }
-
-    public static updated<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('updated', listener)
-    }
-
-    public static deleting<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('deleting', listener)
-    }
-
-    public static deleted<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('deleted', listener)
-    }
-
-    public static restoring<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('restoring', listener)
-    }
-
-    public static restored<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('restored', listener)
-    }
-
-    public static forceDeleting<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('forceDeleting', listener)
-    }
-
-    public static forceDeleted<TModel extends Model = Model> (listener: ModelEventListener<TModel>): void {
-        this.event('forceDeleted', listener)
-    }
-
-    /**
-     * Remove listeners for an event. If listener is omitted, all listeners for that event are removed.
-     *
-     * @param event
-     * @param listener
-     */
-    public static off<TModel extends Model = Model> (
-        event: ModelEventName,
-        listener?: ModelEventListener<TModel>
-    ): void {
-        this.ensureOwnEventListeners()
-        if (!listener) {
-            delete this.eventListeners[event]
-
-            return
-        }
-
-        this.eventListeners[event] = (this.eventListeners[event] || []).filter(
-            registered => registered !== listener
-        )
-    }
-
-    /**
-     * Clears all event listeners for the model.
-     */
-    public static clearEventListeners (): void {
-        this.eventListeners = {}
-    }
-
-    /**
-     * Execute a callback while suppressing lifecycle events for all models.
-     *
-     * @param callback
-     * @returns
-     */
-    public static async withoutEvents<T> (callback: () => T | Promise<T>): Promise<Awaited<T>> {
-        Model.eventsSuppressed += 1
-
-        try {
-            return await callback()
-        } finally {
-            Model.eventsSuppressed = Math.max(0, Model.eventsSuppressed - 1)
-        }
-    }
-
-    /**
-     * Execute a callback within a transaction scope.
-     * Nested calls reuse the active transaction client.
-     *
-     * @param callback
-     * @param options
-     * @returns
-     */
-    public static async transaction<T> (
-        callback: (context: TransactionContext) => T | Promise<T>,
-        options: TransactionOptions = {}
-    ): Promise<Awaited<T>> {
-        ensureArkormConfigLoading()
-
-        return await runArkormTransaction(async (context) => {
-            return await callback(context)
-        }, options, this.getAdapter())
-    }
-
-    /**
-     * Compatibility-only runtime API retained for 2.x migration support.
-     * New runtime code should prefer `getAdapter()` and adapter-backed execution.
-     *
-     * If a delegate name is provided, it will attempt to resolve that delegate.
-     * Otherwise, it will attempt to resolve a compatibility schema based on the model's name or
-     * the static `delegate` property.
-     * 
-     * @param delegate 
-     * @returns 
-     */
-    public static getDelegate<TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike> (
-        delegate?: string
-    ): TDelegate {
-        Model.emitDeprecationWarning(
-            'ARKORM_GET_DELEGATE_DEPRECATED',
-            'Model.getDelegate() is deprecated and will be removed in Arkorm 3.0. Use Model.getAdapter() and adapter-backed execution instead.'
-        )
-
-        ensureArkormConfigLoading()
-
-        const key = delegate || this.delegate || this.getTable()
-        const candidates = [
-            key,
-            `${str(key).camel()}`,
-            `${str(key).singular()}`,
-            `${str(key).camel().singular()}`,
-        ]
-
-        return resolveRuntimeCompatibilityQuerySchemaOrThrow<TDelegate>(key, candidates, this.name, this.client)
-    }
-
-    public static getAdapter (): DatabaseAdapter | undefined {
-        ensureArkormConfigLoading()
-
-        const runtimeAdapter = getRuntimeAdapter()
-        if (runtimeAdapter)
-            return runtimeAdapter
-
-        if (this.adapter)
-            return this.adapter
-
-        return getRuntimeCompatibilityAdapter(this.client)
-    }
-
-    /**
-     * Get a new query builder instance for the model.
-     * 
-     * @param this 
-     * @returns 
-     */
-    public static query<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis
-    ): QueryBuilder<TModel, TDelegate> {
-        Model.ensureModelBooted(this as unknown as typeof Model)
-
-        const modelStatic = this as unknown as ModelStatic<TModel, TDelegate>
-
-        let builder = new QueryBuilder<TModel, TDelegate>(
-            modelStatic,
-            modelStatic.getAdapter()
-        )
-
-        const modelClass = this as unknown as typeof Model
-        if (!Model.areGlobalScopesSuppressed(modelClass)) {
-            modelClass.ensureOwnGlobalScopes()
-            Object.values(modelClass.globalScopes).forEach((scope) => {
-                const scoped = scope(builder as QueryBuilder<any, any>) as QueryBuilder<TModel, TDelegate> | void
-                if (scoped && scoped !== builder)
-                    builder = scoped
-            })
-        }
-
-        return builder
-    }
-
-    /**
-     * Boot hook for subclasses to register scopes or perform one-time setup.
-     */
-    protected static boot (): void {
-    }
-
-    /**
-     * Booted hook for subclasses to register callbacks after boot logic runs.
-     */
-    protected static booted (): void {
-    }
-
-    /**
-     * Get a query builder instance that includes soft-deleted records.
-     * 
-     * @param this 
-     * @returns 
-     */
-    public static withTrashed<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis
-    ): QueryBuilder<TModel, TDelegate> {
-        return (this as unknown as ModelStatic<TModel, TDelegate>).query().withTrashed() as QueryBuilder<TModel, TDelegate>
-    }
-
-    /**
-     * Get a query builder instance that only includes soft-deleted records.
-     * 
-     * @param this 
-     * @returns 
-     */
-    public static onlyTrashed<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis
-    ): QueryBuilder<TModel, TDelegate> {
-        return (this as unknown as ModelStatic<TModel, TDelegate>).query().onlyTrashed() as QueryBuilder<TModel, TDelegate>
-    }
-
-    /**
-     * Get a query builder instance that excludes soft-deleted records. 
-     * This is the default behavior of the query builder, but this method can be used 
-     * to explicitly specify it after using `withTrashed` or `onlyTrashed`.
-     * 
-     * @param this 
-     * @param name 
-     * @param args 
-     * @returns 
-     */
-    public static scope<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis,
-        name: string, ...args: unknown[]
-    ): QueryBuilder<TModel, TDelegate> {
-        return (this as unknown as ModelStatic<TModel, TDelegate>).query().scope(name, ...args) as QueryBuilder<TModel, TDelegate>
-    }
-
-    /**
-     * Start a query constrained by the given where clause.
-     *
-     * @param this
-     * @param where
-     * @returns
-     */
-    public static where<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis,
-        where: QuerySchemaWhere<TDelegate>
-    ): QueryBuilder<TModel, TDelegate> {
-        return (this as unknown as ModelStatic<TModel, TDelegate>).query().where(where) as QueryBuilder<TModel, TDelegate>
-    }
-
-    /**
-     * Retrieve all records for the model.
-     *
-     * @param this
-     * @returns
-     */
-    public static async all<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis
-    ): Promise<ArkormCollection<TModel>> {
-        return await (this as unknown as ModelStatic<TModel, TDelegate>).query().get()
-    }
-
-    /**
-     * Create and persist a new record, returning the hydrated model instance.
-     *
-     * @param this
-     * @param data
-     * @returns
-     */
-    public static async create<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis,
-        data: ModelCreateData<TModel, TDelegate>
-    ): Promise<TModel> {
-        return await (this as unknown as ModelStatic<TModel, TDelegate>).query().create(data)
-    }
-
-    /**
-     * Insert new records or update existing records by one or more unique keys.
-     *
-     * @param this
-     * @param values
-     * @param uniqueBy
-     * @param update
-     * @returns
-     */
-    public static async upsert<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis,
-        values: Array<Record<string, unknown>>,
-        uniqueBy: string | string[],
-        update: string[] | null = null
-    ): Promise<number> {
-        return await (this as unknown as ModelStatic<TModel, TDelegate>).query().upsert(values, uniqueBy, update)
-    }
-
-    /**
-     * Delete records by their primary key(s), dispatching model events for each
-     * matched record. Returns the number of records deleted.
-     *
-     * @param this
-     * @param ids
-     * @returns
-     */
-    public static async destroy<
-        TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
-        TModel extends Model<any, any> = InstanceType<TThis>,
-        TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
-            TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
-            TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
-        >
-    > (
-        this: TThis,
-        ids: string | number | Array<string | number>
-    ): Promise<number> {
-        const constructor = this as unknown as ModelStatic<TModel, TDelegate>
-        const identifiers = (Array.isArray(ids) ? ids : [ids])
-            .filter((identifier, index, all) => all.indexOf(identifier) === index)
-        const primaryKey = constructor.getPrimaryKey()
-
-        let deleted = 0
-        for (const identifier of identifiers) {
-            const model = await constructor.query().where({ [primaryKey]: identifier } as QuerySchemaWhere<TDelegate>).first()
-            if (!model)
-                continue
-
-            await (model as unknown as Model).delete()
-            deleted += 1
-        }
-
-        return deleted
-    }
-
-    /**
-     * Get the soft delete configuration for the model, including whether 
-     * soft deletes are enabled and the name of the deleted at column.
-     * 
-     * @returns 
-     */
-    public static getSoftDeleteConfig (): SoftDeleteConfig {
-        return {
-            enabled: this.softDeletes,
-            column: this.deletedAtColumn,
-        }
-    }
-
-    /**
-     * Hydrate a model instance from a plain object of attributes. 
-     * 
-     * @param this 
-     * @param attributes 
-     * @returns 
-     */
-    public static hydrate<TModel> (
-        this: new (attributes: Record<string, unknown>) => TModel,
-        attributes: Record<string, unknown>
-    ): TModel {
-        const model = new this(attributes);
-        (model as unknown as Model).syncOriginal();
-        (model as unknown as Model).syncChanges({});
-        (model as unknown as Model).exists = true
-
-        return model
-    }
-
-    /**
-     * Hydrate multiple model instances from an array of plain objects of attributes.
-     * 
-     * @param this 
-     * @param attributes 
-     * @returns 
-     */
-    public static hydrateMany<TModel> (
-        this: new (attributes: Record<string, unknown>) => TModel,
-        attributes: Record<string, unknown>[]
-    ): TModel[] {
-        const constructor = this as unknown as { hydrate: (attributes: Record<string, unknown>) => TModel }
-
-        return attributes.map(attribute => constructor.hydrate(attribute))
-    }
-
-    /**
-     * Hydrate a model instance and dispatch the retrieved lifecycle event.
-     *
-     * @param this
-     * @param attributes
-     * @returns
-     */
-    public static async hydrateRetrieved<TModel> (
-        this: ModelStatic<TModel, ModelQuerySchemaLike>,
-        attributes: Record<string, unknown>
-    ): Promise<TModel> {
-        Model.ensureModelBooted(this as unknown as typeof Model)
-
-        if (!Model.hasEventListeners(this as unknown as typeof Model, 'retrieved'))
-            return this.hydrate(attributes)
-
-        const model = this.hydrate(attributes)
-
-        await Model.dispatchEvent(this as unknown as typeof Model, 'retrieved', model as unknown as Model)
-
-        return model
-    }
-
-    /**
-     * Hydrate multiple model instances and dispatch the retrieved lifecycle event for each.
-     *
-     * @param this
-     * @param attributes
-     * @returns
-     */
-    public static async hydrateManyRetrieved<TModel> (
-        this: ModelStatic<TModel, ModelQuerySchemaLike>,
-        attributes: Record<string, unknown>[]
-    ): Promise<TModel[]> {
-        Model.ensureModelBooted(this as unknown as typeof Model)
-
-        if (!Model.hasEventListeners(this as unknown as typeof Model, 'retrieved'))
-            return this.hydrateMany(attributes)
-
-        const models = this.hydrateMany(attributes)
-
-        await Promise.all(models.map(async (model: TModel) => {
-            await Model.dispatchEvent(this as unknown as typeof Model, 'retrieved', model as unknown as Model)
-        }))
-
-        return models
-    }
-
-    /**
-     * Fill the model's attributes from a plain object, using the 
-     * setAttribute method to ensure that mutators and casts are applied. 
-     * 
-     * @param attributes 
-     * @returns 
-     */
-    public fill (attributes: Partial<TAttributes>): this
-    public fill (attributes: Record<string, unknown>): this
-    public fill (attributes: Record<string, unknown>): this {
-        Object.entries(attributes).forEach(([key, value]) => {
-            this.setAttribute(key, value)
-        })
-
-        return this
-    }
-
-    /**
-     * Update the model's state in the database using data from a plain object.
-     * If the model has no identifier (id), the process will be skipped and the 
-     * call will return false.
-     * 
-     * @param attributes 
-     * @returns 
-     */
-    public async update (attributes: Partial<TAttributes>): Promise<boolean>
-    public async update (attributes: Record<string, unknown>): Promise<boolean>
-    public async update (attributes: Record<string, unknown>): Promise<boolean> {
-        try {
-            const constructor = this.constructor as ModelStatic<this>
-            const primaryKey = constructor.getPrimaryKey()
-            const identifier = this.getAttribute(primaryKey)
-            if (!identifier) return false
-
-            await this.fill(attributes).save()
-
-            return true
-        } catch {
-            return false
-        }
-    }
-
-    /**
-     * Update the model and persist it within a transaction, rethrowing on
-     * failure. Unlike update(), errors are not swallowed.
-     *
-     * @param attributes
-     * @returns
-     */
-    public async updateOrFail (attributes: Partial<TAttributes>): Promise<this>
-    public async updateOrFail (attributes: Record<string, unknown>): Promise<this>
-    public async updateOrFail (attributes: Record<string, unknown>): Promise<this> {
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot update a model without an id.'
-                : `Cannot update a model without a [${primaryKey}] value.`)
-
-        return await this.fill(attributes).saveOrFail()
-    }
-
-    /**
-     * Get the value of an attribute, applying any get mutators or casts if defined.
-     * 
-     * @param key 
-     * @returns 
-     */
-    public getAttribute<TSelf extends this, TKey extends string> (
-        this: TSelf,
-        key: TKey
-    ): ModelAttributeValue<TSelf, TAttributes, TKey>
-    public getAttribute (key: string): unknown
-    public getAttribute (key: string): unknown {
-        const attributeMutator = this.resolveAttributeMutator(key)
-        const mutator = this.resolveGetMutator(key)
-        const cast = this.casts[key]
-        let value = this.attributes[key]
-
-        if (cast)
-            value = resolveCast(cast).get(value)
-
-        if (attributeMutator?.get)
-            return attributeMutator.get.call(this, value)
-
-        if (mutator)
-            return mutator.call(this, value)
-
-        return value
-    }
-
-    /**
-     * Set the value of an attribute, applying any set mutators or casts if defined.
-     * 
-     * @param key 
-     * @param value 
-     * @returns 
-     */
-    public setAttribute<TSelf extends this, TKey extends string> (
-        this: TSelf,
-        key: TKey,
-        value: ModelAttributeValue<TSelf, TAttributes, TKey>
-    ): this
-    public setAttribute (key: string, value: unknown): this
-    public setAttribute (key: string, value: unknown): this {
-        const attributeMutator = this.resolveAttributeMutator(key)
-        const mutator = this.resolveSetMutator(key)
-        const cast = this.casts[key]
-        let resolved = value
-
-        if (attributeMutator?.set)
-            resolved = attributeMutator.set.call(this, resolved)
-        else if (mutator)
-            resolved = mutator.call(this, resolved)
-
-        if (cast)
-            resolved = resolveCast(cast).set(resolved)
-
-        this.attributes[key] = resolved
-        this.touchedAttributes.add(key)
-
-        return this
-    }
-
-    /**
-     * Save the model to the database.
-     * If the model already exists in the database it performs an update;
-     * otherwise it performs an insert. Existence is tracked through the
-     * `exists` flag rather than the presence of a primary-key value, so a model
-     * built with an explicit primary key still inserts on its first save.
-     *
-     * @returns
-     */
-    public async save (): Promise<this> {
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const previousOriginal = this.getOriginal()
-        if (!this.exists) {
-            await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
-            await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
-
-            const payload = this.normalizePersistenceAttributes(this.getRawAttributes())
-            const model = await constructor.query().create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
-            this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-            this.syncChanges(previousOriginal)
-            this.syncPrevious(previousOriginal)
-            this.syncOriginal()
-            this.exists = true
-            this.wasRecentlyCreated = true
-
-            await Model.dispatchEvent(constructor as unknown as typeof Model, 'created', this)
-            await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
-
-            return this
-        }
-
-        const identifier = this.getAttribute(primaryKey) as string | number | undefined
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot update an existing model without an id.'
-                : `Cannot update an existing model without a [${primaryKey}] value.`)
-
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
-
-        const payload = this.normalizePersistenceAttributes(this.getDirtyAttributes())
-        delete payload[primaryKey]
-        const model = await constructor.query().where({ [primaryKey]: identifier }).update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
-        this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-        this.syncChanges(previousOriginal)
-        this.syncPrevious(previousOriginal)
-        this.syncOriginal()
-
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'updated', this)
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
-
-        return this
-    }
-
-    /**
-     * Save the model without dispatching lifecycle events.
-     *
-     * @returns
-     */
-    public async saveQuietly (): Promise<this> {
-        return await Model.withoutEvents(() => this.save())
-    }
-
-    /**
-     * Save the model within a transaction, rolling back and rethrowing if the
-     * operation fails. Unlike update(), this never swallows errors.
-     *
-     * @returns
-     */
-    public async saveOrFail (): Promise<this> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return await constructor.transaction(async () => await this.save())
-    }
-
-    /**
-     * Delete the model from the database. 
-     * If soft deletes are enabled, it will perform a soft delete by 
-     * setting the deleted at column to the current date. 
-     * Otherwise, it will perform a hard delete.
-     * 
-     * @returns 
-     */
-    public async delete (): Promise<this> {
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot delete a model without an id.'
-                : `Cannot delete a model without a [${primaryKey}] value.`)
-
-        const previousOriginal = this.getOriginal()
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
-        const softDeleteConfig = constructor.getSoftDeleteConfig()
-        if (softDeleteConfig.enabled) {
-            const model = await constructor.query()
-                .where({ [primaryKey]: identifier })
-                .update({ [softDeleteConfig.column]: new Date() } as ModelUpdateData<this, ModelQuerySchemaLike>)
-            this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-            this.syncChanges(previousOriginal)
-            this.syncOriginal()
-
-            await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
-
-            return this
-        }
-
-        const deleted = await constructor.query().where({ [primaryKey]: identifier }).deleteOrFail()
-        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-        this.syncChanges(previousOriginal)
-        this.syncOriginal()
-        this.exists = false
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
-
-        return this
-    }
-
-    /**
-     * Delete the model without dispatching lifecycle events.
-     *
-     * @returns
-     */
-    public async deleteQuietly (): Promise<this> {
-        return await Model.withoutEvents(() => this.delete())
-    }
-
-    /**
-     * Delete the model within a transaction, rolling back and rethrowing if the
-     * operation fails.
-     *
-     * @returns
-     */
-    public async deleteOrFail (): Promise<this> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return await constructor.transaction(async () => await this.delete())
-    }
-
-    /**
-     * Permanently delete the model from the database, regardless of whether soft 
-     * deletes are enabled.
-     * 
-     * @returns 
-     */
-    public async forceDelete (): Promise<this> {
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot force delete a model without an id.'
-                : `Cannot force delete a model without a [${primaryKey}] value.`)
-
-        const previousOriginal = this.getOriginal()
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleting', this)
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
-
-        const deleted = await constructor.query().withTrashed().where({ [primaryKey]: identifier }).deleteOrFail()
-        this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-        this.syncChanges(previousOriginal)
-        this.syncOriginal()
-        this.exists = false
-
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
-
-        return this
-    }
-
-    /**
-     * Force delete the model without dispatching lifecycle events.
-     *
-     * @returns
-     */
-    public async forceDeleteQuietly (): Promise<this> {
-        return await Model.withoutEvents(() => this.forceDelete())
-    }
-
-    /**
-     * Restore a soft-deleted model by setting the deleted at column to null.
-     * 
-     * @returns 
-     */
-    public async restore (): Promise<this> {
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot restore a model without an id.'
-                : `Cannot restore a model without a [${primaryKey}] value.`)
-
-        const softDeleteConfig = constructor.getSoftDeleteConfig()
-        if (!softDeleteConfig.enabled)
-            return this
-
-        const previousOriginal = this.getOriginal()
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'restoring', this)
-
-        const model = await constructor.query().withTrashed()
-            .where({ [primaryKey]: identifier })
-            .update({ [softDeleteConfig.column]: null } as ModelUpdateData<this, ModelQuerySchemaLike>)
-        this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
-        this.syncChanges(previousOriginal)
-        this.syncOriginal()
-
-        await Model.dispatchEvent(constructor as unknown as typeof Model, 'restored', this)
-
-        return this
-    }
-
-    /**
-     * Restore the model without dispatching lifecycle events.
-     *
-     * @returns
-     */
-    public async restoreQuietly (): Promise<this> {
-        return await Model.withoutEvents(() => this.restore())
-    }
-
-    /**
-     * Load related models onto the current model instance.
-     * 
-     * @param relations 
-     * @returns 
-     */
-    public async load (relations: string | string[] | EagerLoadRelations<this>): Promise<this> {
-        const relationMap = this.normalizeRelationMap(relations)
-        const constructor = this.constructor as typeof Model
-        const query = constructor.query().with(relationMap) as unknown as QueryBuilder<this, QuerySchemaForModel<TSchema, TAttributes>>
-
-        await query.loadIntoModels([this])
-
-        return this
-    }
-
-    /**
-     * Load relationship count aggregates onto the current model instance.
-     *
-     * @param relations
-     * @returns
-     */
-    public async loadCount (relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>): Promise<this> {
-        return this.loadAggregate('count', relations)
-    }
-
-    /**
-     * Load relationship sum aggregates onto the current model instance.
-     *
-     * @param relations
-     * @param column
-     * @returns
-     */
-    public async loadSum (
-        relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
-        column: string
-    ): Promise<this> {
-        return this.loadAggregate('sum', relations, column)
-    }
-
-    /**
-     * Load relations only when they are not already present on the model.
-     *
-     * @param relations
-     * @returns
-     */
-    public async loadMissing (relations: string | string[] | EagerLoadRelations<this>): Promise<this> {
-        const relationMap = this.normalizeRelationMap(relations)
-        const missing = Object.entries(relationMap).reduce<EagerLoadMap>((all, [relation, constraint]) => {
-            const root = relation.split('.')[0]
-            if (!Object.prototype.hasOwnProperty.call(this.attributes, root))
-                all[relation] = constraint
-
-            return all
-        }, {})
-
-        if (Object.keys(missing).length === 0)
-            return this
-
-        return this.load(missing as EagerLoadRelations<this>)
-    }
-
-    /**
-     * Load nested relations on a polymorphic relation result by model class name.
-     *
-     * @param relation
-     * @param relationsByType
-     * @returns
-     */
-    public async loadMorph (
-        relation: string,
-        relationsByType: Record<string, string | string[] | EagerLoadMap>
-    ): Promise<this> {
-        await this.loadMissing(relation)
-
-        const value = this.getAttribute(relation)
-        const related = value instanceof ArkormCollection
-            ? value.all()
-            : Array.isArray(value)
-                ? value
-                : value ? [value] : []
-
-        await Promise.all(related.map(async (model: any) => {
-            if (!(model instanceof Model))
-                return
-
-            const relations = relationsByType[model.constructor.name]
-            if (relations)
-                await model.load(relations)
-        }))
-
-        return this
-    }
-
-    public setLoadedRelation (name: string, value: unknown): this {
-        this.attributes[name] = value
-
-        return this
-    }
-
-    /**
-     * Get the raw attributes of the model without applying any mutators or casts.
-     * 
-     * @returns 
-     */
-    public getRawAttributes (): Partial<TAttributes> {
-        return { ...this.attributes } as Partial<TAttributes>
-    }
-
-    /**
-     * Get the model's original persisted attributes.
-     *
-     * @returns
-     */
-    public getOriginal (): Partial<TAttributes>
-    /**
-     * @param key The attribute key to retrieve the original value for.
-     */
-    public getOriginal<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey] | undefined
-    public getOriginal (key?: string): unknown {
-        if (typeof key === 'string')
-            return Model.cloneAttributeValue(this.original[key])
-
-        return Object.entries(this.original).reduce<Record<string, unknown>>((all, [originalKey, value]) => {
-            all[originalKey] = Model.cloneAttributeValue(value)
-
-            return all
-        }, {}) as Partial<TAttributes>
-    }
-
-    /**
-     * Determine whether the model has unsaved attribute changes.
-     *
-     * @param keys
-     * @returns
-     */
-    public isDirty (keys?: string | string[]): boolean {
-        return Object.keys(this.getDirtyAttributes(keys)).length > 0
-    }
-
-    /**
-     * Determine whether the model has no unsaved attribute changes.
-     *
-     * @param keys
-     * @returns
-     */
-    public isClean (keys?: string | string[]): boolean {
-        return !this.isDirty(keys)
-    }
-
-    /**
-     * Determine whether the model changed during the last successful persistence operation.
-     *
-     * @param keys
-     * @returns
-     */
-    public wasChanged (keys?: string | string[]): boolean {
-        const keyList = this.normalizeAttributeKeys(keys)
-        if (keyList.length === 0)
-            return Object.keys(this.changes).length > 0
-
-        return keyList.some(key => Object.prototype.hasOwnProperty.call(this.changes, key))
-    }
-
-    /**
-     * Get the attributes that were changed during the last successful
-     * persistence operation.
-     *
-     * @returns
-     */
-    public getChanges (): Partial<TAttributes> {
-        return Object.entries(this.changes).reduce<Record<string, unknown>>((all, [key, value]) => {
-            all[key] = Model.cloneAttributeValue(value)
-
-            return all
-        }, {}) as Partial<TAttributes>
-    }
-
-    /**
-     * Get the attribute snapshot that was persisted before the last successful
-     * persistence operation.
-     *
-     * @returns
-     */
-    public getPrevious (): Partial<TAttributes>
-    /**
-     * @param key The attribute key to retrieve the previous value for.
-     */
-    public getPrevious<TKey extends keyof TAttributes & string> (key: TKey): TAttributes[TKey] | undefined
-    public getPrevious (key?: string): unknown {
-        if (typeof key === 'string')
-            return Model.cloneAttributeValue(this.previous[key])
-
-        return Object.entries(this.previous).reduce<Record<string, unknown>>((all, [previousKey, value]) => {
-            all[previousKey] = Model.cloneAttributeValue(value)
-
-            return all
-        }, {}) as Partial<TAttributes>
-    }
-
-    /**
-     * Convert the model instance to a plain object, applying visibility 
-     * rules, appends, and mutators.
-     * 
-     * @returns 
-     */
-    public toObject (): Serializable {
-        const keys = this.visible.length > 0
-            ? this.visible
-            : Object.keys(this.attributes).filter(key => !this.hidden.includes(key))
-
-        const object = keys.reduce<Serializable>((accumulator, key) => {
-            let value: unknown = this.getAttribute(key as string)
-            if (value instanceof Date)
-                value = value.toISOString()
-
-            accumulator[key] = value
-
-            return accumulator
-        }, {})
-
-        this.appends.forEach((attribute) => {
-            object[attribute] = this.getAttribute(attribute)
-        })
-
-        return object
-    }
-
-    /**
-     * Convert the model instance to JSON by first converting it to a plain object.
-     * 
-     * @returns 
-     */
-    public toJSON (): Serializable {
-        return this.toObject()
-    }
-
-    /**
-     * Determine if another model represents the same persisted record.
-     *
-     * @param model
-     * @returns
-     */
-    public is (model: unknown): boolean {
-        if (!(model instanceof Model))
-            return false
-
-        if (this.constructor !== model.constructor)
-            return false
-
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        const otherIdentifier = model.getAttribute(primaryKey)
-
-        if (identifier == null || otherIdentifier == null)
-            return false
-
-        return identifier === otherIdentifier
-    }
-
-    /**
-     * Determine if another model does not represent the same persisted record.
-     *
-     * @param model
-     * @returns
-     */
-    public isNot (model: unknown): boolean {
-        return !this.is(model)
-    }
-
-    /**
-     * Determine if another model is the same in-memory instance.
-     *
-     * @param model
-     * @returns
-     */
-    public isSame (model: unknown): boolean {
-        return this === model
-    }
-
-    /**
-     * Determine if another model is not the same in-memory instance.
-     *
-     * @param model
-     * @returns
-     */
-    public isNotSame (model: unknown): boolean {
-        return !this.isSame(model)
-    }
-
-    /**
-     * Define a has one relationship.
-     * 
-     * @param related 
-     * @param foreignKey 
-     * @param localKey 
-     * @returns 
-     */
-    protected hasOne<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        foreignKey: string,
-        localKey?: string
-    ): HasOneRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return new HasOneRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey ?? constructor.getPrimaryKey())
-    }
-
-    /**
-     * Define a has many relationship.
-     * 
-     * @param related 
-     * @param foreignKey 
-     * @param localKey 
-     * @returns 
-     */
-    protected hasMany<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        foreignKey: string,
-        localKey?: string
-    ): HasManyRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return new HasManyRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, localKey ?? constructor.getPrimaryKey())
-    }
-
-    /**
-     * Define a belongs to relationship.
-     * 
-     * @param related 
-     * @param foreignKey 
-     * @param ownerKey 
-     * @returns 
-     */
-    protected belongsTo<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        foreignKey: string,
-        ownerKey?: string
-    ): BelongsToRelation<this, InstanceType<TRelatedClass>> {
-        return new BelongsToRelation<this, InstanceType<TRelatedClass>>(this, related, foreignKey, ownerKey ?? related.getPrimaryKey())
-    }
-
-    /**
-     * Define a belongs to many relationship.
-     * 
-     * @param related 
-    * @param throughTable
-     * @param foreignPivotKey 
-     * @param relatedPivotKey 
-     * @param parentKey 
-     * @param relatedKey 
-     * @returns 
-     */
-    protected belongsToMany<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        throughTable: string,
-        foreignPivotKey: string,
-        relatedPivotKey: string,
-        parentKey?: string,
-        relatedKey?: string
-    ): BelongsToManyRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(
-            this,
-            related,
-            throughTable,
-            foreignPivotKey,
-            relatedPivotKey,
-            parentKey ?? constructor.getPrimaryKey(),
-            relatedKey ?? related.getPrimaryKey(),
-        )
-    }
-
-    /**
-     * Define a has one through relationship.
-     * 
-     * @param related 
-    * @param throughTable
-     * @param firstKey 
-     * @param secondKey 
-     * @param localKey 
-     * @param secondLocalKey 
-     * @returns 
-     */
-    protected hasOneThrough<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        throughTable: string,
-        firstKey: string,
-        secondKey: string,
-        localKey?: string,
-        secondLocalKey = 'id'
-    ): HasOneThroughRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return new HasOneThroughRelation(this, related, throughTable, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
-    }
-
-    /**
-     * Define a has many through relationship.
-     * 
-     * @param related 
-    * @param throughTable
-     * @param firstKey 
-     * @param secondKey 
-     * @param localKey 
-     * @param secondLocalKey 
-     * @returns 
-     */
-    protected hasManyThrough<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        throughTable: string,
-        firstKey: string,
-        secondKey: string,
-        localKey?: string,
-        secondLocalKey = 'id'
-    ): HasManyThroughRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-
-        return new HasManyThroughRelation(this, related, throughTable, firstKey, secondKey, localKey ?? constructor.getPrimaryKey(), secondLocalKey)
-    }
-
-    /**
-     * Define a polymorphic one to one relationship.
-     * 
-     * @param related 
-     * @param morphName
-     * @param idColumn
-     * @param typeColumn
-     * @param localKey
-     * @returns 
-     */
-    protected morphOne<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        morphName: string,
-        idColumn?: string,
-        typeColumn?: string,
-        localKey?: string,
-    ): MorphOneRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-        const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
-
-        return new MorphOneRelation(
-            this,
-            related,
-            morphName,
-            columns.idColumn,
-            columns.typeColumn,
-            localKey ?? constructor.getPrimaryKey(),
-        )
-    }
-
-    /**
-     * Define a polymorphic one to many relationship.
-     * 
-     * @param related 
-     * @param morphName
-     * @param idColumn
-     * @param typeColumn
-     * @param localKey
-     * @returns 
-     */
-    protected morphMany<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        morphName: string,
-        idColumn?: string,
-        typeColumn?: string,
-        localKey?: string,
-    ): MorphManyRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-        const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
-
-        return new MorphManyRelation(
-            this,
-            related,
-            morphName,
-            columns.idColumn,
-            columns.typeColumn,
-            localKey ?? constructor.getPrimaryKey(),
-        )
-    }
-
-    /**
-     * Define the inverse side of a polymorphic relationship.
-     *
-     * @param morphName
-     * @param typeColumnOrRelated
-     * @param idColumn
-     * @param ownerKey
-     * @returns
-     */
-    protected morphTo<TRelatedClass extends RelatedModelClass> (
-        morphName: string,
-        related: TRelatedClass,
-        idColumn?: string,
-        ownerKey?: string,
-    ): MorphToRelation<this, InstanceType<TRelatedClass>>
-    protected morphTo<TRelated extends Model = Model> (
-        morphName: string,
-        typeColumn?: string,
-        idColumn?: string,
-        ownerKey?: string,
-    ): MorphToRelation<this, TRelated>
-    protected morphTo (
-        morphName: string,
-        typeColumnOrRelated?: string | RelatedModelClass,
-        idColumn?: string,
-        ownerKey?: string,
-    ): MorphToRelation<this, Model> {
-        const related = typeof typeColumnOrRelated === 'function'
-            ? typeColumnOrRelated
-            : undefined
-        const typeColumn = typeof typeColumnOrRelated === 'string'
-            ? typeColumnOrRelated
-            : undefined
-        const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
-
-        return new MorphToRelation<this, Model>(
-            this,
-            morphName,
-            columns.typeColumn,
-            columns.idColumn,
-            ownerKey,
-            related,
-        )
-    }
-
-    /**
-     * Define a polymorphic many to many relationship.
-     * 
-     * @param related
-     * @param morphName
-     * @param throughTable
-     * @param foreignPivotKey
-     * @param morphTypeColumn
-     * @param relatedPivotKey
-     * @param parentKey
-     * @param relatedKey
-     * @returns 
-     */
-    protected morphToMany<TRelatedClass extends RelatedModelClass> (
-        related: TRelatedClass,
-        morphName: string,
-        throughTable?: string,
-        foreignPivotKey?: string,
-        morphTypeColumn?: string,
-        relatedPivotKey?: string,
-        parentKey?: string,
-        relatedKey?: string,
-    ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
-        const constructor = this.constructor as unknown as typeof Model
-        const namingCase = Model.getNamingCase()
-        const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
-        const resolvedTable = throughTable
-            ?? this.formatConventionName(`${str(morphName).plural()}`, namingCase)
-        const resolvedRelatedPivotKey = relatedPivotKey
-            ?? this.formatConventionName(
-                `${str(related.getTable()).singular()}_${resolvedRelatedKey}`,
-                namingCase,
-            )
-        const morphIdColumn = foreignPivotKey
-            ?? this.formatConventionName(`${morphName}_id`, namingCase)
-        const resolvedMorphTypeColumn = morphTypeColumn
-            ?? this.formatConventionName(`${morphName}_type`, namingCase)
-
-        return new MorphToManyRelation(
-            this,
-            related,
-            resolvedTable,
-            morphName,
-            morphIdColumn,
-            resolvedMorphTypeColumn,
-            resolvedRelatedPivotKey,
-            parentKey ?? constructor.getPrimaryKey(),
-            resolvedRelatedKey,
-        )
-    }
-
-    private resolveMorphColumns (
-        morphName: string,
-        idColumn?: string,
-        typeColumn?: string,
-    ): { idColumn: string; typeColumn: string } {
-        const namingCase = Model.getNamingCase()
-
-        return {
-            idColumn: idColumn ?? this.formatConventionName(`${morphName}_id`, namingCase),
-            typeColumn: typeColumn ?? this.formatConventionName(`${morphName}_type`, namingCase),
-        }
-    }
-
-    private formatConventionName (
-        value: string,
-        namingCase: NamingCase,
-    ): string {
-        return `${str(value)[namingCase]()}`
-    }
-
-    private static getNamingCase (): 'camel' | 'snake' | 'kebab' | 'studly' {
-        const naming = getUserConfig('naming')
-
-        return naming?.case ?? naming?.modelTableCase ?? 'snake'
-    }
-
-    /**
-     * Resolve a get mutator method for a given attribute key, if it exists.
-     * 
-     * @param key 
-     * @returns 
-     */
-    private resolveGetMutator (key: string): ((value: unknown) => unknown) | null {
-        const methodName = `get${str(key).studly()}Attribute`
-        const method = (this as unknown as Record<string, unknown>)[methodName]
-
-        return typeof method === 'function' ? method as (value: unknown) => unknown : null
-    }
-
-    /**
-     * Build a map of dirty attributes, optionally limited to specific keys.
-     *
-     * @param keys
-     * @returns
-     */
-    private getDirtyAttributes (keys?: string | string[]): Record<string, unknown> {
-        const requestedKeys = this.normalizeAttributeKeys(keys)
-        const trackedKeys = requestedKeys.length > 0
-            ? requestedKeys
-            : Array.from(new Set([
-                ...Object.keys(this.original),
-                ...this.touchedAttributes,
-            ]))
-
-        return trackedKeys.reduce<Record<string, unknown>>((dirty, key) => {
-            const currentValue = this.attributes[key]
-            const originalValue = this.original[key]
-            const hasCurrent = Object.prototype.hasOwnProperty.call(this.attributes, key)
-            const hasOriginal = Object.prototype.hasOwnProperty.call(this.original, key)
-
-            if (!hasCurrent && !hasOriginal)
-                return dirty
-
-            if (hasCurrent !== hasOriginal || !Model.areAttributeValuesEqual(currentValue, originalValue))
-                dirty[key] = Model.cloneAttributeValue(currentValue)
-
-            return dirty
-        }, {})
-    }
-
-    /**
-     * Normalize built-in persistence casts without re-running arbitrary custom setters.
-     *
-     * @param attributes
-     * @returns
-     */
-    private normalizePersistenceAttributes (
-        attributes: Record<string, unknown>,
-    ): Record<string, unknown> {
-        return (this.constructor as typeof Model).castAttributesForPersistence(attributes)
-    }
-
-    /**
-     * Normalize a key or key list for dirty/change lookups.
-     *
-     * @param keys
-     * @returns
-     */
-    private normalizeAttributeKeys (keys?: string | string[]): string[] {
-        if (typeof keys === 'undefined')
-            return []
-
-        return Array.isArray(keys) ? keys : [keys]
-    }
-
-    /**
-     * Resolve an Attribute object mutator method for a given key, if it exists.
-     *
-     * @param key
-     * @returns
-     */
-    private resolveAttributeMutator (key: string): Attribute | null {
-        if (key === 'constructor')
-            return null
-
-        const methodName = `${str(key).camel()}`
-        const prototype = Object.getPrototypeOf(this) as Record<string, unknown> | null
-        if (!prototype)
-            return null
-
-        const method = prototype[methodName]
-        if (typeof method !== 'function')
-            return null
-
-        const baseMethod = (Model.prototype as unknown as Record<string, unknown>)[methodName]
-        if (method === baseMethod)
-            return null
-
-        const resolved = (method as () => unknown).call(this)
-        if (Attribute.isAttribute(resolved))
-            return resolved
-
-        return null
-    }
-
-    /**
-     * Resolve a set mutator method for a given attribute key, if it exists.
-     * 
-     * @param key 
-     * @returns 
-     */
-    private resolveSetMutator (key: string): ((value: unknown) => unknown) | null {
-        const methodName = `set${str(key).studly()}Attribute`
-        const method = (this as unknown as Record<string, unknown>)[methodName]
-
-        return typeof method === 'function' ? method as (value: unknown) => unknown : null
-    }
-
-    /**
-     * Ensures global scopes are own properties on subclass constructors.
-     */
-    private static ensureOwnGlobalScopes (): void {
-        if (!Object.prototype.hasOwnProperty.call(this, 'globalScopes'))
-            this.globalScopes = { ...(this.globalScopes || {}) }
-    }
-
-    /**
-     * Ensures event listeners are own properties on subclass constructors.
-     */
-    private static ensureOwnEventListeners (): void {
-        if (!Object.prototype.hasOwnProperty.call(this, 'eventListeners'))
-            this.eventListeners = { ...(this.eventListeners || {}) }
-    }
-
-    /**
-     * Clone an attribute value to keep snapshot state isolated from live mutations.
-     *
-     * @param value
-     * @returns
-     */
-    private static cloneAttributeValue (value: unknown): unknown {
-        if (value instanceof Date)
-            return new Date(value.getTime())
-
-        if (Array.isArray(value))
-            return value.map(item => Model.cloneAttributeValue(item))
-
-        if (value && typeof value === 'object') {
-            return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>((all, [key, nestedValue]) => {
-                all[key] = Model.cloneAttributeValue(nestedValue)
-
-                return all
-            }, {})
-        }
-
-        return value
-    }
-
-    /**
-     * Compare attribute values for dirty/change detection.
-     *
-     * @param left
-     * @param right
-     * @returns
-     */
-    private static areAttributeValuesEqual (left: unknown, right: unknown): boolean {
-        if (left === right)
-            return true
-
-        if (left instanceof Date && right instanceof Date)
-            return left.getTime() === right.getTime()
-
-        if (Array.isArray(left) && Array.isArray(right)) {
-            if (left.length !== right.length)
-                return false
-
-            return left.every((value, index) => Model.areAttributeValuesEqual(value, right[index]))
-        }
-
-        if (left && right && typeof left === 'object' && typeof right === 'object') {
-            const leftEntries = Object.entries(left as Record<string, unknown>)
-            const rightEntries = Object.entries(right as Record<string, unknown>)
-            if (leftEntries.length !== rightEntries.length)
-                return false
-
-            return leftEntries.every(([key, value]) => {
-                return Object.prototype.hasOwnProperty.call(right as Record<string, unknown>, key)
-                    && Model.areAttributeValuesEqual(value, (right as Record<string, unknown>)[key])
-            })
-        }
-
-        return false
-    }
-
-    private static buildRelationAggregateAttributeKey (
-        type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max',
-        relation: string,
-        column?: string,
-    ): string {
-        const { relation: relationName, alias } = Model.parseRelationAggregateName(relation)
-        if (alias)
-            return alias
-
-        if (type === 'count')
-            return `${relationName}Count`
-        if (type === 'exists')
-            return `${relationName}Exists`
-
-        const columnName = column
-            ? `${column.charAt(0).toUpperCase()}${column.slice(1)}`
-            : ''
-        const aggregateType = `${type.charAt(0).toUpperCase()}${type.slice(1)}`
-
-        return `${relationName}${aggregateType}${columnName}`
-    }
-
-    private static parseRelationAggregateName (name: string): { relation: string, alias?: string } {
-        const match = name.match(/^(.+?)\s+as\s+(.+)$/i)
-        if (!match)
-            return { relation: name }
-
-        return {
-            relation: match[1].trim(),
-            alias: match[2].trim(),
-        }
-    }
-
-    private async loadAggregate (
-        type: 'count' | 'sum',
-        relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
-        column?: string,
-    ): Promise<this> {
-        const normalized = this.normalizeRelationAggregateInput(relations)
-        if (normalized.length === 0)
-            return this
-
-        const constructor = this.constructor as unknown as ModelStatic<this>
-        const primaryKey = constructor.getPrimaryKey()
-        const identifier = this.getAttribute(primaryKey)
-        if (identifier == null)
-            throw new ArkormException(primaryKey === 'id'
-                ? 'Cannot load aggregates for a model without an id.'
-                : `Cannot load aggregates for a model without a [${primaryKey}] value.`)
-
-        const query = constructor.query().where({ [primaryKey]: identifier })
-        if (type === 'count')
-            query.withCount(relations)
-        else
-            query.withSum(relations, column as string)
-
-        const aggregated = await query.first()
-        if (!aggregated)
-            return this
-
-        normalized.forEach((relation) => {
-            const attribute = Model.buildRelationAggregateAttributeKey(type, relation, column)
-            this.setAttribute(attribute, aggregated.getAttribute(attribute) ?? (type === 'count' ? 0 : null))
-        })
-
-        return this
-    }
-
-    private normalizeRelationAggregateInput (
-        relations: string | string[] | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>
-    ): string[] {
-        if (typeof relations === 'string')
-            return [relations]
-
-        if (Array.isArray(relations))
-            return relations
-
-        return Object.entries(relations).reduce<string[]>((all, [relation, enabled]) => {
-            if (enabled === false || enabled === undefined)
-                return all
-
-            all.push(relation)
-
-            return all
-        }, [])
-    }
-
-    /**
-     * Sync the original snapshot to the model's current raw attributes.
-     */
-    private syncOriginal (): void {
-        this.original = Object.entries(this.attributes).reduce<Record<string, unknown>>((all, [key, value]) => {
-            all[key] = Model.cloneAttributeValue(value)
-
-            return all
-        }, {})
-        this.touchedAttributes.clear()
-    }
-
-    /**
-     * Sync the last-changed snapshot from a previous original state.
-     *
-     * @param previousOriginal
-     */
-    private syncChanges (previousOriginal: Record<string, unknown>): void {
-        this.changes = Object.entries(this.getDirtyAttributes()).reduce<Record<string, unknown>>((all, [key, value]) => {
-            if (!Object.prototype.hasOwnProperty.call(previousOriginal, key)
-                || !Model.areAttributeValuesEqual(value, previousOriginal[key])) {
-                all[key] = Model.cloneAttributeValue(value)
+  private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
+  private static readonly castMapCache = new WeakMap<object, CastMap>()
+  private static readonly emittedDeprecationWarnings = new Set<string>()
+  private static eventsSuppressed = 0
+
+  protected static factoryClass?: new () => ModelFactory<any, any>
+  protected static adapter?: DatabaseAdapter
+
+  /**
+   * Compatibility-only runtime state retained for 2.x transition window.
+   * New setups should use adapter-first setup via `setAdapter(...)` or runtime config.
+   */
+  protected static client: Record<string, unknown>
+
+  /**
+   * @deprecated Use `table` instead. This remains as a compatibility alias during the transition.
+   */
+  protected static delegate: string
+
+  protected static table?: string
+  protected static primaryKey = 'id'
+  protected static columns: Record<string, string> = {}
+  protected static softDeletes = false
+  protected static deletedAtColumn = 'deletedAt'
+  protected static globalScopes: Record<string, GlobalScope> = {}
+  protected static eventListeners: Partial<Record<ModelEventName, ModelEventListener<any>[]>> = {}
+  protected static dispatchesEvents: Partial<
+    Record<ModelEventName, ModelEventDispatcher<any> | ModelEventDispatcher<any>[]>
+  > = {}
+
+  protected casts: CastMap = {}
+  protected hidden: string[] = []
+  protected visible: string[] = []
+  protected appends: string[] = []
+
+  protected readonly attributes: Record<string, unknown>
+  protected original: Record<string, unknown>
+  protected changes: Record<string, unknown>
+  protected previous: Record<string, unknown>
+  protected readonly touchedAttributes: Set<string>
+
+  /**
+   * Indicates whether the model corresponds to a row that exists in the
+   * database. Hydrated and freshly inserted models are marked as existing;
+   * models built with `new Model(...)` are not until they are saved.
+   */
+  public exists = false
+
+  /**
+   * Indicates whether the model was inserted during the current lifecycle
+   * (i.e. the last successful save performed a create rather than an update).
+   */
+  public wasRecentlyCreated = false
+
+  public constructor(attributes: Record<string, unknown> = {}) {
+    this.attributes = {}
+    this.original = {}
+    this.changes = {}
+    this.previous = {}
+    this.touchedAttributes = new Set()
+    this.fill(attributes)
+
+    return new Proxy(this, {
+      get: (target, key, receiver) => {
+        if (typeof key !== 'string') return Reflect.get(target, key, receiver)
+
+        const attributeMutator = target.resolveAttributeMutator(key)
+        if (key in target && !attributeMutator) return Reflect.get(target, key, receiver)
+
+        return target.getAttribute(key)
+      },
+      set: (target, key, value, receiver) => {
+        if (typeof key !== 'string') return Reflect.set(target, key, value, receiver)
+
+        const attributeMutator = target.resolveAttributeMutator(key)
+        if (key in target && !attributeMutator) return Reflect.set(target, key, value, receiver)
+
+        target.setAttribute(key, value)
+
+        return true
+      },
+    }) as this
+  }
+
+  private static emitDeprecationWarning(code: string, message: string): void {
+    if (Model.emittedDeprecationWarnings.has(code)) return
+
+    Model.emittedDeprecationWarnings.add(code)
+    process.emitWarning(message, {
+      type: 'DeprecationWarning',
+      code,
+    })
+  }
+
+  /**
+   * Compatibility-only runtime API retained for the 2.x transition window.
+   * This is no longer part of the supported runtime bootstrap path.
+   *
+   * @deprecated Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another
+   * adapter-first bootstrap path instead.
+   *
+   * @param client
+   */
+  protected static setClient(client: Record<string, unknown>): void {
+    Model.emitDeprecationWarning(
+      'ARKORM_SET_CLIENT_DEPRECATED',
+      'Model.setClient() is deprecated and will be removed in Arkorm 3.0. Use Model.setAdapter(createPrismaDatabaseAdapter(...)) or another adapter-first setup path instead.',
+    )
+
+    this.client = client
+  }
+
+  /**
+   * Primary runtime API: bind an adapter directly to the model class.
+   */
+  public static setAdapter(adapter?: DatabaseAdapter): void {
+    this.adapter = adapter
+  }
+
+  public static getTable(): string {
+    ensureArkormConfigLoading()
+
+    if (this.table) return this.table
+
+    if (this.delegate) {
+      Model.emitDeprecationWarning(
+        'ARKORM_MODEL_DELEGATE_DEPRECATED',
+        'Model.delegate is deprecated and will be removed in Arkorm 3.0. Use Model.table instead.',
+      )
+
+      return this.delegate
+    }
+
+    const namingCase = Model.getNamingCase()
+    const modelName = str(this.name)
+
+    if (namingCase === 'camel') return `${modelName.camel().plural()}`
+
+    if (namingCase === 'kebab') return `${modelName.kebab().plural()}`
+
+    if (namingCase === 'studly') return `${modelName.studly().plural()}`
+
+    return `${modelName.snake().plural()}`
+  }
+
+  public static getPrimaryKey(): string {
+    return this.primaryKey || 'id'
+  }
+
+  public static getColumnMap(): Record<string, string> {
+    const adapter = this.getAdapter()
+    const shouldStrictlyValidatePersistedMappings =
+      Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
+    const persistedMetadata = getPersistedTableMetadata(this.getTable(), {
+      features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+      strict: shouldStrictlyValidatePersistedMappings,
+    })
+
+    return {
+      ...persistedMetadata.columns,
+      ...this.columns,
+    }
+  }
+
+  public static getColumnName(attribute: string): string {
+    return this.getColumnMap()[attribute] ?? attribute
+  }
+
+  public static getModelMetadata(): ModelMetadata {
+    const adapter = this.getAdapter()
+    const shouldStrictlyValidatePersistedMappings =
+      Boolean(adapter) && !(adapter instanceof PrismaDatabaseAdapter)
+    const persistedMetadata = getPersistedTableMetadata(this.getTable(), {
+      features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+      strict: shouldStrictlyValidatePersistedMappings,
+    })
+
+    return {
+      table: this.getTable(),
+      primaryKey: this.getPrimaryKey(),
+      columns: {
+        ...persistedMetadata.columns,
+        ...this.columns,
+      },
+      softDelete: this.getSoftDeleteConfig(),
+      primaryKeyGeneration:
+        persistedMetadata.primaryKeyGeneration?.column === this.getPrimaryKey()
+          ? {
+              strategy: persistedMetadata.primaryKeyGeneration.strategy,
+              prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
+              databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
+              runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
             }
+          : undefined,
+      timestampColumns: persistedMetadata.timestampColumns?.map((column) => ({ ...column })),
+    }
+  }
 
-            return all
-        }, {})
+  /**
+   * The model's cast map. Resolved from a throwaway instance (casts are an
+   * instance field) and cached per model class.
+   */
+  public static getCasts(): CastMap {
+    const cached = Model.castMapCache.get(this)
+    if (cached) return cached
+
+    const instance = new (this as unknown as new (attributes?: Record<string, unknown>) => Model)(
+      {},
+    )
+    const casts: CastMap = { ...instance.casts }
+    Model.castMapCache.set(this, casts)
+
+    return casts
+  }
+
+  /**
+   * Apply built-in persistence casts (currently `json` serialisation) to a raw
+   * attribute payload, without re-running arbitrary custom setters. Used by
+   * both instance `save()` and the query-builder insert/update paths so a JS
+   * object/array destined for a `json`/`jsonb` column is serialised to a string
+   * rather than bound as a Postgres array.
+   */
+  public static castAttributesForPersistence(
+    attributes: Record<string, unknown>,
+  ): Record<string, unknown> {
+    const casts = this.getCasts()
+
+    return Object.entries(attributes).reduce<Record<string, unknown>>(
+      (normalized, [key, value]) => {
+        normalized[key] = casts[key] === 'json' ? resolveCast('json').set(value) : value
+
+        return normalized
+      },
+      {},
+    )
+  }
+
+  public static getRelationMetadata(name: string): RelationMetadata | null {
+    const resolver = (this.prototype as unknown as Record<string, unknown>)[name]
+    if (typeof resolver !== 'function') return null
+
+    const instance = new (this as unknown as new (attributes?: Record<string, unknown>) => Model)(
+      {},
+    )
+    const relation = (resolver as (this: Model) => unknown).call(instance)
+    if (!(relation instanceof Relation)) return null
+
+    return relation.getMetadata()
+  }
+
+  public static setFactory<TFactory extends ModelFactory<any, any>>(
+    factoryClass: new () => TFactory,
+  ): void {
+    this.factoryClass = factoryClass as unknown as new () => ModelFactory<any, any>
+  }
+
+  public static factory<TFactory extends ModelFactory<any, any>>(count?: number): TFactory {
+    const factoryClass = this.factoryClass as (new () => TFactory) | undefined
+    if (!factoryClass)
+      throw new ArkormException(`Factory is not configured for model [${this.name}].`, {
+        code: 'FACTORY_NOT_CONFIGURED',
+        operation: 'factory',
+        model: this.name,
+      })
+
+    const factory = new factoryClass()
+    if (typeof count === 'number') factory.count(count)
+
+    return factory
+  }
+
+  /**
+   * Register a global scope for the model.
+   *
+   * @param name
+   * @param scope
+   */
+  public static addGlobalScope(name: string, scope: GlobalScope): void {
+    this.ensureOwnGlobalScopes()
+    this.globalScopes[name] = scope
+  }
+
+  /**
+   * Execute a callback without applying global scopes for the current model class.
+   *
+   * @param callback
+   * @returns
+   */
+  public static async withoutGlobalScopes<T>(callback: () => T | Promise<T>): Promise<Awaited<T>> {
+    const state = Model.getLifecycleState(this)
+    state.globalScopesSuppressed += 1
+
+    try {
+      return await callback()
+    } finally {
+      state.globalScopesSuppressed = Math.max(0, state.globalScopesSuppressed - 1)
+    }
+  }
+
+  /**
+   * Remove a global scope by name.
+   *
+   * @param name
+   */
+  public static removeGlobalScope(name: string): void {
+    this.ensureOwnGlobalScopes()
+    delete this.globalScopes[name]
+  }
+
+  /**
+   * Clear all global scopes for the model.
+   */
+  public static clearGlobalScopes(): void {
+    this.globalScopes = {}
+  }
+
+  /**
+   * Register an event listener for a model lifecycle event.
+   *
+   * @param event
+   * @param listener
+   */
+  public static on<TModel extends Model = Model>(
+    event: ModelEventName,
+    listener: ModelEventListener<TModel>,
+  ): void {
+    Model.ensureModelBooted(this as unknown as typeof Model)
+    this.ensureOwnEventListeners()
+    if (!this.eventListeners[event]) this.eventListeners[event] = []
+
+    this.eventListeners[event]?.push(listener as ModelEventListener<any>)
+  }
+
+  /**
+   * Register a model lifecycle callback listener.
+   *
+   * @param event
+   * @param listener
+   */
+  public static event<TModel extends Model = Model>(
+    event: ModelEventName,
+    listener: ModelEventListener<TModel>,
+  ): void {
+    this.on(event, listener)
+  }
+
+  public static retrieved<TModel extends Model = Model>(
+    listener: ModelEventListener<TModel>,
+  ): void {
+    this.event('retrieved', listener)
+  }
+
+  public static saving<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('saving', listener)
+  }
+
+  public static saved<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('saved', listener)
+  }
+
+  public static creating<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('creating', listener)
+  }
+
+  public static created<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('created', listener)
+  }
+
+  public static updating<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('updating', listener)
+  }
+
+  public static updated<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('updated', listener)
+  }
+
+  public static deleting<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('deleting', listener)
+  }
+
+  public static deleted<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('deleted', listener)
+  }
+
+  public static restoring<TModel extends Model = Model>(
+    listener: ModelEventListener<TModel>,
+  ): void {
+    this.event('restoring', listener)
+  }
+
+  public static restored<TModel extends Model = Model>(listener: ModelEventListener<TModel>): void {
+    this.event('restored', listener)
+  }
+
+  public static forceDeleting<TModel extends Model = Model>(
+    listener: ModelEventListener<TModel>,
+  ): void {
+    this.event('forceDeleting', listener)
+  }
+
+  public static forceDeleted<TModel extends Model = Model>(
+    listener: ModelEventListener<TModel>,
+  ): void {
+    this.event('forceDeleted', listener)
+  }
+
+  /**
+   * Remove listeners for an event. If listener is omitted, all listeners for that event are removed.
+   *
+   * @param event
+   * @param listener
+   */
+  public static off<TModel extends Model = Model>(
+    event: ModelEventName,
+    listener?: ModelEventListener<TModel>,
+  ): void {
+    this.ensureOwnEventListeners()
+    if (!listener) {
+      delete this.eventListeners[event]
+
+      return
     }
 
-    /**
-     * Capture the attribute snapshot that was persisted before the most recent
-     * save so it can be read back via getPrevious().
-     *
-     * @param previousOriginal
-     */
-    private syncPrevious (previousOriginal: Record<string, unknown>): void {
-        this.previous = Object.entries(previousOriginal).reduce<Record<string, unknown>>((all, [key, value]) => {
-            all[key] = Model.cloneAttributeValue(value)
+    this.eventListeners[event] = (this.eventListeners[event] || []).filter(
+      (registered) => registered !== listener,
+    )
+  }
 
-            return all
-        }, {})
+  /**
+   * Clears all event listeners for the model.
+   */
+  public static clearEventListeners(): void {
+    this.eventListeners = {}
+  }
+
+  /**
+   * Execute a callback while suppressing lifecycle events for all models.
+   *
+   * @param callback
+   * @returns
+   */
+  public static async withoutEvents<T>(callback: () => T | Promise<T>): Promise<Awaited<T>> {
+    Model.eventsSuppressed += 1
+
+    try {
+      return await callback()
+    } finally {
+      Model.eventsSuppressed = Math.max(0, Model.eventsSuppressed - 1)
+    }
+  }
+
+  /**
+   * Execute a callback within a transaction scope.
+   * Nested calls reuse the active transaction client.
+   *
+   * @param callback
+   * @param options
+   * @returns
+   */
+  public static async transaction<T>(
+    callback: (context: TransactionContext) => T | Promise<T>,
+    options: TransactionOptions = {},
+  ): Promise<Awaited<T>> {
+    ensureArkormConfigLoading()
+
+    return await runArkormTransaction(
+      async (context) => {
+        return await callback(context)
+      },
+      options,
+      this.getAdapter(),
+    )
+  }
+
+  /**
+   * Compatibility-only runtime API retained for 2.x migration support.
+   * New runtime code should prefer `getAdapter()` and adapter-backed execution.
+   *
+   * If a delegate name is provided, it will attempt to resolve that delegate.
+   * Otherwise, it will attempt to resolve a compatibility schema based on the model's name or
+   * the static `delegate` property.
+   *
+   * @param delegate
+   * @returns
+   */
+  public static getDelegate<TDelegate extends ModelQuerySchemaLike = ModelQuerySchemaLike>(
+    delegate?: string,
+  ): TDelegate {
+    Model.emitDeprecationWarning(
+      'ARKORM_GET_DELEGATE_DEPRECATED',
+      'Model.getDelegate() is deprecated and will be removed in Arkorm 3.0. Use Model.getAdapter() and adapter-backed execution instead.',
+    )
+
+    ensureArkormConfigLoading()
+
+    const key = delegate || this.delegate || this.getTable()
+    const candidates = [
+      key,
+      `${str(key).camel()}`,
+      `${str(key).singular()}`,
+      `${str(key).camel().singular()}`,
+    ]
+
+    return resolveRuntimeCompatibilityQuerySchemaOrThrow<TDelegate>(
+      key,
+      candidates,
+      this.name,
+      this.client,
+    )
+  }
+
+  public static getAdapter(): DatabaseAdapter | undefined {
+    ensureArkormConfigLoading()
+
+    const runtimeAdapter = getRuntimeAdapter()
+    if (runtimeAdapter) return runtimeAdapter
+
+    if (this.adapter) return this.adapter
+
+    return getRuntimeCompatibilityAdapter(this.client)
+  }
+
+  /**
+   * Get a new query builder instance for the model.
+   *
+   * @param this
+   * @returns
+   */
+  public static query<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis): QueryBuilder<TModel, TDelegate> {
+    Model.ensureModelBooted(this as unknown as typeof Model)
+
+    const modelStatic = this as unknown as ModelStatic<TModel, TDelegate>
+
+    let builder = new QueryBuilder<TModel, TDelegate>(modelStatic, modelStatic.getAdapter())
+
+    const modelClass = this as unknown as typeof Model
+    if (!Model.areGlobalScopesSuppressed(modelClass)) {
+      modelClass.ensureOwnGlobalScopes()
+      Object.values(modelClass.globalScopes).forEach((scope) => {
+        const scoped = scope(builder as QueryBuilder<any, any>) as QueryBuilder<
+          TModel,
+          TDelegate
+        > | void
+        if (scoped && scoped !== builder) builder = scoped
+      })
     }
 
-    /**
-     * Resolve lifecycle state for the provided model class.
-     *
-     * @param modelClass
-     * @returns
-     */
-    private static getLifecycleState (modelClass: typeof Model): ModelLifecycleState {
-        const existing = Model.lifecycleStates.get(modelClass)
-        if (existing)
-            return existing
+    return builder
+  }
 
-        const state: ModelLifecycleState = {
-            booted: false,
-            booting: false,
-            globalScopesSuppressed: 0,
+  /**
+   * Boot hook for subclasses to register scopes or perform one-time setup.
+   */
+  protected static boot(): void {}
+
+  /**
+   * Booted hook for subclasses to register callbacks after boot logic runs.
+   */
+  protected static booted(): void {}
+
+  /**
+   * Get a query builder instance that includes soft-deleted records.
+   *
+   * @param this
+   * @returns
+   */
+  public static withTrashed<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis): QueryBuilder<TModel, TDelegate> {
+    return (this as unknown as ModelStatic<TModel, TDelegate>)
+      .query()
+      .withTrashed() as QueryBuilder<TModel, TDelegate>
+  }
+
+  /**
+   * Get a query builder instance that only includes soft-deleted records.
+   *
+   * @param this
+   * @returns
+   */
+  public static onlyTrashed<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis): QueryBuilder<TModel, TDelegate> {
+    return (this as unknown as ModelStatic<TModel, TDelegate>)
+      .query()
+      .onlyTrashed() as QueryBuilder<TModel, TDelegate>
+  }
+
+  /**
+   * Get a query builder instance that excludes soft-deleted records.
+   * This is the default behavior of the query builder, but this method can be used
+   * to explicitly specify it after using `withTrashed` or `onlyTrashed`.
+   *
+   * @param this
+   * @param name
+   * @param args
+   * @returns
+   */
+  public static scope<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis, name: string, ...args: unknown[]): QueryBuilder<TModel, TDelegate> {
+    return (this as unknown as ModelStatic<TModel, TDelegate>)
+      .query()
+      .scope(name, ...args) as QueryBuilder<TModel, TDelegate>
+  }
+
+  /**
+   * Start a query constrained by the given where clause.
+   *
+   * @param this
+   * @param where
+   * @returns
+   */
+  public static where<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis, where: QuerySchemaWhere<TDelegate>): QueryBuilder<TModel, TDelegate> {
+    return (this as unknown as ModelStatic<TModel, TDelegate>).query().where(where) as QueryBuilder<
+      TModel,
+      TDelegate
+    >
+  }
+
+  /**
+   * Retrieve all records for the model.
+   *
+   * @param this
+   * @returns
+   */
+  public static async all<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis): Promise<ArkormCollection<TModel>> {
+    return await (this as unknown as ModelStatic<TModel, TDelegate>).query().get()
+  }
+
+  /**
+   * Create and persist a new record, returning the hydrated model instance.
+   *
+   * @param this
+   * @param data
+   * @returns
+   */
+  public static async create<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis, data: ModelCreateData<TModel, TDelegate>): Promise<TModel> {
+    return await (this as unknown as ModelStatic<TModel, TDelegate>).query().create(data)
+  }
+
+  /**
+   * Insert new records or update existing records by one or more unique keys.
+   *
+   * @param this
+   * @param values
+   * @param uniqueBy
+   * @param update
+   * @returns
+   */
+  public static async upsert<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(
+    this: TThis,
+    values: Array<Record<string, unknown>>,
+    uniqueBy: string | string[],
+    update: string[] | null = null,
+  ): Promise<number> {
+    return await (this as unknown as ModelStatic<TModel, TDelegate>)
+      .query()
+      .upsert(values, uniqueBy, update)
+  }
+
+  /**
+   * Delete records by their primary key(s), dispatching model events for each
+   * matched record. Returns the number of records deleted.
+   *
+   * @param this
+   * @param ids
+   * @returns
+   */
+  public static async destroy<
+    TThis extends abstract new (attributes?: Record<string, unknown>) => Model<any, any>,
+    TModel extends Model<any, any> = InstanceType<TThis>,
+    TDelegate extends ModelQuerySchemaLike = QuerySchemaForModel<
+      TModel extends Model<infer TSchema, any> ? TSchema : Record<string, any>,
+      TModel extends Model<any, infer TAttributes> ? TAttributes : Record<string, any>
+    >,
+  >(this: TThis, ids: string | number | Array<string | number>): Promise<number> {
+    const constructor = this as unknown as ModelStatic<TModel, TDelegate>
+    const identifiers = (Array.isArray(ids) ? ids : [ids]).filter(
+      (identifier, index, all) => all.indexOf(identifier) === index,
+    )
+    const primaryKey = constructor.getPrimaryKey()
+
+    let deleted = 0
+    for (const identifier of identifiers) {
+      const model = await constructor
+        .query()
+        .where({ [primaryKey]: identifier } as QuerySchemaWhere<TDelegate>)
+        .first()
+      if (!model) continue
+
+      await (model as unknown as Model).delete()
+      deleted += 1
+    }
+
+    return deleted
+  }
+
+  /**
+   * Get the soft delete configuration for the model, including whether
+   * soft deletes are enabled and the name of the deleted at column.
+   *
+   * @returns
+   */
+  public static getSoftDeleteConfig(): SoftDeleteConfig {
+    return {
+      enabled: this.softDeletes,
+      column: this.deletedAtColumn,
+    }
+  }
+
+  /**
+   * Hydrate a model instance from a plain object of attributes.
+   *
+   * @param this
+   * @param attributes
+   * @returns
+   */
+  public static hydrate<TModel>(
+    this: new (attributes: Record<string, unknown>) => TModel,
+    attributes: Record<string, unknown>,
+  ): TModel {
+    const model = new this(attributes)
+    ;(model as unknown as Model).syncOriginal()
+    ;(model as unknown as Model).syncChanges({})
+    ;(model as unknown as Model).exists = true
+
+    return model
+  }
+
+  /**
+   * Hydrate multiple model instances from an array of plain objects of attributes.
+   *
+   * @param this
+   * @param attributes
+   * @returns
+   */
+  public static hydrateMany<TModel>(
+    this: new (attributes: Record<string, unknown>) => TModel,
+    attributes: Record<string, unknown>[],
+  ): TModel[] {
+    const constructor = this as unknown as {
+      hydrate: (attributes: Record<string, unknown>) => TModel
+    }
+
+    return attributes.map((attribute) => constructor.hydrate(attribute))
+  }
+
+  /**
+   * Hydrate a model instance and dispatch the retrieved lifecycle event.
+   *
+   * @param this
+   * @param attributes
+   * @returns
+   */
+  public static async hydrateRetrieved<TModel>(
+    this: ModelStatic<TModel, ModelQuerySchemaLike>,
+    attributes: Record<string, unknown>,
+  ): Promise<TModel> {
+    Model.ensureModelBooted(this as unknown as typeof Model)
+
+    if (!Model.hasEventListeners(this as unknown as typeof Model, 'retrieved'))
+      return this.hydrate(attributes)
+
+    const model = this.hydrate(attributes)
+
+    await Model.dispatchEvent(
+      this as unknown as typeof Model,
+      'retrieved',
+      model as unknown as Model,
+    )
+
+    return model
+  }
+
+  /**
+   * Hydrate multiple model instances and dispatch the retrieved lifecycle event for each.
+   *
+   * @param this
+   * @param attributes
+   * @returns
+   */
+  public static async hydrateManyRetrieved<TModel>(
+    this: ModelStatic<TModel, ModelQuerySchemaLike>,
+    attributes: Record<string, unknown>[],
+  ): Promise<TModel[]> {
+    Model.ensureModelBooted(this as unknown as typeof Model)
+
+    if (!Model.hasEventListeners(this as unknown as typeof Model, 'retrieved'))
+      return this.hydrateMany(attributes)
+
+    const models = this.hydrateMany(attributes)
+
+    await Promise.all(
+      models.map(async (model: TModel) => {
+        await Model.dispatchEvent(
+          this as unknown as typeof Model,
+          'retrieved',
+          model as unknown as Model,
+        )
+      }),
+    )
+
+    return models
+  }
+
+  /**
+   * Fill the model's attributes from a plain object, using the
+   * setAttribute method to ensure that mutators and casts are applied.
+   *
+   * @param attributes
+   * @returns
+   */
+  public fill(attributes: Partial<TAttributes>): this
+  public fill(attributes: Record<string, unknown>): this
+  public fill(attributes: Record<string, unknown>): this {
+    Object.entries(attributes).forEach(([key, value]) => {
+      this.setAttribute(key, value)
+    })
+
+    return this
+  }
+
+  /**
+   * Update the model's state in the database using data from a plain object.
+   * If the model has no identifier (id), the process will be skipped and the
+   * call will return false.
+   *
+   * @param attributes
+   * @returns
+   */
+  public async update(attributes: Partial<TAttributes>): Promise<boolean>
+  public async update(attributes: Record<string, unknown>): Promise<boolean>
+  public async update(attributes: Record<string, unknown>): Promise<boolean> {
+    try {
+      const constructor = this.constructor as ModelStatic<this>
+      const primaryKey = constructor.getPrimaryKey()
+      const identifier = this.getAttribute(primaryKey)
+      if (!identifier) return false
+
+      await this.fill(attributes).save()
+
+      return true
+    } catch {
+      return false
+    }
+  }
+
+  /**
+   * Update the model and persist it within a transaction, rethrowing on
+   * failure. Unlike update(), errors are not swallowed.
+   *
+   * @param attributes
+   * @returns
+   */
+  public async updateOrFail(attributes: Partial<TAttributes>): Promise<this>
+  public async updateOrFail(attributes: Record<string, unknown>): Promise<this>
+  public async updateOrFail(attributes: Record<string, unknown>): Promise<this> {
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const identifier = this.getAttribute(primaryKey)
+    if (identifier == null)
+      throw new ArkormException(
+        primaryKey === 'id'
+          ? 'Cannot update a model without an id.'
+          : `Cannot update a model without a [${primaryKey}] value.`,
+      )
+
+    return await this.fill(attributes).saveOrFail()
+  }
+
+  /**
+   * Get the value of an attribute, applying any get mutators or casts if defined.
+   *
+   * @param key
+   * @returns
+   */
+  public getAttribute<TSelf extends this, TKey extends string>(
+    this: TSelf,
+    key: TKey,
+  ): ModelAttributeValue<TSelf, TAttributes, TKey>
+  public getAttribute(key: string): unknown
+  public getAttribute(key: string): unknown {
+    const attributeMutator = this.resolveAttributeMutator(key)
+    const mutator = this.resolveGetMutator(key)
+    const cast = this.casts[key]
+    let value = this.attributes[key]
+
+    if (cast) value = resolveCast(cast).get(value)
+
+    if (attributeMutator?.get) return attributeMutator.get.call(this, value)
+
+    if (mutator) return mutator.call(this, value)
+
+    return value
+  }
+
+  /**
+   * Set the value of an attribute, applying any set mutators or casts if defined.
+   *
+   * @param key
+   * @param value
+   * @returns
+   */
+  public setAttribute<TSelf extends this, TKey extends string>(
+    this: TSelf,
+    key: TKey,
+    value: ModelAttributeValue<TSelf, TAttributes, TKey>,
+  ): this
+  public setAttribute(key: string, value: unknown): this
+  public setAttribute(key: string, value: unknown): this {
+    const attributeMutator = this.resolveAttributeMutator(key)
+    const mutator = this.resolveSetMutator(key)
+    const cast = this.casts[key]
+    let resolved = value
+
+    if (attributeMutator?.set) resolved = attributeMutator.set.call(this, resolved)
+    else if (mutator) resolved = mutator.call(this, resolved)
+
+    if (cast) resolved = resolveCast(cast).set(resolved)
+
+    this.attributes[key] = resolved
+    this.touchedAttributes.add(key)
+
+    return this
+  }
+
+  /**
+   * Save the model to the database.
+   * If the model already exists in the database it performs an update;
+   * otherwise it performs an insert. Existence is tracked through the
+   * `exists` flag rather than the presence of a primary-key value, so a model
+   * built with an explicit primary key still inserts on its first save.
+   *
+   * @returns
+   */
+  public async save(): Promise<this> {
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const previousOriginal = this.getOriginal()
+    if (!this.exists) {
+      await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
+      await Model.dispatchEvent(constructor as unknown as typeof Model, 'creating', this)
+
+      const payload = this.normalizePersistenceAttributes(this.getRawAttributes())
+      const model = await constructor
+        .query()
+        .create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
+      this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+      this.syncChanges(previousOriginal)
+      this.syncPrevious(previousOriginal)
+      this.syncOriginal()
+      this.exists = true
+      this.wasRecentlyCreated = true
+
+      await Model.dispatchEvent(constructor as unknown as typeof Model, 'created', this)
+      await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
+
+      return this
+    }
+
+    const identifier = this.getAttribute(primaryKey) as string | number | undefined
+    if (identifier == null)
+      throw new ArkormException(
+        primaryKey === 'id'
+          ? 'Cannot update an existing model without an id.'
+          : `Cannot update an existing model without a [${primaryKey}] value.`,
+      )
+
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'saving', this)
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'updating', this)
+
+    const payload = this.normalizePersistenceAttributes(this.getDirtyAttributes())
+    delete payload[primaryKey]
+    const model = await constructor
+      .query()
+      .where({ [primaryKey]: identifier })
+      .update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
+    this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.syncChanges(previousOriginal)
+    this.syncPrevious(previousOriginal)
+    this.syncOriginal()
+
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'updated', this)
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'saved', this)
+
+    return this
+  }
+
+  /**
+   * Save the model without dispatching lifecycle events.
+   *
+   * @returns
+   */
+  public async saveQuietly(): Promise<this> {
+    return await Model.withoutEvents(() => this.save())
+  }
+
+  /**
+   * Save the model within a transaction, rolling back and rethrowing if the
+   * operation fails. Unlike update(), this never swallows errors.
+   *
+   * @returns
+   */
+  public async saveOrFail(): Promise<this> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return await constructor.transaction(async () => await this.save())
+  }
+
+  /**
+   * Delete the model from the database.
+   * If soft deletes are enabled, it will perform a soft delete by
+   * setting the deleted at column to the current date.
+   * Otherwise, it will perform a hard delete.
+   *
+   * @returns
+   */
+  public async delete(): Promise<this> {
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const identifier = this.getAttribute(primaryKey)
+    if (identifier == null)
+      throw new ArkormException(
+        primaryKey === 'id'
+          ? 'Cannot delete a model without an id.'
+          : `Cannot delete a model without a [${primaryKey}] value.`,
+      )
+
+    const previousOriginal = this.getOriginal()
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
+    const softDeleteConfig = constructor.getSoftDeleteConfig()
+    if (softDeleteConfig.enabled) {
+      const model = await constructor
+        .query()
+        .where({ [primaryKey]: identifier })
+        .update({ [softDeleteConfig.column]: new Date() } as ModelUpdateData<
+          this,
+          ModelQuerySchemaLike
+        >)
+      this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+      this.syncChanges(previousOriginal)
+      this.syncOriginal()
+
+      await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
+
+      return this
+    }
+
+    const deleted = await constructor
+      .query()
+      .where({ [primaryKey]: identifier })
+      .deleteOrFail()
+    this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.syncChanges(previousOriginal)
+    this.syncOriginal()
+    this.exists = false
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
+
+    return this
+  }
+
+  /**
+   * Delete the model without dispatching lifecycle events.
+   *
+   * @returns
+   */
+  public async deleteQuietly(): Promise<this> {
+    return await Model.withoutEvents(() => this.delete())
+  }
+
+  /**
+   * Delete the model within a transaction, rolling back and rethrowing if the
+   * operation fails.
+   *
+   * @returns
+   */
+  public async deleteOrFail(): Promise<this> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return await constructor.transaction(async () => await this.delete())
+  }
+
+  /**
+   * Permanently delete the model from the database, regardless of whether soft
+   * deletes are enabled.
+   *
+   * @returns
+   */
+  public async forceDelete(): Promise<this> {
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const identifier = this.getAttribute(primaryKey)
+    if (identifier == null)
+      throw new ArkormException(
+        primaryKey === 'id'
+          ? 'Cannot force delete a model without an id.'
+          : `Cannot force delete a model without a [${primaryKey}] value.`,
+      )
+
+    const previousOriginal = this.getOriginal()
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleting', this)
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleting', this)
+
+    const deleted = await constructor
+      .query()
+      .withTrashed()
+      .where({ [primaryKey]: identifier })
+      .deleteOrFail()
+    this.fill((deleted as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.syncChanges(previousOriginal)
+    this.syncOriginal()
+    this.exists = false
+
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'deleted', this)
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'forceDeleted', this)
+
+    return this
+  }
+
+  /**
+   * Force delete the model without dispatching lifecycle events.
+   *
+   * @returns
+   */
+  public async forceDeleteQuietly(): Promise<this> {
+    return await Model.withoutEvents(() => this.forceDelete())
+  }
+
+  /**
+   * Restore a soft-deleted model by setting the deleted at column to null.
+   *
+   * @returns
+   */
+  public async restore(): Promise<this> {
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const identifier = this.getAttribute(primaryKey)
+    if (identifier == null)
+      throw new ArkormException(
+        primaryKey === 'id'
+          ? 'Cannot restore a model without an id.'
+          : `Cannot restore a model without a [${primaryKey}] value.`,
+      )
+
+    const softDeleteConfig = constructor.getSoftDeleteConfig()
+    if (!softDeleteConfig.enabled) return this
+
+    const previousOriginal = this.getOriginal()
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'restoring', this)
+
+    const model = await constructor
+      .query()
+      .withTrashed()
+      .where({ [primaryKey]: identifier })
+      .update({ [softDeleteConfig.column]: null } as ModelUpdateData<this, ModelQuerySchemaLike>)
+    this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.syncChanges(previousOriginal)
+    this.syncOriginal()
+
+    await Model.dispatchEvent(constructor as unknown as typeof Model, 'restored', this)
+
+    return this
+  }
+
+  /**
+   * Restore the model without dispatching lifecycle events.
+   *
+   * @returns
+   */
+  public async restoreQuietly(): Promise<this> {
+    return await Model.withoutEvents(() => this.restore())
+  }
+
+  /**
+   * Load related models onto the current model instance.
+   *
+   * @param relations
+   * @returns
+   */
+  public async load(relations: string | string[] | EagerLoadRelations<this>): Promise<this> {
+    const relationMap = this.normalizeRelationMap(relations)
+    const constructor = this.constructor as typeof Model
+    const query = constructor.query().with(relationMap) as unknown as QueryBuilder<
+      this,
+      QuerySchemaForModel<TSchema, TAttributes>
+    >
+
+    await query.loadIntoModels([this])
+
+    return this
+  }
+
+  /**
+   * Load relationship count aggregates onto the current model instance.
+   *
+   * @param relations
+   * @returns
+   */
+  public async loadCount(
+    relations:
+      | string
+      | string[]
+      | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
+  ): Promise<this> {
+    return this.loadAggregate('count', relations)
+  }
+
+  /**
+   * Load relationship sum aggregates onto the current model instance.
+   *
+   * @param relations
+   * @param column
+   * @returns
+   */
+  public async loadSum(
+    relations:
+      | string
+      | string[]
+      | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
+    column: string,
+  ): Promise<this> {
+    return this.loadAggregate('sum', relations, column)
+  }
+
+  /**
+   * Load relations only when they are not already present on the model.
+   *
+   * @param relations
+   * @returns
+   */
+  public async loadMissing(relations: string | string[] | EagerLoadRelations<this>): Promise<this> {
+    const relationMap = this.normalizeRelationMap(relations)
+    const missing = Object.entries(relationMap).reduce<EagerLoadMap>(
+      (all, [relation, constraint]) => {
+        const root = relation.split('.')[0]
+        if (!Object.prototype.hasOwnProperty.call(this.attributes, root)) all[relation] = constraint
+
+        return all
+      },
+      {},
+    )
+
+    if (Object.keys(missing).length === 0) return this
+
+    return this.load(missing as EagerLoadRelations<this>)
+  }
+
+  /**
+   * Load nested relations on a polymorphic relation result by model class name.
+   *
+   * @param relation
+   * @param relationsByType
+   * @returns
+   */
+  public async loadMorph(
+    relation: string,
+    relationsByType: Record<string, string | string[] | EagerLoadMap>,
+  ): Promise<this> {
+    await this.loadMissing(relation)
+
+    const value = this.getAttribute(relation)
+    const related =
+      value instanceof ArkormCollection
+        ? value.all()
+        : Array.isArray(value)
+          ? value
+          : value
+            ? [value]
+            : []
+
+    await Promise.all(
+      related.map(async (model: any) => {
+        if (!(model instanceof Model)) return
+
+        const relations = relationsByType[model.constructor.name]
+        if (relations) await model.load(relations)
+      }),
+    )
+
+    return this
+  }
+
+  public setLoadedRelation(name: string, value: unknown): this {
+    this.attributes[name] = value
+
+    return this
+  }
+
+  /**
+   * Get the raw attributes of the model without applying any mutators or casts.
+   *
+   * @returns
+   */
+  public getRawAttributes(): Partial<TAttributes> {
+    return { ...this.attributes } as Partial<TAttributes>
+  }
+
+  /**
+   * Get the model's original persisted attributes.
+   *
+   * @returns
+   */
+  public getOriginal(): Partial<TAttributes>
+  /**
+   * @param key The attribute key to retrieve the original value for.
+   */
+  public getOriginal<TKey extends keyof TAttributes & string>(
+    key: TKey,
+  ): TAttributes[TKey] | undefined
+  public getOriginal(key?: string): unknown {
+    if (typeof key === 'string') return Model.cloneAttributeValue(this.original[key])
+
+    return Object.entries(this.original).reduce<Record<string, unknown>>(
+      (all, [originalKey, value]) => {
+        all[originalKey] = Model.cloneAttributeValue(value)
+
+        return all
+      },
+      {},
+    ) as Partial<TAttributes>
+  }
+
+  /**
+   * Determine whether the model has unsaved attribute changes.
+   *
+   * @param keys
+   * @returns
+   */
+  public isDirty(keys?: string | string[]): boolean {
+    return Object.keys(this.getDirtyAttributes(keys)).length > 0
+  }
+
+  /**
+   * Determine whether the model has no unsaved attribute changes.
+   *
+   * @param keys
+   * @returns
+   */
+  public isClean(keys?: string | string[]): boolean {
+    return !this.isDirty(keys)
+  }
+
+  /**
+   * Determine whether the model changed during the last successful persistence operation.
+   *
+   * @param keys
+   * @returns
+   */
+  public wasChanged(keys?: string | string[]): boolean {
+    const keyList = this.normalizeAttributeKeys(keys)
+    if (keyList.length === 0) return Object.keys(this.changes).length > 0
+
+    return keyList.some((key) => Object.prototype.hasOwnProperty.call(this.changes, key))
+  }
+
+  /**
+   * Get the attributes that were changed during the last successful
+   * persistence operation.
+   *
+   * @returns
+   */
+  public getChanges(): Partial<TAttributes> {
+    return Object.entries(this.changes).reduce<Record<string, unknown>>((all, [key, value]) => {
+      all[key] = Model.cloneAttributeValue(value)
+
+      return all
+    }, {}) as Partial<TAttributes>
+  }
+
+  /**
+   * Get the attribute snapshot that was persisted before the last successful
+   * persistence operation.
+   *
+   * @returns
+   */
+  public getPrevious(): Partial<TAttributes>
+  /**
+   * @param key The attribute key to retrieve the previous value for.
+   */
+  public getPrevious<TKey extends keyof TAttributes & string>(
+    key: TKey,
+  ): TAttributes[TKey] | undefined
+  public getPrevious(key?: string): unknown {
+    if (typeof key === 'string') return Model.cloneAttributeValue(this.previous[key])
+
+    return Object.entries(this.previous).reduce<Record<string, unknown>>(
+      (all, [previousKey, value]) => {
+        all[previousKey] = Model.cloneAttributeValue(value)
+
+        return all
+      },
+      {},
+    ) as Partial<TAttributes>
+  }
+
+  /**
+   * Convert the model instance to a plain object, applying visibility
+   * rules, appends, and mutators.
+   *
+   * @returns
+   */
+  public toObject(): Serializable {
+    const keys =
+      this.visible.length > 0
+        ? this.visible
+        : Object.keys(this.attributes).filter((key) => !this.hidden.includes(key))
+
+    const object = keys.reduce<Serializable>((accumulator, key) => {
+      let value: unknown = this.getAttribute(key as string)
+      if (value instanceof Date) value = value.toISOString()
+
+      accumulator[key] = value
+
+      return accumulator
+    }, {})
+
+    this.appends.forEach((attribute) => {
+      object[attribute] = this.getAttribute(attribute)
+    })
+
+    return object
+  }
+
+  /**
+   * Convert the model instance to JSON by first converting it to a plain object.
+   *
+   * @returns
+   */
+  public toJSON(): Serializable {
+    return this.toObject()
+  }
+
+  /**
+   * Determine if another model represents the same persisted record.
+   *
+   * @param model
+   * @returns
+   */
+  public is(model: unknown): boolean {
+    if (!(model instanceof Model)) return false
+
+    if (this.constructor !== model.constructor) return false
+
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const identifier = this.getAttribute(primaryKey)
+    const otherIdentifier = model.getAttribute(primaryKey)
+
+    if (identifier == null || otherIdentifier == null) return false
+
+    return identifier === otherIdentifier
+  }
+
+  /**
+   * Determine if another model does not represent the same persisted record.
+   *
+   * @param model
+   * @returns
+   */
+  public isNot(model: unknown): boolean {
+    return !this.is(model)
+  }
+
+  /**
+   * Determine if another model is the same in-memory instance.
+   *
+   * @param model
+   * @returns
+   */
+  public isSame(model: unknown): boolean {
+    return this === model
+  }
+
+  /**
+   * Determine if another model is not the same in-memory instance.
+   *
+   * @param model
+   * @returns
+   */
+  public isNotSame(model: unknown): boolean {
+    return !this.isSame(model)
+  }
+
+  /**
+   * Define a has one relationship.
+   *
+   * @param related
+   * @param foreignKey
+   * @param localKey
+   * @returns
+   */
+  protected hasOne<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    foreignKey: string,
+    localKey?: string,
+  ): HasOneRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return new HasOneRelation<this, InstanceType<TRelatedClass>>(
+      this,
+      related,
+      foreignKey,
+      localKey ?? constructor.getPrimaryKey(),
+    )
+  }
+
+  /**
+   * Define a has many relationship.
+   *
+   * @param related
+   * @param foreignKey
+   * @param localKey
+   * @returns
+   */
+  protected hasMany<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    foreignKey: string,
+    localKey?: string,
+  ): HasManyRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return new HasManyRelation<this, InstanceType<TRelatedClass>>(
+      this,
+      related,
+      foreignKey,
+      localKey ?? constructor.getPrimaryKey(),
+    )
+  }
+
+  /**
+   * Define a belongs to relationship.
+   *
+   * @param related
+   * @param foreignKey
+   * @param ownerKey
+   * @returns
+   */
+  protected belongsTo<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    foreignKey: string,
+    ownerKey?: string,
+  ): BelongsToRelation<this, InstanceType<TRelatedClass>> {
+    return new BelongsToRelation<this, InstanceType<TRelatedClass>>(
+      this,
+      related,
+      foreignKey,
+      ownerKey ?? related.getPrimaryKey(),
+    )
+  }
+
+  /**
+   * Define a belongs to many relationship.
+   *
+   * @param related
+   * @param throughTable
+   * @param foreignPivotKey
+   * @param relatedPivotKey
+   * @param parentKey
+   * @param relatedKey
+   * @returns
+   */
+  protected belongsToMany<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    throughTable: string,
+    foreignPivotKey: string,
+    relatedPivotKey: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): BelongsToManyRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(
+      this,
+      related,
+      throughTable,
+      foreignPivotKey,
+      relatedPivotKey,
+      parentKey ?? constructor.getPrimaryKey(),
+      relatedKey ?? related.getPrimaryKey(),
+    )
+  }
+
+  /**
+   * Define a has one through relationship.
+   *
+   * @param related
+   * @param throughTable
+   * @param firstKey
+   * @param secondKey
+   * @param localKey
+   * @param secondLocalKey
+   * @returns
+   */
+  protected hasOneThrough<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey = 'id',
+  ): HasOneThroughRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return new HasOneThroughRelation(
+      this,
+      related,
+      throughTable,
+      firstKey,
+      secondKey,
+      localKey ?? constructor.getPrimaryKey(),
+      secondLocalKey,
+    )
+  }
+
+  /**
+   * Define a has many through relationship.
+   *
+   * @param related
+   * @param throughTable
+   * @param firstKey
+   * @param secondKey
+   * @param localKey
+   * @param secondLocalKey
+   * @returns
+   */
+  protected hasManyThrough<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey = 'id',
+  ): HasManyThroughRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+
+    return new HasManyThroughRelation(
+      this,
+      related,
+      throughTable,
+      firstKey,
+      secondKey,
+      localKey ?? constructor.getPrimaryKey(),
+      secondLocalKey,
+    )
+  }
+
+  /**
+   * Define a polymorphic one to one relationship.
+   *
+   * @param related
+   * @param morphName
+   * @param idColumn
+   * @param typeColumn
+   * @param localKey
+   * @returns
+   */
+  protected morphOne<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphOneRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+    const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
+
+    return new MorphOneRelation(
+      this,
+      related,
+      morphName,
+      columns.idColumn,
+      columns.typeColumn,
+      localKey ?? constructor.getPrimaryKey(),
+    )
+  }
+
+  /**
+   * Define a polymorphic one to many relationship.
+   *
+   * @param related
+   * @param morphName
+   * @param idColumn
+   * @param typeColumn
+   * @param localKey
+   * @returns
+   */
+  protected morphMany<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphManyRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+    const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
+
+    return new MorphManyRelation(
+      this,
+      related,
+      morphName,
+      columns.idColumn,
+      columns.typeColumn,
+      localKey ?? constructor.getPrimaryKey(),
+    )
+  }
+
+  /**
+   * Define the inverse side of a polymorphic relationship.
+   *
+   * @param morphName
+   * @param typeColumnOrRelated
+   * @param idColumn
+   * @param ownerKey
+   * @returns
+   */
+  protected morphTo<TRelatedClass extends RelatedModelClass>(
+    morphName: string,
+    related: TRelatedClass,
+    idColumn?: string,
+    ownerKey?: string,
+  ): MorphToRelation<this, InstanceType<TRelatedClass>>
+  protected morphTo<TRelated extends Model = Model>(
+    morphName: string,
+    typeColumn?: string,
+    idColumn?: string,
+    ownerKey?: string,
+  ): MorphToRelation<this, TRelated>
+  protected morphTo(
+    morphName: string,
+    typeColumnOrRelated?: string | RelatedModelClass,
+    idColumn?: string,
+    ownerKey?: string,
+  ): MorphToRelation<this, Model> {
+    const related = typeof typeColumnOrRelated === 'function' ? typeColumnOrRelated : undefined
+    const typeColumn = typeof typeColumnOrRelated === 'string' ? typeColumnOrRelated : undefined
+    const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
+
+    return new MorphToRelation<this, Model>(
+      this,
+      morphName,
+      columns.typeColumn,
+      columns.idColumn,
+      ownerKey,
+      related,
+    )
+  }
+
+  /**
+   * Define a polymorphic many to many relationship.
+   *
+   * @param related
+   * @param morphName
+   * @param throughTable
+   * @param foreignPivotKey
+   * @param morphTypeColumn
+   * @param relatedPivotKey
+   * @param parentKey
+   * @param relatedKey
+   * @returns
+   */
+  protected morphToMany<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+    const namingCase = Model.getNamingCase()
+    const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
+    const resolvedTable =
+      throughTable ?? this.formatConventionName(`${str(morphName).plural()}`, namingCase)
+    const resolvedRelatedPivotKey =
+      relatedPivotKey ??
+      this.formatConventionName(
+        `${str(related.getTable()).singular()}_${resolvedRelatedKey}`,
+        namingCase,
+      )
+    const morphIdColumn =
+      foreignPivotKey ?? this.formatConventionName(`${morphName}_id`, namingCase)
+    const resolvedMorphTypeColumn =
+      morphTypeColumn ?? this.formatConventionName(`${morphName}_type`, namingCase)
+
+    return new MorphToManyRelation(
+      this,
+      related,
+      resolvedTable,
+      morphName,
+      morphIdColumn,
+      resolvedMorphTypeColumn,
+      resolvedRelatedPivotKey,
+      parentKey ?? constructor.getPrimaryKey(),
+      resolvedRelatedKey,
+    )
+  }
+
+  private resolveMorphColumns(
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+  ): { idColumn: string; typeColumn: string } {
+    const namingCase = Model.getNamingCase()
+
+    return {
+      idColumn: idColumn ?? this.formatConventionName(`${morphName}_id`, namingCase),
+      typeColumn: typeColumn ?? this.formatConventionName(`${morphName}_type`, namingCase),
+    }
+  }
+
+  private formatConventionName(value: string, namingCase: NamingCase): string {
+    return `${str(value)[namingCase]()}`
+  }
+
+  private static getNamingCase(): 'camel' | 'snake' | 'kebab' | 'studly' {
+    const naming = getUserConfig('naming')
+
+    return naming?.case ?? naming?.modelTableCase ?? 'snake'
+  }
+
+  /**
+   * Resolve a get mutator method for a given attribute key, if it exists.
+   *
+   * @param key
+   * @returns
+   */
+  private resolveGetMutator(key: string): ((value: unknown) => unknown) | null {
+    const methodName = `get${str(key).studly()}Attribute`
+    const method = (this as unknown as Record<string, unknown>)[methodName]
+
+    return typeof method === 'function' ? (method as (value: unknown) => unknown) : null
+  }
+
+  /**
+   * Build a map of dirty attributes, optionally limited to specific keys.
+   *
+   * @param keys
+   * @returns
+   */
+  private getDirtyAttributes(keys?: string | string[]): Record<string, unknown> {
+    const requestedKeys = this.normalizeAttributeKeys(keys)
+    const trackedKeys =
+      requestedKeys.length > 0
+        ? requestedKeys
+        : Array.from(new Set([...Object.keys(this.original), ...this.touchedAttributes]))
+
+    return trackedKeys.reduce<Record<string, unknown>>((dirty, key) => {
+      const currentValue = this.attributes[key]
+      const originalValue = this.original[key]
+      const hasCurrent = Object.prototype.hasOwnProperty.call(this.attributes, key)
+      const hasOriginal = Object.prototype.hasOwnProperty.call(this.original, key)
+
+      if (!hasCurrent && !hasOriginal) return dirty
+
+      if (hasCurrent !== hasOriginal || !Model.areAttributeValuesEqual(currentValue, originalValue))
+        dirty[key] = Model.cloneAttributeValue(currentValue)
+
+      return dirty
+    }, {})
+  }
+
+  /**
+   * Normalize built-in persistence casts without re-running arbitrary custom setters.
+   *
+   * @param attributes
+   * @returns
+   */
+  private normalizePersistenceAttributes(
+    attributes: Record<string, unknown>,
+  ): Record<string, unknown> {
+    return (this.constructor as typeof Model).castAttributesForPersistence(attributes)
+  }
+
+  /**
+   * Normalize a key or key list for dirty/change lookups.
+   *
+   * @param keys
+   * @returns
+   */
+  private normalizeAttributeKeys(keys?: string | string[]): string[] {
+    if (typeof keys === 'undefined') return []
+
+    return Array.isArray(keys) ? keys : [keys]
+  }
+
+  /**
+   * Resolve an Attribute object mutator method for a given key, if it exists.
+   *
+   * @param key
+   * @returns
+   */
+  private resolveAttributeMutator(key: string): Attribute | null {
+    if (key === 'constructor') return null
+
+    const methodName = `${str(key).camel()}`
+    const prototype = Object.getPrototypeOf(this) as Record<string, unknown> | null
+    if (!prototype) return null
+
+    const method = prototype[methodName]
+    if (typeof method !== 'function') return null
+
+    const baseMethod = (Model.prototype as unknown as Record<string, unknown>)[methodName]
+    if (method === baseMethod) return null
+
+    const resolved = (method as () => unknown).call(this)
+    if (Attribute.isAttribute(resolved)) return resolved
+
+    return null
+  }
+
+  /**
+   * Resolve a set mutator method for a given attribute key, if it exists.
+   *
+   * @param key
+   * @returns
+   */
+  private resolveSetMutator(key: string): ((value: unknown) => unknown) | null {
+    const methodName = `set${str(key).studly()}Attribute`
+    const method = (this as unknown as Record<string, unknown>)[methodName]
+
+    return typeof method === 'function' ? (method as (value: unknown) => unknown) : null
+  }
+
+  /**
+   * Ensures global scopes are own properties on subclass constructors.
+   */
+  private static ensureOwnGlobalScopes(): void {
+    if (!Object.prototype.hasOwnProperty.call(this, 'globalScopes'))
+      this.globalScopes = { ...(this.globalScopes || {}) }
+  }
+
+  /**
+   * Ensures event listeners are own properties on subclass constructors.
+   */
+  private static ensureOwnEventListeners(): void {
+    if (!Object.prototype.hasOwnProperty.call(this, 'eventListeners'))
+      this.eventListeners = { ...(this.eventListeners || {}) }
+  }
+
+  /**
+   * Clone an attribute value to keep snapshot state isolated from live mutations.
+   *
+   * @param value
+   * @returns
+   */
+  private static cloneAttributeValue(value: unknown): unknown {
+    if (value instanceof Date) return new Date(value.getTime())
+
+    if (Array.isArray(value)) return value.map((item) => Model.cloneAttributeValue(item))
+
+    if (value && typeof value === 'object') {
+      return Object.entries(value as Record<string, unknown>).reduce<Record<string, unknown>>(
+        (all, [key, nestedValue]) => {
+          all[key] = Model.cloneAttributeValue(nestedValue)
+
+          return all
+        },
+        {},
+      )
+    }
+
+    return value
+  }
+
+  /**
+   * Compare attribute values for dirty/change detection.
+   *
+   * @param left
+   * @param right
+   * @returns
+   */
+  private static areAttributeValuesEqual(left: unknown, right: unknown): boolean {
+    if (left === right) return true
+
+    if (left instanceof Date && right instanceof Date) return left.getTime() === right.getTime()
+
+    if (Array.isArray(left) && Array.isArray(right)) {
+      if (left.length !== right.length) return false
+
+      return left.every((value, index) => Model.areAttributeValuesEqual(value, right[index]))
+    }
+
+    if (left && right && typeof left === 'object' && typeof right === 'object') {
+      const leftEntries = Object.entries(left as Record<string, unknown>)
+      const rightEntries = Object.entries(right as Record<string, unknown>)
+      if (leftEntries.length !== rightEntries.length) return false
+
+      return leftEntries.every(([key, value]) => {
+        return (
+          Object.prototype.hasOwnProperty.call(right as Record<string, unknown>, key) &&
+          Model.areAttributeValuesEqual(value, (right as Record<string, unknown>)[key])
+        )
+      })
+    }
+
+    return false
+  }
+
+  private static buildRelationAggregateAttributeKey(
+    type: 'count' | 'exists' | 'sum' | 'avg' | 'min' | 'max',
+    relation: string,
+    column?: string,
+  ): string {
+    const { relation: relationName, alias } = Model.parseRelationAggregateName(relation)
+    if (alias) return alias
+
+    if (type === 'count') return `${relationName}Count`
+    if (type === 'exists') return `${relationName}Exists`
+
+    const columnName = column ? `${column.charAt(0).toUpperCase()}${column.slice(1)}` : ''
+    const aggregateType = `${type.charAt(0).toUpperCase()}${type.slice(1)}`
+
+    return `${relationName}${aggregateType}${columnName}`
+  }
+
+  private static parseRelationAggregateName(name: string): { relation: string; alias?: string } {
+    const match = name.match(/^(.+?)\s+as\s+(.+)$/i)
+    if (!match) return { relation: name }
+
+    return {
+      relation: match[1].trim(),
+      alias: match[2].trim(),
+    }
+  }
+
+  private async loadAggregate(
+    type: 'count' | 'sum',
+    relations:
+      | string
+      | string[]
+      | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
+    column?: string,
+  ): Promise<this> {
+    const normalized = this.normalizeRelationAggregateInput(relations)
+    if (normalized.length === 0) return this
+
+    const constructor = this.constructor as unknown as ModelStatic<this>
+    const primaryKey = constructor.getPrimaryKey()
+    const identifier = this.getAttribute(primaryKey)
+    if (identifier == null)
+      throw new ArkormException(
+        primaryKey === 'id'
+          ? 'Cannot load aggregates for a model without an id.'
+          : `Cannot load aggregates for a model without a [${primaryKey}] value.`,
+      )
+
+    const query = constructor.query().where({ [primaryKey]: identifier })
+    if (type === 'count') query.withCount(relations)
+    else query.withSum(relations, column as string)
+
+    const aggregated = await query.first()
+    if (!aggregated) return this
+
+    normalized.forEach((relation) => {
+      const attribute = Model.buildRelationAggregateAttributeKey(type, relation, column)
+      this.setAttribute(
+        attribute,
+        aggregated.getAttribute(attribute) ?? (type === 'count' ? 0 : null),
+      )
+    })
+
+    return this
+  }
+
+  private normalizeRelationAggregateInput(
+    relations:
+      | string
+      | string[]
+      | Record<string, boolean | ((query: QueryBuilder<any, any>) => unknown) | undefined>,
+  ): string[] {
+    if (typeof relations === 'string') return [relations]
+
+    if (Array.isArray(relations)) return relations
+
+    return Object.entries(relations).reduce<string[]>((all, [relation, enabled]) => {
+      if (enabled === false || enabled === undefined) return all
+
+      all.push(relation)
+
+      return all
+    }, [])
+  }
+
+  /**
+   * Sync the original snapshot to the model's current raw attributes.
+   */
+  private syncOriginal(): void {
+    this.original = Object.entries(this.attributes).reduce<Record<string, unknown>>(
+      (all, [key, value]) => {
+        all[key] = Model.cloneAttributeValue(value)
+
+        return all
+      },
+      {},
+    )
+    this.touchedAttributes.clear()
+  }
+
+  /**
+   * Sync the last-changed snapshot from a previous original state.
+   *
+   * @param previousOriginal
+   */
+  private syncChanges(previousOriginal: Record<string, unknown>): void {
+    this.changes = Object.entries(this.getDirtyAttributes()).reduce<Record<string, unknown>>(
+      (all, [key, value]) => {
+        if (
+          !Object.prototype.hasOwnProperty.call(previousOriginal, key) ||
+          !Model.areAttributeValuesEqual(value, previousOriginal[key])
+        ) {
+          all[key] = Model.cloneAttributeValue(value)
         }
 
-        Model.lifecycleStates.set(modelClass, state)
+        return all
+      },
+      {},
+    )
+  }
 
-        return state
+  /**
+   * Capture the attribute snapshot that was persisted before the most recent
+   * save so it can be read back via getPrevious().
+   *
+   * @param previousOriginal
+   */
+  private syncPrevious(previousOriginal: Record<string, unknown>): void {
+    this.previous = Object.entries(previousOriginal).reduce<Record<string, unknown>>(
+      (all, [key, value]) => {
+        all[key] = Model.cloneAttributeValue(value)
+
+        return all
+      },
+      {},
+    )
+  }
+
+  /**
+   * Resolve lifecycle state for the provided model class.
+   *
+   * @param modelClass
+   * @returns
+   */
+  private static getLifecycleState(modelClass: typeof Model): ModelLifecycleState {
+    const existing = Model.lifecycleStates.get(modelClass)
+    if (existing) return existing
+
+    const state: ModelLifecycleState = {
+      booted: false,
+      booting: false,
+      globalScopesSuppressed: 0,
     }
 
-    /**
-     * Ensure the target model class has executed its boot lifecycle.
-     *
-     * @param modelClass
-     */
-    private static ensureModelBooted (modelClass: typeof Model): void {
-        const state = Model.getLifecycleState(modelClass)
-        if (state.booted || state.booting)
-            return
+    Model.lifecycleStates.set(modelClass, state)
 
-        state.booting = true
+    return state
+  }
 
-        try {
-            const boot = modelClass.boot
-            if (boot !== Model.boot)
-                boot.call(modelClass)
+  /**
+   * Ensure the target model class has executed its boot lifecycle.
+   *
+   * @param modelClass
+   */
+  private static ensureModelBooted(modelClass: typeof Model): void {
+    const state = Model.getLifecycleState(modelClass)
+    if (state.booted || state.booting) return
 
-            const booted = modelClass.booted
-            if (booted !== Model.booted)
-                booted.call(modelClass)
+    state.booting = true
 
-            state.booted = true
-        } finally {
-            state.booting = false
-        }
+    try {
+      const boot = modelClass.boot
+      if (boot !== Model.boot) boot.call(modelClass)
+
+      const booted = modelClass.booted
+      if (booted !== Model.booted) booted.call(modelClass)
+
+      state.booted = true
+    } finally {
+      state.booting = false
+    }
+  }
+
+  /**
+   * Determine if global scopes are currently suppressed for the model class.
+   *
+   * @param modelClass
+   * @returns
+   */
+  private static areGlobalScopesSuppressed(modelClass: typeof Model): boolean {
+    return Model.getLifecycleState(modelClass).globalScopesSuppressed > 0
+  }
+
+  /**
+   * Resolve configured class-based event handlers for a lifecycle event.
+   *
+   * @param modelClass
+   * @param event
+   * @returns
+   */
+  private static resolveDispatchedEventListeners(
+    modelClass: typeof Model,
+    event: ModelEventName,
+  ): ModelEventListener<any>[] {
+    const configured = modelClass.dispatchesEvents[event]
+    if (!configured) return []
+
+    const entries = Array.isArray(configured) ? configured : [configured]
+
+    return entries.map((entry) => {
+      const handler =
+        typeof entry === 'function' ? new (entry as ModelEventHandlerConstructor<any>)() : entry
+
+      if (!handler || typeof handler.handle !== 'function') {
+        throw new ArkormException(
+          `Invalid event handler configured for [${modelClass.name}.${event}].`,
+        )
+      }
+
+      return async (model: Model) => {
+        await handler.handle(model)
+      }
+    })
+  }
+
+  /**
+   * Determine whether a lifecycle event has any registered listeners.
+   *
+   * @param modelClass
+   * @param event
+   * @returns
+   */
+  private static hasEventListeners(modelClass: typeof Model, event: ModelEventName): boolean {
+    if (Model.eventsSuppressed > 0) return false
+
+    modelClass.ensureOwnEventListeners()
+
+    const registeredListeners = modelClass.eventListeners[event] || []
+    if (registeredListeners.length > 0) return true
+
+    const configuredDispatchers = modelClass.dispatchesEvents[event]
+    if (!configuredDispatchers) return false
+
+    return Array.isArray(configuredDispatchers) ? configuredDispatchers.length > 0 : true
+  }
+
+  /**
+   * Dispatches lifecycle events to registered listeners.
+   *
+   * @param modelClass
+   * @param event
+   * @param model
+   */
+  private static async dispatchEvent(
+    modelClass: typeof Model,
+    event: ModelEventName,
+    model: Model,
+  ): Promise<void> {
+    Model.ensureModelBooted(modelClass)
+    if (!Model.hasEventListeners(modelClass, event)) return
+
+    const listeners = [
+      ...Model.resolveDispatchedEventListeners(modelClass, event),
+      ...(modelClass.eventListeners[event] || []),
+    ]
+
+    for (const listener of listeners) await listener(model)
+  }
+
+  /**
+   * Normalize the relation map for eager loading.
+   *
+   * @param relations
+   * @returns
+   */
+  private normalizeRelationMap(
+    relations: string | string[] | EagerLoadMap | EagerLoadRelations<this>,
+  ): EagerLoadMap {
+    if (typeof relations === 'string') return { [relations]: undefined }
+
+    if (Array.isArray(relations)) {
+      return relations.reduce<EagerLoadMap>((accumulator, relation) => {
+        accumulator[relation] = undefined
+
+        return accumulator
+      }, {})
     }
 
-    /**
-     * Determine if global scopes are currently suppressed for the model class.
-     *
-     * @param modelClass
-     * @returns
-     */
-    private static areGlobalScopesSuppressed (modelClass: typeof Model): boolean {
-        return Model.getLifecycleState(modelClass).globalScopesSuppressed > 0
-    }
+    return Object.entries(relations).reduce<EagerLoadMap>((all, [relation, constraint]) => {
+      all[relation] = constraint === true ? undefined : constraint
 
-    /**
-     * Resolve configured class-based event handlers for a lifecycle event.
-     *
-     * @param modelClass
-     * @param event
-     * @returns
-     */
-    private static resolveDispatchedEventListeners (
-        modelClass: typeof Model,
-        event: ModelEventName,
-    ): ModelEventListener<any>[] {
-        const configured = modelClass.dispatchesEvents[event]
-        if (!configured)
-            return []
-
-        const entries = Array.isArray(configured) ? configured : [configured]
-
-        return entries.map((entry) => {
-            const handler = typeof entry === 'function'
-                ? new (entry as ModelEventHandlerConstructor<any>)()
-                : entry
-
-            if (!handler || typeof handler.handle !== 'function') {
-                throw new ArkormException(`Invalid event handler configured for [${modelClass.name}.${event}].`)
-            }
-
-            return async (model: Model) => {
-                await handler.handle(model)
-            }
-        })
-    }
-
-    /**
-     * Determine whether a lifecycle event has any registered listeners.
-     *
-     * @param modelClass
-     * @param event
-     * @returns
-     */
-    private static hasEventListeners (
-        modelClass: typeof Model,
-        event: ModelEventName,
-    ): boolean {
-        if (Model.eventsSuppressed > 0)
-            return false
-
-        modelClass.ensureOwnEventListeners()
-
-        const registeredListeners = modelClass.eventListeners[event] || []
-        if (registeredListeners.length > 0)
-            return true
-
-        const configuredDispatchers = modelClass.dispatchesEvents[event]
-        if (!configuredDispatchers)
-            return false
-
-        return Array.isArray(configuredDispatchers)
-            ? configuredDispatchers.length > 0
-            : true
-    }
-
-    /**
-     * Dispatches lifecycle events to registered listeners.
-     *
-     * @param modelClass
-     * @param event
-     * @param model
-     */
-    private static async dispatchEvent (
-        modelClass: typeof Model,
-        event: ModelEventName,
-        model: Model
-    ): Promise<void> {
-        Model.ensureModelBooted(modelClass)
-        if (!Model.hasEventListeners(modelClass, event))
-            return
-
-        const listeners = [
-            ...Model.resolveDispatchedEventListeners(modelClass, event),
-            ...(modelClass.eventListeners[event] || []),
-        ]
-
-        for (const listener of listeners)
-            await listener(model)
-    }
-
-    /**
-     * Normalize the relation map for eager loading.
-     * 
-     * @param relations 
-     * @returns 
-     */
-    private normalizeRelationMap (
-        relations: string | string[] | EagerLoadMap | EagerLoadRelations<this>
-    ): EagerLoadMap {
-        if (typeof relations === 'string')
-            return { [relations]: undefined }
-
-        if (Array.isArray(relations)) {
-            return relations.reduce<EagerLoadMap>((accumulator, relation) => {
-                accumulator[relation] = undefined
-
-                return accumulator
-            }, {})
-        }
-
-        return Object.entries(relations).reduce<EagerLoadMap>((all, [relation, constraint]) => {
-            all[relation] = constraint === true ? undefined : constraint
-
-            return all
-        }, {})
-    }
+      return all
+    }, {})
+  }
 }

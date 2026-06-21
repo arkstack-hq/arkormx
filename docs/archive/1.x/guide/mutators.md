@@ -8,22 +8,22 @@ Arkorm provides flexible mutators and accessors for transforming attribute value
 ## Attribute object style (recommended)
 
 ```ts
-import { Attribute, Model } from 'arkormx';
+import { Attribute, Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   public name() {
     return Attribute.make({
       get: (value) => String(value ?? '').trim(),
       set: (value) => String(value ?? '').trim(),
-    });
+    })
   }
 
   public displayName() {
     return Attribute.make({
       get: () => String(this.getAttribute('name')).toUpperCase(),
-    });
+    })
   }
 }
 ```
@@ -31,29 +31,29 @@ export class User extends Model<'users'> {
 Usage:
 
 ```ts
-const user = await User.query().firstOrFail();
+const user = await User.query().firstOrFail()
 
-user.setAttribute('name', '  Jane  ');
-console.log(user.getAttribute('name')); // Jane
-console.log(user.getAttribute('displayName')); // JANE
-console.log(user.name); // Jane
-console.log(user.displayName); // JANE
+user.setAttribute('name', '  Jane  ')
+console.log(user.getAttribute('name')) // Jane
+console.log(user.getAttribute('displayName')) // JANE
+console.log(user.name) // Jane
+console.log(user.displayName) // JANE
 ```
 
 ## Legacy method style
 
 ```ts
-import { Model } from 'arkormx';
+import { Model } from 'arkormx'
 
 export class User extends Model<'users'> {
-  protected static override delegate = 'users';
+  protected static override delegate = 'users'
 
   public getNameAttribute(value: unknown): string {
-    return String(value ?? '').trim();
+    return String(value ?? '').trim()
   }
 
   public setNameAttribute(value: unknown): unknown {
-    return String(value ?? '').trim();
+    return String(value ?? '').trim()
   }
 }
 ```

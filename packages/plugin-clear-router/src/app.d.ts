@@ -1,8 +1,7 @@
 declare module 'arkormx' {
-    interface Model {
-        resolveRouteBinding?(value: unknown, field?: string): unknown | Promise<unknown>
-    }
+  interface Model {
+    resolveRouteBinding?(value: unknown, field?: string): unknown | Promise<unknown>
+  }
 }
 
-
-export { }
+export {}

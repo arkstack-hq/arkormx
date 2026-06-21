@@ -5,21 +5,21 @@ Arkorm loads config from `arkormx.config.cjs`, `arkormx.config.js`, or `arkormx.
 ## defineConfig
 
 ```ts
-import { defineConfig } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { defineConfig } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
 export default defineConfig({
   prisma: new PrismaClient(),
-});
+})
 ```
 
 ## Full configuration shape
 
 ```ts
-import { defineConfig, URLDriver } from 'arkormx';
-import { PrismaClient } from '@prisma/client';
+import { defineConfig, URLDriver } from 'arkormx'
+import { PrismaClient } from '@prisma/client'
 
-const prisma = new PrismaClient();
+const prisma = new PrismaClient()
 
 class AppURLDriver extends URLDriver {}
 
@@ -37,7 +37,7 @@ export default defineConfig({
     buildOutput: './dist',
   },
   outputExt: 'ts',
-});
+})
 ```
 
 ## Config reference
@@ -57,11 +57,11 @@ export default defineConfig({
 For frameworks that bootstrap Prisma elsewhere, use runtime configuration:
 
 ```ts
-import { configureArkormRuntime } from 'arkormx';
+import { configureArkormRuntime } from 'arkormx'
 
 configureArkormRuntime(() => prisma, {
   outputExt: 'js',
-});
+})
 ```
 
 Runtime configuration also enables transaction scopes through

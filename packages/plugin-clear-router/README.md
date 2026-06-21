@@ -19,12 +19,12 @@ import { Controller } from 'clear-router'
 import { User } from './models/User'
 
 class UserController extends Controller {
-    @Bind()
-    async show (user: User) {
-        return {
-            data: user,
-        }
+  @Bind()
+  async show(user: User) {
+    return {
+      data: user,
     }
+  }
 }
 
 Router.get('/users/:user', [UserController, 'show'])
@@ -42,11 +42,11 @@ Non-model arguments continue to resolve through Clear Router's container.
 
 The plugin derives the route parameter name from the model class name:
 
-| Model class | Route parameter |
-| --- | --- |
-| `User` | `:user` or `{user}` |
-| `Profile` | `:profile` or `{profile}` |
-| `UserModel` | `:user` or `{user}` |
+| Model class | Route parameter           |
+| ----------- | ------------------------- |
+| `User`      | `:user` or `{user}`       |
+| `Profile`   | `:profile` or `{profile}` |
+| `UserModel` | `:user` or `{user}`       |
 
 Both Clear Router parameter styles are supported:
 
@@ -77,11 +77,11 @@ Models can override the default lookup by defining `resolveRouteBinding`:
 import { Model } from 'arkormx'
 
 export class User extends Model {
-    async resolveRouteBinding (value: unknown, field = 'id') {
-        return await User.query()
-            .whereKey(field as 'id', value as never)
-            .firstOrFail()
-    }
+  async resolveRouteBinding(value: unknown, field = 'id') {
+    return await User.query()
+      .whereKey(field as 'id', value as never)
+      .firstOrFail()
+  }
 }
 ```
 

@@ -9,9 +9,9 @@ Use the same adapter-first configuration in production that you use during
 development:
 
 ```ts
-import { createKyselyAdapter, defineConfig } from 'arkormx';
-import { Kysely, PostgresDialect } from 'kysely';
-import { Pool } from 'pg';
+import { createKyselyAdapter, defineConfig } from 'arkormx'
+import { Kysely, PostgresDialect } from 'kysely'
+import { Pool } from 'pg'
 
 const db = new Kysely<Record<string, never>>({
   dialect: new PostgresDialect({
@@ -19,7 +19,7 @@ const db = new Kysely<Record<string, never>>({
       connectionString: process.env.DATABASE_URL,
     }),
   }),
-});
+})
 
 export default defineConfig({
   adapter: createKyselyAdapter(db),
@@ -30,7 +30,7 @@ export default defineConfig({
     factories: './database/factories',
     buildOutput: './dist',
   },
-});
+})
 ```
 
 Prisma is optional. Add `client` only when the application still needs Prisma
@@ -40,7 +40,7 @@ compatibility delegates or client-backed transaction behavior:
 export default defineConfig({
   adapter,
   client: () => prisma,
-});
+})
 ```
 
 ## Build strategy
@@ -58,22 +58,18 @@ With tsdown, use unbundled output:
 ```ts
 export default {
   unbundle: true,
-};
+}
 ```
 
 If you bundle application code into a single file, register classes explicitly
 instead of relying on directory discovery:
 
 ```ts
-import {
-  registerMigrations,
-  registerModels,
-  registerSeeders,
-} from 'arkormx';
+import { registerMigrations, registerModels, registerSeeders } from 'arkormx'
 
-registerModels(User, Post);
-registerMigrations(CreateUsersTableMigration);
-registerSeeders(DatabaseSeeder);
+registerModels(User, Post)
+registerMigrations(CreateUsersTableMigration)
+registerSeeders(DatabaseSeeder)
 ```
 
 ## Generated extension policy

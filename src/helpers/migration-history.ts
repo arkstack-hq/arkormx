@@ -6,245 +6,229 @@ import type { DatabaseAdapter } from 'src/types/adapter'
 import { createHash } from 'node:crypto'
 
 export const createEmptyAppliedMigrationsState = (): AppliedMigrationsState => ({
-    version: 1,
-    migrations: [],
-    runs: [],
+  version: 1,
+  migrations: [],
+  runs: [],
 })
 
 export const supportsDatabaseMigrationState = (
-    adapter?: DatabaseAdapter
-): adapter is DatabaseAdapter & Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
-    return typeof adapter?.readAppliedMigrationsState === 'function'
-        && typeof adapter?.writeAppliedMigrationsState === 'function'
+  adapter?: DatabaseAdapter,
+): adapter is DatabaseAdapter &
+  Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
+  return (
+    typeof adapter?.readAppliedMigrationsState === 'function' &&
+    typeof adapter?.writeAppliedMigrationsState === 'function'
+  )
 }
 
-export const resolveMigrationStateFilePath = (
-    cwd: string,
-    configuredPath?: string
-): string => {
-    if (configuredPath && configuredPath.trim().length > 0)
-        return resolve(configuredPath)
+export const resolveMigrationStateFilePath = (cwd: string, configuredPath?: string): string => {
+  if (configuredPath && configuredPath.trim().length > 0) return resolve(configuredPath)
 
-    return join(cwd, '.arkormx', 'migrations.applied.json')
+  return join(cwd, '.arkormx', 'migrations.applied.json')
 }
 
-export const buildMigrationIdentity = (
-    filePath: string,
-    className: string
-): string => {
-    const fileName = filePath.split('/').pop()?.split('\\').pop() ?? filePath
-    const baseName = fileName.slice(0, fileName.length - extname(fileName).length)
+export const buildMigrationIdentity = (filePath: string, className: string): string => {
+  const fileName = filePath.split('/').pop()?.split('\\').pop() ?? filePath
+  const baseName = fileName.slice(0, fileName.length - extname(fileName).length)
 
-    return `${baseName}:${className}`
+  return `${baseName}:${className}`
 }
 
-export const computeMigrationChecksum = (
-    filePath: string
-): string => {
-    if (!existsSync(filePath))
-        return createHash('sha256').update(filePath).digest('hex')
+export const computeMigrationChecksum = (filePath: string): string => {
+  if (!existsSync(filePath)) return createHash('sha256').update(filePath).digest('hex')
 
-    const source = readFileSync(filePath, 'utf-8')
+  const source = readFileSync(filePath, 'utf-8')
 
-    return createHash('sha256').update(source).digest('hex')
+  return createHash('sha256').update(source).digest('hex')
 }
 
-export const readAppliedMigrationsState = (
-    stateFilePath: string
-): AppliedMigrationsState => {
-    if (!existsSync(stateFilePath))
-        return createEmptyAppliedMigrationsState()
+export const readAppliedMigrationsState = (stateFilePath: string): AppliedMigrationsState => {
+  if (!existsSync(stateFilePath)) return createEmptyAppliedMigrationsState()
 
-    try {
-        const parsed = JSON.parse(readFileSync(stateFilePath, 'utf-8')) as Partial<AppliedMigrationsState>
-        if (!Array.isArray(parsed.migrations))
-            return createEmptyAppliedMigrationsState()
+  try {
+    const parsed = JSON.parse(
+      readFileSync(stateFilePath, 'utf-8'),
+    ) as Partial<AppliedMigrationsState>
+    if (!Array.isArray(parsed.migrations)) return createEmptyAppliedMigrationsState()
 
-        return {
-            version: 1,
-            migrations: parsed.migrations
-                .filter((migration): migration is AppliedMigrationEntry => {
-                    return typeof migration?.id === 'string'
-                        && typeof migration?.file === 'string'
-                        && typeof migration?.className === 'string'
-                        && typeof migration?.appliedAt === 'string'
-                        && (migration?.checksum === undefined || typeof migration?.checksum === 'string')
-                }),
-            runs: Array.isArray(parsed.runs)
-                ? parsed.runs.filter((run): run is AppliedMigrationRun => {
-                    return typeof run?.id === 'string'
-                        && typeof run?.appliedAt === 'string'
-                        && Array.isArray(run?.migrationIds)
-                        && run.migrationIds.every(item => typeof item === 'string')
-                })
-                : [],
-        }
-    } catch {
-        return createEmptyAppliedMigrationsState()
+    return {
+      version: 1,
+      migrations: parsed.migrations.filter((migration): migration is AppliedMigrationEntry => {
+        return (
+          typeof migration?.id === 'string' &&
+          typeof migration?.file === 'string' &&
+          typeof migration?.className === 'string' &&
+          typeof migration?.appliedAt === 'string' &&
+          (migration?.checksum === undefined || typeof migration?.checksum === 'string')
+        )
+      }),
+      runs: Array.isArray(parsed.runs)
+        ? parsed.runs.filter((run): run is AppliedMigrationRun => {
+            return (
+              typeof run?.id === 'string' &&
+              typeof run?.appliedAt === 'string' &&
+              Array.isArray(run?.migrationIds) &&
+              run.migrationIds.every((item) => typeof item === 'string')
+            )
+          })
+        : [],
     }
+  } catch {
+    return createEmptyAppliedMigrationsState()
+  }
 }
 
 export const readAppliedMigrationsStateFromStore = async (
-    adapter: DatabaseAdapter | undefined,
-    stateFilePath: string
+  adapter: DatabaseAdapter | undefined,
+  stateFilePath: string,
 ): Promise<AppliedMigrationsState> => {
-    if (supportsDatabaseMigrationState(adapter))
-        return await adapter.readAppliedMigrationsState()
+  if (supportsDatabaseMigrationState(adapter)) return await adapter.readAppliedMigrationsState()
 
-    return readAppliedMigrationsState(stateFilePath)
+  return readAppliedMigrationsState(stateFilePath)
 }
 
 export const writeAppliedMigrationsState = (
-    stateFilePath: string,
-    state: AppliedMigrationsState
+  stateFilePath: string,
+  state: AppliedMigrationsState,
 ): void => {
-    const directory = dirname(stateFilePath)
-    if (!existsSync(directory))
-        mkdirSync(directory, { recursive: true })
+  const directory = dirname(stateFilePath)
+  if (!existsSync(directory)) mkdirSync(directory, { recursive: true })
 
-    writeFileSync(stateFilePath, JSON.stringify(state, null, 2))
+  writeFileSync(stateFilePath, JSON.stringify(state, null, 2))
 }
 
 export const writeAppliedMigrationsStateToStore = async (
-    adapter: DatabaseAdapter | undefined,
-    stateFilePath: string,
-    state: AppliedMigrationsState
+  adapter: DatabaseAdapter | undefined,
+  stateFilePath: string,
+  state: AppliedMigrationsState,
 ): Promise<void> => {
-    if (supportsDatabaseMigrationState(adapter)) {
-        await adapter.writeAppliedMigrationsState(state)
+  if (supportsDatabaseMigrationState(adapter)) {
+    await adapter.writeAppliedMigrationsState(state)
 
-        return
-    }
+    return
+  }
 
-    writeAppliedMigrationsState(stateFilePath, state)
+  writeAppliedMigrationsState(stateFilePath, state)
 }
 
 export const deleteAppliedMigrationsStateFromStore = async (
-    adapter: DatabaseAdapter | undefined,
-    stateFilePath: string
+  adapter: DatabaseAdapter | undefined,
+  stateFilePath: string,
 ): Promise<'database' | 'file' | 'missing-file'> => {
-    if (supportsDatabaseMigrationState(adapter)) {
-        await adapter.writeAppliedMigrationsState(createEmptyAppliedMigrationsState())
+  if (supportsDatabaseMigrationState(adapter)) {
+    await adapter.writeAppliedMigrationsState(createEmptyAppliedMigrationsState())
 
-        return 'database'
-    }
+    return 'database'
+  }
 
-    if (!existsSync(stateFilePath))
-        return 'missing-file'
+  if (!existsSync(stateFilePath)) return 'missing-file'
 
-    writeAppliedMigrationsState(stateFilePath, createEmptyAppliedMigrationsState())
+  writeAppliedMigrationsState(stateFilePath, createEmptyAppliedMigrationsState())
 
-    return 'file'
+  return 'file'
 }
 
 export const isMigrationApplied = (
-    state: AppliedMigrationsState,
-    identity: string,
-    checksum?: string
+  state: AppliedMigrationsState,
+  identity: string,
+  checksum?: string,
 ): boolean => {
-    const matched = state.migrations.find(migration => migration.id === identity)
-    if (!matched)
-        return false
+  const matched = state.migrations.find((migration) => migration.id === identity)
+  if (!matched) return false
 
-    if (checksum && matched.checksum)
-        return matched.checksum === checksum
+  if (checksum && matched.checksum) return matched.checksum === checksum
 
-    if (checksum && !matched.checksum)
-        return false
+  if (checksum && !matched.checksum) return false
 
-    return true
+  return true
 }
 
 export const findAppliedMigration = (
-    state: AppliedMigrationsState,
-    identity: string
+  state: AppliedMigrationsState,
+  identity: string,
 ): AppliedMigrationEntry | undefined => {
-    return state.migrations.find(migration => migration.id === identity)
+  return state.migrations.find((migration) => migration.id === identity)
 }
 
 export const markMigrationApplied = (
-    state: AppliedMigrationsState,
-    entry: AppliedMigrationEntry
+  state: AppliedMigrationsState,
+  entry: AppliedMigrationEntry,
 ): AppliedMigrationsState => {
-    const next = state.migrations.filter(migration => migration.id !== entry.id)
-    next.push(entry)
+  const next = state.migrations.filter((migration) => migration.id !== entry.id)
+  next.push(entry)
 
-    return {
-        version: 1,
-        migrations: next,
-        runs: state.runs ?? [],
-    }
+  return {
+    version: 1,
+    migrations: next,
+    runs: state.runs ?? [],
+  }
 }
 
 export const removeAppliedMigration = (
-    state: AppliedMigrationsState,
-    identity: string
+  state: AppliedMigrationsState,
+  identity: string,
 ): AppliedMigrationsState => {
-    const remainingMigrations = state.migrations.filter(migration => migration.id !== identity)
-    const remainingRuns = (state.runs ?? [])
-        .map(run => ({
-            ...run,
-            migrationIds: run.migrationIds.filter(id => id !== identity),
-        }))
-        .filter(run => run.migrationIds.length > 0)
+  const remainingMigrations = state.migrations.filter((migration) => migration.id !== identity)
+  const remainingRuns = (state.runs ?? [])
+    .map((run) => ({
+      ...run,
+      migrationIds: run.migrationIds.filter((id) => id !== identity),
+    }))
+    .filter((run) => run.migrationIds.length > 0)
 
-    return {
-        version: 1,
-        migrations: remainingMigrations,
-        runs: remainingRuns,
-    }
+  return {
+    version: 1,
+    migrations: remainingMigrations,
+    runs: remainingRuns,
+  }
 }
 
 export const buildMigrationRunId = (): string => {
-    return `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
+  return `run_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`
 }
 
 export const markMigrationRun = (
-    state: AppliedMigrationsState,
-    run: AppliedMigrationRun
+  state: AppliedMigrationsState,
+  run: AppliedMigrationRun,
 ): AppliedMigrationsState => {
-    const nextRuns = (state.runs ?? [])
-        .filter(existing => existing.id !== run.id)
-    nextRuns.push(run)
+  const nextRuns = (state.runs ?? []).filter((existing) => existing.id !== run.id)
+  nextRuns.push(run)
 
-    return {
-        version: 1,
-        migrations: state.migrations,
-        runs: nextRuns,
-    }
+  return {
+    version: 1,
+    migrations: state.migrations,
+    runs: nextRuns,
+  }
 }
 
 export const getLastMigrationRun = (
-    state: AppliedMigrationsState
+  state: AppliedMigrationsState,
 ): AppliedMigrationRun | undefined => {
-    const runs = state.runs ?? []
-    if (runs.length === 0)
-        return undefined
+  const runs = state.runs ?? []
+  if (runs.length === 0) return undefined
 
-    return runs
-        .map((run, index) => ({ run, index }))
-        .sort((left, right) => {
-            const appliedAtOrder = right.run.appliedAt.localeCompare(left.run.appliedAt)
-            if (appliedAtOrder !== 0)
-                return appliedAtOrder
+  return runs
+    .map((run, index) => ({ run, index }))
+    .sort((left, right) => {
+      const appliedAtOrder = right.run.appliedAt.localeCompare(left.run.appliedAt)
+      if (appliedAtOrder !== 0) return appliedAtOrder
 
-            return right.index - left.index
-        })[0]?.run
+      return right.index - left.index
+    })[0]?.run
 }
 
 export const getLatestAppliedMigrations = (
-    state: AppliedMigrationsState,
-    steps: number
+  state: AppliedMigrationsState,
+  steps: number,
 ): AppliedMigrationEntry[] => {
-    return state.migrations
-        .map((migration, index) => ({ migration, index }))
-        .sort((left, right) => {
-            const appliedAtOrder = right.migration.appliedAt.localeCompare(left.migration.appliedAt)
-            if (appliedAtOrder !== 0)
-                return appliedAtOrder
+  return state.migrations
+    .map((migration, index) => ({ migration, index }))
+    .sort((left, right) => {
+      const appliedAtOrder = right.migration.appliedAt.localeCompare(left.migration.appliedAt)
+      if (appliedAtOrder !== 0) return appliedAtOrder
 
-            return right.index - left.index
-        })
-        .slice(0, Math.max(0, steps))
-        .map(entry => entry.migration)
+      return right.index - left.index
+    })
+    .slice(0, Math.max(0, steps))
+    .map((entry) => entry.migration)
 }

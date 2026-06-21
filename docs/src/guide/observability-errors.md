@@ -9,18 +9,18 @@ parsing error messages.
 Set `debug: true` to use Arkorm's default query logger:
 
 ```ts
-import { defineConfig } from 'arkormx';
+import { defineConfig } from 'arkormx'
 
 export default defineConfig({
   adapter,
   debug: true,
-});
+})
 ```
 
 For application logging or tracing, provide a callback:
 
 ```ts
-import { defineConfig } from 'arkormx';
+import { defineConfig } from 'arkormx'
 
 export default defineConfig({
   adapter,
@@ -33,9 +33,9 @@ export default defineConfig({
       durationMs: event.durationMs,
       inspection: event.inspection,
       error: event.error,
-    });
+    })
   },
-});
+})
 ```
 
 Each `ArkormDebugEvent` has `type: 'query'` and one of these phases:
@@ -56,22 +56,22 @@ a read query:
 const inspection = User.query()
   .whereKey('id', 1)
   .select({ id: true, email: true })
-  .inspect('selectOne');
+  .inspect('selectOne')
 
-console.log(inspection);
+console.log(inspection)
 ```
 
 The inspection shape can include:
 
 ```ts
 type AdapterQueryInspection = {
-  adapter: string;
-  operation: string;
-  target?: string;
-  sql?: string;
-  parameters?: readonly unknown[];
-  detail?: Record<string, unknown>;
-};
+  adapter: string
+  operation: string
+  target?: string
+  sql?: string
+  parameters?: readonly unknown[]
+  detail?: Record<string, unknown>
+}
 ```
 
 `inspect()` supports `select`, `selectOne`, `count`, and `exists`. It returns
@@ -93,32 +93,32 @@ All Arkorm-specific exceptions extend `ArkormException`. They can carry:
 Use `getContext()` for structured logging and `toJSON()` for serialization:
 
 ```ts
-import { ArkormException } from 'arkormx';
+import { ArkormException } from 'arkormx'
 
 try {
-  await User.query().whereKey('id', 999).firstOrFail();
+  await User.query().whereKey('id', 999).firstOrFail()
 } catch (error) {
   if (error instanceof ArkormException) {
     logger.error({
       message: error.message,
       ...error.getContext(),
-    });
+    })
   }
 }
 ```
 
 ## Exception reference
 
-| Exception | Typical cause |
-| --- | --- |
-| `ModelNotFoundException` | `firstOrFail()`, `valueOrFail()`, `deleteOrFail()`, or a required update found no record. |
-| `QueryConstraintException` | A write is missing required constraints or a helper receives an invalid source. |
-| `QueryExecutionException` | The adapter or underlying database client rejected query execution. |
-| `UnsupportedAdapterFeatureException` | The active adapter cannot execute the requested query shape or feature. |
-| `RelationResolutionException` | A relationship name or relationship execution path cannot be resolved. |
-| `ScopeNotDefinedException` | `scope()` references a missing local scope. |
-| `UniqueConstraintResolutionException` | Arkorm cannot determine a unique key for a write or inserted identifier. |
-| `MissingDelegateException` | Prisma compatibility mode cannot resolve the requested delegate. |
+| Exception                             | Typical cause                                                                             |
+| ------------------------------------- | ----------------------------------------------------------------------------------------- |
+| `ModelNotFoundException`              | `firstOrFail()`, `valueOrFail()`, `deleteOrFail()`, or a required update found no record. |
+| `QueryConstraintException`            | A write is missing required constraints or a helper receives an invalid source.           |
+| `QueryExecutionException`             | The adapter or underlying database client rejected query execution.                       |
+| `UnsupportedAdapterFeatureException`  | The active adapter cannot execute the requested query shape or feature.                   |
+| `RelationResolutionException`         | A relationship name or relationship execution path cannot be resolved.                    |
+| `ScopeNotDefinedException`            | `scope()` references a missing local scope.                                               |
+| `UniqueConstraintResolutionException` | Arkorm cannot determine a unique key for a write or inserted identifier.                  |
+| `MissingDelegateException`            | Prisma compatibility mode cannot resolve the requested delegate.                          |
 
 ## Query execution failures
 
@@ -126,17 +126,17 @@ try {
 the adapter inspection that was available at execution time:
 
 ```ts
-import { QueryExecutionException } from 'arkormx';
+import { QueryExecutionException } from 'arkormx'
 
 try {
-  await User.query().where({ email }).get();
+  await User.query().where({ email }).get()
 } catch (error) {
   if (error instanceof QueryExecutionException) {
     logger.error({
       inspection: error.getInspection(),
       cause: error.cause,
       context: error.getContext(),
-    });
+    })
   }
 }
 ```

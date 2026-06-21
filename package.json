@@ -68,7 +68,9 @@
     "prepublishOnly": "pnpm barrel && pnpm build && pnpm test:all",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
-    "docs:preview": "vitepress preview docs"
+    "docs:preview": "vitepress preview docs",
+    "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
+    "format:check": "prettier --check \"**/*.{ts,tsx,js,jsx,json,md}\""
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -94,6 +96,8 @@
     "unrun": "^0.3.0",
     "vite-plugin-swc-transform": "^1.1.1",
     "vitepress": "^2.0.0-alpha.17",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.4",
     "vitest": "^4.1.8"
   },
   "engines": {

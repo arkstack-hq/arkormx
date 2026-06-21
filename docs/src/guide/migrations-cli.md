@@ -35,24 +35,24 @@ Migration classes implement `up()` and `down()`. Keep the two methods
 symmetrical so `migrate:rollback` can reverse the change.
 
 ```ts
-import { Migration, SchemaBuilder } from 'arkormx';
+import { Migration, SchemaBuilder } from 'arkormx'
 
 export class CreateUsersTableMigration extends Migration {
   public up(schema: SchemaBuilder): void {
     schema.createTable('users', (table) => {
-      table.id();
-      table.string('name');
-      table.string('email').unique();
-      table.boolean('isActive').default(true).map('is_active');
-      table.timestamps();
-      table.softDeletes();
+      table.id()
+      table.string('name')
+      table.string('email').unique()
+      table.boolean('isActive').default(true).map('is_active')
+      table.timestamps()
+      table.softDeletes()
 
-      table.index('email', 'users_email_index');
-    });
+      table.index('email', 'users_email_index')
+    })
   }
 
   public down(schema: SchemaBuilder): void {
-    schema.dropTable('users');
+    schema.dropTable('users')
   }
 }
 ```
@@ -63,14 +63,14 @@ Alter an existing table with `alterTable()`:
 export class AddBioToUsersMigration extends Migration {
   public up(schema: SchemaBuilder): void {
     schema.alterTable('users', (table) => {
-      table.text('bio').nullable();
-    });
+      table.text('bio').nullable()
+    })
   }
 
   public down(schema: SchemaBuilder): void {
     schema.alterTable('users', (table) => {
-      table.dropColumn('bio');
-    });
+      table.dropColumn('bio')
+    })
   }
 }
 ```
@@ -115,12 +115,12 @@ Define a composite primary key at table level:
 
 ```ts
 schema.createTable('memberships', (table) => {
-  table.integer('userId').map('user_id');
-  table.integer('teamId').map('team_id');
-  table.string('role');
+  table.integer('userId').map('user_id')
+  table.integer('teamId').map('team_id')
+  table.string('role')
 
-  table.primary(['userId', 'teamId'], 'membershipIdentity');
-});
+  table.primary(['userId', 'teamId'], 'membershipIdentity')
+})
 ```
 
 The optional second argument names the constraint. Composite primary keys are
@@ -129,8 +129,8 @@ constraints. They can also be added through `alterTable()`:
 
 ```ts
 schema.alterTable('assignments', (table) => {
-  table.primary(['accountId', 'code']);
-});
+  table.primary(['accountId', 'code'])
+})
 ```
 
 Composite keys must contain at least two unique, non-nullable columns and
@@ -143,10 +143,10 @@ Define a composite unique constraint with the same table-level syntax:
 
 ```ts
 schema.createTable('memberships', (table) => {
-  table.integer('teamId');
-  table.string('role');
-  table.unique(['teamId', 'role'], 'membershipRoleIdentity');
-});
+  table.integer('teamId')
+  table.string('role')
+  table.unique(['teamId', 'role'], 'membershipRoleIdentity')
+})
 ```
 
 The optional second argument names the constraint. Without a name, the
@@ -157,8 +157,8 @@ Composite unique constraints can also be added while altering a table:
 
 ```ts
 schema.alterTable('memberships', (table) => {
-  table.unique(['teamId', 'role']);
-});
+  table.unique(['teamId', 'role'])
+})
 ```
 
 Each composite unique constraint must contain at least two distinct,
@@ -168,20 +168,16 @@ be defined in the same table callback.
 Column modifiers can be chained from a column definition:
 
 ```ts
-table.uuid('publicId').primary({ default: 'uuid()' }).map('public_id');
+table.uuid('publicId').primary({ default: 'uuid()' }).map('public_id')
 
-table
-  .string('emailVerificationCode')
-  .nullable()
-  .unique()
-  .map('email_verification_code');
+table.string('emailVerificationCode').nullable().unique().map('email_verification_code')
 ```
 
 Available modifiers include `primary()`, `nullable()`, `unique()`, `default()`,
 `after()`, and `map()`. Table-level `index()` accepts one column or an array:
 
 ```ts
-table.index(['accountId', 'createdAt'], 'events_account_created_index');
+table.index(['accountId', 'createdAt'], 'events_account_created_index')
 ```
 
 Use logical model attribute names in migrations. `.map()` records the physical
@@ -197,11 +193,11 @@ attribute names; the second controls the physical database column names via
 `.map()`:
 
 ```ts
-table.timestamps(); // createdAt / updatedAt
-table.timestamps('snake'); // created_at / updated_at
-table.timestamps('camel', 'snake'); // createdAt mapped to created_at column
-table.timestamps({ createdAt: 'createdOn' });
-table.timestamps('camel', { createdAt: 'created_on' });
+table.timestamps() // createdAt / updatedAt
+table.timestamps('snake') // created_at / updated_at
+table.timestamps('camel', 'snake') // createdAt mapped to created_at column
+table.timestamps({ createdAt: 'createdOn' })
+table.timestamps('camel', { createdAt: 'created_on' })
 ```
 
 When the second argument is omitted no `.map()` is applied, so the attribute
@@ -221,7 +217,7 @@ work in a transaction so the disable, the work, and the re-enable all run on the
 failure:
 
 ```ts
-import { SchemaBuilder } from 'arkormx';
+import { SchemaBuilder } from 'arkormx'
 
 await SchemaBuilder.withoutForeignKeyConstraints(async () => {
   await User.factory()
@@ -230,8 +226,8 @@ await SchemaBuilder.withoutForeignKeyConstraints(async () => {
       { status: 'active', roleId: roleBySlug.get('owner')!.id },
       'tenantMemberships',
     )
-    .create();
-});
+    .create()
+})
 ```
 
 Constraints are restored automatically even if the callback throws.
@@ -242,10 +238,10 @@ share a connection with the work in between:
 
 ```ts
 await DB.transaction(async () => {
-  await SchemaBuilder.disableForeignKeyConstraints();
+  await SchemaBuilder.disableForeignKeyConstraints()
   // ... seed data ...
-  await SchemaBuilder.enableForeignKeyConstraints();
-});
+  await SchemaBuilder.enableForeignKeyConstraints()
+})
 ```
 
 ::: warning
@@ -305,22 +301,22 @@ Application config keeps one primary `paths.migrations` directory, but packages
 can add migration sources during boot:
 
 ```ts
-import { loadMigrationsFrom, registerMigrations } from 'arkormx';
-import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration';
+import { loadMigrationsFrom, registerMigrations } from 'arkormx'
+import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration'
 
-loadMigrationsFrom('./packages/audit/database/migrations');
-registerMigrations(CreateAuditTablesMigration);
+loadMigrationsFrom('./packages/audit/database/migrations')
+registerMigrations(CreateAuditTablesMigration)
 ```
 
 If you are using the `Arkorm` class as an extension surface, the same migration
 registration methods are available there:
 
 ```ts
-import { Arkorm } from 'arkormx';
-import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration';
+import { Arkorm } from 'arkormx'
+import { CreateAuditTablesMigration } from './database/migrations/CreateAuditTablesMigration'
 
-Arkorm.loadMigrationsFrom('./packages/audit/database/migrations');
-Arkorm.registerMigrations(CreateAuditTablesMigration);
+Arkorm.loadMigrationsFrom('./packages/audit/database/migrations')
+Arkorm.registerMigrations(CreateAuditTablesMigration)
 ```
 
 `migrate`, `migrate:fresh`, and `migrate:rollback` read the configured
@@ -375,16 +371,12 @@ Use `foreignKey` in table migrations to generate Prisma relation fields automati
 
 ```ts
 schema.createTable('tokens', (table) => {
-  table.id();
-  table.integer('userId');
-  table.string('value');
+  table.id()
+  table.integer('userId')
+  table.string('value')
 
-  table
-    .foreignKey('userId')
-    .references('users', 'id')
-    .onDelete('cascade')
-    .alias('TokenUser');
-});
+  table.foreignKey('userId').references('users', 'id').onDelete('cascade').alias('TokenUser')
+})
 ```
 
 This generates a relation field like:
@@ -401,7 +393,7 @@ table
   .references('users', 'id')
   .onDelete('cascade')
   .alias('TokenOwner')
-  .as('owner');
+  .as('owner')
 ```
 
 Generated relation field:
@@ -420,9 +412,9 @@ If the foreign key column is the latest column you added, you can also chain `fo
 
 ```ts
 schema.createTable('next_of_kins', (table) => {
-  table.id();
-  table.uuid('userId').foreign().references('users', 'id').onDelete('cascade');
-});
+  table.id()
+  table.uuid('userId').foreign().references('users', 'id').onDelete('cascade')
+})
 ```
 
 That generates a named relation on both sides by default:
@@ -441,10 +433,10 @@ For one-to-one relations, make the foreign key column `@unique`. If the relation
 
 ```ts
 schema.alterTable('users', (table) => {
-  table.uuid('nokId').nullable().unique().map('nok_id');
+  table.uuid('nokId').nullable().unique().map('nok_id')
 
-  table.foreignKey('nokId').references('next_of_kins', 'id').as('nextOfKin');
-});
+  table.foreignKey('nokId').references('next_of_kins', 'id').as('nextOfKin')
+})
 ```
 
 This generates a one-to-one relation shape:
@@ -470,7 +462,7 @@ table
   .references('users', 'id')
   .alias('TokenOwner')
   .inverseAlias('UserTokens')
-  .as('owner');
+  .as('owner')
 ```
 
 ## Enum columns
@@ -479,12 +471,9 @@ Use `table.enum(...)` when a field should map to a Prisma enum type.
 
 ```ts
 schema.createTable('orders', (table) => {
-  table.id();
-  table
-    .enum('status', ['PENDING', 'PAID', 'CANCELLED'])
-    .enumName('OrderStatus')
-    .default('PENDING');
-});
+  table.id()
+  table.enum('status', ['PENDING', 'PAID', 'CANCELLED']).enumName('OrderStatus').default('PENDING')
+})
 ```
 
 This generates both the model field and the Prisma enum block:
@@ -516,8 +505,8 @@ enum name instead of redefining its values:
 
 ```ts
 schema.alterTable('invoices', (table) => {
-  table.enum('status', 'OrderStatus').default('PAID');
-});
+  table.enum('status', 'OrderStatus').default('PAID')
+})
 ```
 
 When you reuse an enum by name, Arkorm expects the enum block to already exist
