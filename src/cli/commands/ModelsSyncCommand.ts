@@ -30,7 +30,6 @@ export class ModelsSyncCommand extends Command<CliApp> {
         : result.updated.map((path) => this.app.splitLogger('Updated', path))
 
     this.success('SUCCESS: Model sync completed with the following results:')
-
     ;[
       this.app.splitLogger(
         'Source',

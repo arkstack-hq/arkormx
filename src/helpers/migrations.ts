@@ -755,7 +755,6 @@ export const applyAlterTableOperation = (
       afterInsertIndex > 0 ? Math.min(afterInsertIndex + 1, defaultInsertIndex) : defaultInsertIndex
     bodyLines.splice(insertIndex, 0, fieldLine)
   })
-
   ;(operation.addIndexes ?? []).forEach((index) => {
     const indexLine = buildIndexLine(index)
     const exists = bodyLines.some((line) => line.trim() === indexLine.trim())
