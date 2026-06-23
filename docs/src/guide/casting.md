@@ -11,7 +11,8 @@ Supported cast types:
 - `string`
 - `number`
 - `boolean`
-- `date`
+- `date` — casts to a native JavaScript `Date`.
+- `datetime` — casts to a `DateTime` instance from `@h3ravel/support`.
 - `json`
 - `array`
 
@@ -23,9 +24,26 @@ export class User extends Model {
     isActive: 'boolean',
     profile: 'json',
     createdAt: 'date',
+    publishedAt: 'datetime',
     tags: 'array',
   } as const
 }
+```
+
+The `datetime` cast reads values into a `DateTime` (a dayjs-backed wrapper) for
+ergonomic date manipulation, and writes them back as a native `Date` for
+persistence. Import `DateTime` from `@h3ravel/support` when you need to
+construct or type values:
+
+```ts
+import { DateTime } from '@h3ravel/support'
+
+const user = await User.query().findOrFail(1)
+const publishedAt = user.getAttribute('publishedAt') as DateTime
+publishedAt.add(7, 'day') // DateTime helpers are available
+
+user.setAttribute('publishedAt', DateTime.now())
+await user.save() // persisted as a Date
 ```
 
 ## Custom casts

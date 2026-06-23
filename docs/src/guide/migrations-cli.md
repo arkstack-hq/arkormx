@@ -103,9 +103,11 @@ constraints](#toggling-foreign-key-constraints)):
 | `uuid(name)`                                         | UUID column. Chain `primary()` for a UUID primary key. |
 | `string(name)` / `text(name)`                        | Short or long text columns.                            |
 | `integer(name)` / `bigInteger(name)` / `float(name)` | Numeric columns.                                       |
+| `decimal(name, precision?, scale?)`                  | Fixed-precision decimal (`numeric`), defaults `8, 2`.  |
 | `boolean(name)`                                      | Boolean column.                                        |
 | `json(name)`                                         | JSON column.                                           |
-| `date(name)` / `timestamp(name)`                     | Date and timestamp columns.                            |
+| `date(name)` / `timestamp(name)`                     | Date and timestamp (`timestamptz`) columns.            |
+| `dateTime(name)`                                     | Timestamp without time zone.                           |
 | `enum(name, valuesOrEnumName)`                       | Define or reuse an enum.                               |
 | `timestamps(casing?, mapCasing?)`                    | Add `createdAt` and `updatedAt` (casing configurable). |
 | `softDeletes(column?)`                               | Add a nullable soft-delete timestamp.                  |

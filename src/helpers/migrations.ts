@@ -69,6 +69,7 @@ export const resolvePrismaType = (column: SchemaColumn): string => {
   if (column.type === 'integer') return 'Int'
   if (column.type === 'bigInteger') return 'BigInt'
   if (column.type === 'float') return 'Float'
+  if (column.type === 'decimal') return 'Decimal'
   if (column.type === 'boolean') return 'Boolean'
   if (column.type === 'json') return 'Json'
 
@@ -225,13 +226,17 @@ export const buildFieldLine = (column: SchemaColumn): string => {
       ? ` @map("${column.map.replace(/"/g, '\\"')}")`
       : ''
   const updatedAt = column.updatedAt ? ' @updatedAt' : ''
+  const nativeType =
+    column.type === 'decimal'
+      ? ` @db.Decimal(${column.precision ?? 8}, ${column.scale ?? 2})`
+      : ''
   const defaultValue =
     column.type === 'enum'
       ? formatEnumDefaultValue(column.default)
       : (column.primaryKeyGeneration?.prismaDefault ?? formatDefaultValue(column.default))
   const defaultSuffix = defaultValue ? ` ${defaultValue}` : ''
 
-  return `  ${column.name} ${scalar}${nullable}${primary}${unique}${defaultSuffix}${updatedAt}${mapped}`
+  return `  ${column.name} ${scalar}${nullable}${primary}${unique}${defaultSuffix}${updatedAt}${mapped}${nativeType}`
 }
 
 /**

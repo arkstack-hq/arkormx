@@ -333,6 +333,24 @@ export class TableBuilder {
   }
 
   /**
+   * Defines a fixed-precision decimal column in the table.
+   *
+   * @param name      The name of the decimal column.
+   * @param precision The total number of digits. Defaults to 8.
+   * @param scale     The number of digits to the right of the point. Defaults to 2.
+   * @param options   Additional options for the decimal column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public decimal(
+    name: string,
+    precision = 8,
+    scale = 2,
+    options: Partial<SchemaColumn> = {},
+  ): this {
+    return this.column(name, 'decimal', { precision, scale, ...options })
+  }
+
+  /**
    * Marks a column as unique in the table.
    *
    * @param name Optional explicit column name.
@@ -407,6 +425,17 @@ export class TableBuilder {
    */
   public date(name: string, options: Partial<SchemaColumn> = {}): this {
     return this.column(name, 'date', options)
+  }
+
+  /**
+   * Defines a date-time column in the table (timestamp without time zone).
+   *
+   * @param name      The name of the date-time column.
+   * @param options   Additional options for the date-time column.
+   * @returns         The current TableBuilder instance for chaining.
+   */
+  public dateTime(name: string, options: Partial<SchemaColumn> = {}): this {
+    return this.column(name, 'dateTime', options)
   }
 
   /**
@@ -756,6 +785,8 @@ export class TableBuilder {
       after: options.after,
       default: options.default,
       updatedAt: options.updatedAt,
+      precision: options.precision,
+      scale: options.scale,
       primaryKeyGeneration: options.primaryKeyGeneration,
     })
     const column = this.columns[this.columns.length - 1]

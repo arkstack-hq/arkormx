@@ -1,7 +1,7 @@
 import { PrismaClient } from '@prisma/client'
 import type { DatabaseAdapter } from './adapter'
 
-export type CastType = 'string' | 'number' | 'boolean' | 'date' | 'json' | 'array'
+export type CastType = 'string' | 'number' | 'boolean' | 'date' | 'datetime' | 'json' | 'array'
 
 export interface CastHandler<T = unknown> {
   get: (value: unknown) => T

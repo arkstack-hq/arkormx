@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 
+import { DateTime } from '@h3ravel/support'
 import { resolveCast } from '../../src/casts'
 import { User } from './helpers/core-fixtures'
 
@@ -56,6 +57,28 @@ describe('Casts', () => {
     const existingDate = new Date('2026-03-08T00:00:00.000Z')
     expect(cast.get(existingDate)).toBe(existingDate)
     expect(cast.set(existingDate)).toBe(existingDate)
+  })
+
+  it('resolves datetime cast to a DateTime on get and a Date on set', () => {
+    const cast = resolveCast('datetime')
+
+    const fromString = cast.get('2026-03-07T12:00:00.000Z') as DateTime
+    expect(fromString).toBeInstanceOf(DateTime)
+    expect(fromString.toISOString()).toBe('2026-03-07T12:00:00.000Z')
+
+    // An existing DateTime is returned untouched on get.
+    expect(cast.get(fromString)).toBe(fromString)
+
+    // set normalises any input down to a JS Date for persistence.
+    const persistedFromDateTime = cast.set(fromString) as Date
+    expect(persistedFromDateTime).toBeInstanceOf(Date)
+    expect(persistedFromDateTime.toISOString()).toBe('2026-03-07T12:00:00.000Z')
+
+    const existingDate = new Date('2026-03-08T00:00:00.000Z')
+    expect(cast.set(existingDate)).toBe(existingDate)
+
+    expect(cast.get(null)).toBeNull()
+    expect(cast.set(undefined)).toBeUndefined()
   })
 
   it('resolves json cast get/set with graceful parse fallback', () => {
