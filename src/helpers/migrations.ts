@@ -227,9 +227,7 @@ export const buildFieldLine = (column: SchemaColumn): string => {
       : ''
   const updatedAt = column.updatedAt ? ' @updatedAt' : ''
   const nativeType =
-    column.type === 'decimal'
-      ? ` @db.Decimal(${column.precision ?? 8}, ${column.scale ?? 2})`
-      : ''
+    column.type === 'decimal' ? ` @db.Decimal(${column.precision ?? 8}, ${column.scale ?? 2})` : ''
   const defaultValue =
     column.type === 'enum'
       ? formatEnumDefaultValue(column.default)
