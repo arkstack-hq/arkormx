@@ -504,9 +504,11 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (column.type === 'integer') return 'integer'
     if (column.type === 'bigInteger') return 'bigint'
     if (column.type === 'float') return 'double precision'
+    if (column.type === 'decimal') return `numeric(${column.precision ?? 8}, ${column.scale ?? 2})`
     if (column.type === 'boolean') return 'boolean'
     if (column.type === 'json') return 'jsonb'
     if (column.type === 'date') return 'date'
+    if (column.type === 'dateTime') return 'timestamp'
 
     return 'timestamptz'
   }

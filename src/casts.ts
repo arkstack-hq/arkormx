@@ -1,5 +1,7 @@
 import type { CastDefinition, CastHandler, CastType } from './types/core'
 
+import { DateTime } from '@h3ravel/support'
+
 const builtinCasts: Record<CastType, CastHandler> = {
   string: {
     get: (value) => (value == null ? value : String(value)),
@@ -23,6 +25,20 @@ const builtinCasts: Record<CastType, CastHandler> = {
       if (value == null || value instanceof Date) return value
 
       return new Date(String(value))
+    },
+  },
+  datetime: {
+    get: (value) => {
+      if (value == null || value instanceof DateTime) return value
+
+      return new DateTime(value as ConstructorParameters<typeof DateTime>[0])
+    },
+    set: (value) => {
+      if (value == null || value instanceof Date) return value
+
+      if (value instanceof DateTime) return value.toDate()
+
+      return new DateTime(value as ConstructorParameters<typeof DateTime>[0]).toDate()
     },
   },
   json: {

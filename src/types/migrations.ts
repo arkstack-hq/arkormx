@@ -7,9 +7,11 @@ export type SchemaColumnType =
   | 'integer'
   | 'bigInteger'
   | 'float'
+  | 'decimal'
   | 'boolean'
   | 'json'
   | 'date'
+  | 'dateTime'
   | 'timestamp'
 
 export interface PrimaryKeyGeneration {
@@ -38,6 +40,10 @@ export interface SchemaColumn {
   after?: string
   default?: unknown
   updatedAt?: boolean
+  /** Total number of digits for `decimal` columns. */
+  precision?: number
+  /** Number of digits to the right of the decimal point for `decimal` columns. */
+  scale?: number
   primaryKeyGeneration?: PrimaryKeyGeneration
 }
 

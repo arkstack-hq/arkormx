@@ -99,6 +99,56 @@ describe('PostgreSQL Kysely migration backend', () => {
     }
   })
 
+  it('maps decimal and dateTime columns to numeric and timestamp types', async () => {
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const tableName = `arkorm_types_test_${suffix}`
+
+    try {
+      await adapter.executeSchemaOperations?.([
+        {
+          type: 'createTable',
+          table: tableName,
+          columns: [
+            { name: 'id', type: 'id', primary: true },
+            { name: 'price', type: 'decimal', precision: 10, scale: 4 },
+            { name: 'publishedAt', type: 'dateTime', nullable: true },
+          ],
+          indexes: [],
+          foreignKeys: [],
+        },
+      ])
+
+      const columnsResult = await sql<{
+        column_name: string
+        data_type: string
+        numeric_precision: number | null
+        numeric_scale: number | null
+      }>`
+                select column_name, data_type, numeric_precision, numeric_scale
+                from information_schema.columns
+                where table_name = ${tableName}
+                  and column_name in ('price', 'publishedAt')
+                order by column_name asc
+            `.execute(db)
+
+      const byName = Object.fromEntries(columnsResult.rows.map((row) => [row.column_name, row]))
+
+      expect(byName.price).toMatchObject({
+        data_type: 'numeric',
+        numeric_precision: 10,
+        numeric_scale: 4,
+      })
+      expect(byName.publishedAt?.data_type).toBe('timestamp without time zone')
+    } finally {
+      await adapter.executeSchemaOperations?.([
+        {
+          type: 'dropTable',
+          table: tableName,
+        },
+      ])
+    }
+  })
+
   it('applies generated defaults for uuid-backed primary keys', async () => {
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const tableName = `arkorm_uuid_default_${suffix}`
