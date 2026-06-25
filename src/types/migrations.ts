@@ -88,6 +88,8 @@ export interface SchemaTableAlterOperation {
   type: 'alterTable'
   table: string
   addColumns: SchemaColumn[]
+  /** Columns whose definition (type, nullability, default, enum values) is being redefined in place. */
+  changeColumns?: SchemaColumn[]
   dropColumns: string[]
   addIndexes: SchemaIndex[]
   addForeignKeys: SchemaForeignKey[]
@@ -134,6 +136,7 @@ export interface PrismaMigrationWorkflowOptions extends PrismaSchemaSyncOptions 
 export type MigrationInstanceLike = {
   up: (...args: any[]) => Promise<void> | void
   down: (...args: any[]) => Promise<void> | void
+  done?: (direction: 'up' | 'down') => Promise<void> | void
 }
 
 export interface AppliedMigrationEntry {

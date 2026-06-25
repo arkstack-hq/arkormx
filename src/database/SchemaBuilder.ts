@@ -151,6 +151,7 @@ export class SchemaBuilder {
       type: 'alterTable',
       table,
       addColumns: builder.getColumns(),
+      changeColumns: builder.getChangeColumns(),
       dropColumns: builder.getDropColumns(),
       addIndexes: builder.getIndexes(),
       addForeignKeys: builder.getForeignKeys(),
@@ -209,6 +210,10 @@ export class SchemaBuilder {
         return {
           ...operation,
           addColumns: operation.addColumns.map((column) => ({
+            ...column,
+            enumValues: column.enumValues ? [...column.enumValues] : undefined,
+          })),
+          changeColumns: operation.changeColumns?.map((column) => ({
             ...column,
             enumValues: column.enumValues ? [...column.enumValues] : undefined,
           })),

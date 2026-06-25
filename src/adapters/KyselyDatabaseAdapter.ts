@@ -14,8 +14,8 @@ import type {
   DeleteSpec,
   InsertManySpec,
   InsertSpec,
-  QueryComparisonCondition,
   QueryColumnComparisonCondition,
+  QueryComparisonCondition,
   QueryCondition,
   QueryDayCondition,
   QueryExistsCondition,
@@ -27,9 +27,9 @@ import type {
   QueryNotCondition,
   QueryOrderBy,
   QueryRawCondition,
-  QueryTimeCondition,
   QuerySelectColumn,
   QueryTarget,
+  QueryTimeCondition,
   RawQuerySpec,
   RelationAggregateSpec,
   RelationFilterSpec,
@@ -118,7 +118,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
   public constructor(
     private readonly db: KyselyExecutor,
     private readonly mapping: KyselyTableMapping = {},
-  ) {}
+  ) { }
 
   private resolveConfiguredDatabaseName(connectionString: string): string {
     const parsed = new URL(connectionString)
@@ -561,13 +561,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     const localColumn = this.resolveSchemaColumnName(foreignKey.column, columns)
     const referencedTable = this.resolveMappedTable(foreignKey.referencesTable)
     const action = foreignKey.onDelete
-      ? ` on delete ${
-          foreignKey.onDelete === 'setNull'
-            ? 'set null'
-            : foreignKey.onDelete === 'setDefault'
-              ? 'set default'
-              : foreignKey.onDelete
-        }`
+      ? ` on delete ${foreignKey.onDelete === 'setNull'
+        ? 'set null'
+        : foreignKey.onDelete === 'setDefault'
+          ? 'set default'
+          : foreignKey.onDelete
+      }`
       : ''
 
     return `constraint ${this.quoteIdentifier(this.resolveSchemaForeignKeyName(table, foreignKey))} foreign key (${this.quoteIdentifier(localColumn)}) references ${this.quoteIdentifier(referencedTable)} (${this.quoteIdentifier(foreignKey.referencesColumn)})${action}`
@@ -696,6 +695,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       )
     }
 
+    for (const column of operation.changeColumns ?? [])
+      await this.executeChangeColumn(table, column, executor)
+
     for (const column of operation.dropColumns) {
       await this.executeRawStatement(
         `alter table ${this.quoteIdentifier(table)} drop column if exists ${this.quoteIdentifier(column)}`,
@@ -727,6 +729,98 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     for (const index of operation.addIndexes ?? [])
       await this.executeRawStatement(
         this.buildSchemaIndexStatement(table, index, operation.addColumns),
+        executor,
+      )
+  }
+
+  private async enumTypeExists(enumName: string, executor: KyselyExecutor): Promise<boolean> {
+    const result = await sql<{ exists: boolean }>`
+            select exists(select 1 from pg_type where typname = ${enumName}) as exists
+        `.execute(executor)
+
+    return Boolean((result.rows[0] as { exists?: boolean } | undefined)?.exists)
+  }
+
+  /**
+   * Redefine an existing column in place using ALTER COLUMN statements: the
+   * column type (recreating the enum type when enum values change), nullability,
+   * default, and a conventionally-named unique constraint.
+   * 
+   * @param table 
+   * @param column 
+   * @param executor 
+   */
+  private async executeChangeColumn(
+    table: string,
+    column: SchemaColumn,
+    executor: KyselyExecutor,
+  ): Promise<void> {
+    const quotedTable = this.quoteIdentifier(table)
+    const physicalName = column.map ?? column.name
+    const physical = this.quoteIdentifier(physicalName)
+
+    if (column.type === 'enum') {
+      const enumName = this.resolveSchemaEnumName(table, column)
+      const values = column.enumValues ?? []
+      if (values.length === 0)
+        throw new ArkormException(
+          `Enum column [${column.name}] requires enum values to change its definition.`,
+        )
+
+      const quotedEnum = this.quoteIdentifier(enumName)
+      const enumLiterals = values.map((value) => this.quoteLiteral(value)).join(', ')
+
+      if (await this.enumTypeExists(enumName, executor)) {
+        // Recreate the enum type so added/removed values take effect (avoids the
+        // non-transactional ALTER TYPE ... ADD VALUE), then re-point the column.
+        const tempEnum = this.quoteIdentifier(`${enumName}__arkorm_change`)
+        await this.executeRawStatement(`drop type if exists ${tempEnum}`, executor)
+        await this.executeRawStatement(`alter type ${quotedEnum} rename to ${tempEnum}`, executor)
+        await this.executeRawStatement(`create type ${quotedEnum} as enum (${enumLiterals})`, executor)
+        await this.executeRawStatement(
+          `alter table ${quotedTable} alter column ${physical} type ${quotedEnum} using ${physical}::text::${quotedEnum}`,
+          executor,
+        )
+        await this.executeRawStatement(`drop type ${tempEnum}`, executor)
+      } else {
+        await this.executeRawStatement(`create type ${quotedEnum} as enum (${enumLiterals})`, executor)
+        await this.executeRawStatement(
+          `alter table ${quotedTable} alter column ${physical} type ${quotedEnum} using ${physical}::text::${quotedEnum}`,
+          executor,
+        )
+      }
+    } else {
+      const targetType = this.resolveSchemaColumnType(table, column)
+      await this.executeRawStatement(
+        `alter table ${quotedTable} alter column ${physical} type ${targetType} using ${physical}::${targetType}`,
+        executor,
+      )
+    }
+
+    await this.executeRawStatement(
+      column.nullable
+        ? `alter table ${quotedTable} alter column ${physical} drop not null`
+        : `alter table ${quotedTable} alter column ${physical} set not null`,
+      executor,
+    )
+
+    const defaultValue = this.resolveSchemaColumnDefault(column)
+    await this.executeRawStatement(
+      defaultValue
+        ? `alter table ${quotedTable} alter column ${physical} set default ${defaultValue}`
+        : `alter table ${quotedTable} alter column ${physical} drop default`,
+      executor,
+    )
+
+    // Re-apply (or refresh) the conventional single-column unique constraint.
+    const constraint = this.quoteIdentifier(`${table}_${physicalName}_key`)
+    await this.executeRawStatement(
+      `alter table ${quotedTable} drop constraint if exists ${constraint}`,
+      executor,
+    )
+    if (column.unique)
+      await this.executeRawStatement(
+        `alter table ${quotedTable} add constraint ${constraint} unique (${physical})`,
         executor,
       )
   }
@@ -1966,13 +2060,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             `
         : sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-                  columns.map((column) => sql.id(column)),
-                  sql`, `,
-                )})
+          columns.map((column) => sql.id(column)),
+          sql`, `,
+        )})
                 values (${sql.join(
-                  columns.map((column) => values[column]),
-                  sql`, `,
-                )})
+          columns.map((column) => values[column]),
+          sql`, `,
+        )})
                 returning *
             `
 
@@ -2032,9 +2126,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-              columns.map((column) => sql.id(column)),
-              sql`, `,
-            )})
+      columns.map((column) => sql.id(column)),
+      sql`, `,
+    )})
             values ${values}
             ${spec.ignoreDuplicates ? sql` on conflict do nothing` : sql``}
             returning ${sql.id(this.resolvePrimaryKey(spec.target))}
@@ -2095,15 +2189,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       updateColumns.length === 0
         ? sql`do nothing`
         : sql`do update set ${sql.join(
-            updateColumns.map((column) => sql`${sql.id(column)} = excluded.${sql.id(column)}`),
-            sql`, `,
-          )}`
+          updateColumns.map((column) => sql`${sql.id(column)} = excluded.${sql.id(column)}`),
+          sql`, `,
+        )}`
 
     const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-              columns.map((column) => sql.id(column)),
-              sql`, `,
-            )})
+      columns.map((column) => sql.id(column)),
+      sql`, `,
+    )})
             values ${values}
             on conflict (${conflictTarget}) ${conflictAction}
         `

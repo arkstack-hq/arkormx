@@ -26,4 +26,13 @@ export abstract class Migration {
    * @param schema A SchemaBuilder instance.
    */
   public abstract down(schema: SchemaBuilder): Promise<void> | void
+
+  /**
+   * Optional lifecycle hook invoked after the migration's schema operations
+   * have been applied to the database, for either direction. Override it to run
+   * extra logic such as seeding or data backfills once the schema is in place.
+   *
+   * @param direction The direction that just ran (`'up'` or `'down'`).
+   */
+  public done(_direction: 'up' | 'down'): Promise<void> | void {}
 }
