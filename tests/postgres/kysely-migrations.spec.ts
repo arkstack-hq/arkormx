@@ -209,7 +209,11 @@ describe('PostgreSQL Kysely migration backend', () => {
                 order by enumsortorder asc
             `.execute(db)
 
-      expect(enumValues.rows.map((row) => row.enumlabel)).toEqual(['draft', 'published', 'archived'])
+      expect(enumValues.rows.map((row) => row.enumlabel)).toEqual([
+        'draft',
+        'published',
+        'archived',
+      ])
     } finally {
       await adapter.executeSchemaOperations?.([{ type: 'dropTable', table: tableName }])
     }
