@@ -149,6 +149,72 @@ describe('PostgreSQL Kysely migration backend', () => {
     }
   })
 
+  it('redefines columns in place via changeColumns (type, default, nullability, enum values)', async () => {
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const tableName = `arkorm_change_test_${suffix}`
+    const enumName = `${tableName}_role_enum`
+
+    try {
+      await adapter.executeSchemaOperations?.([
+        {
+          type: 'createTable',
+          table: tableName,
+          columns: [
+            { name: 'id', type: 'id', primary: true },
+            { name: 'status', type: 'string', nullable: true },
+            { name: 'amount', type: 'integer', nullable: true },
+            { name: 'role', type: 'enum', enumValues: ['draft', 'published'] },
+          ],
+          indexes: [],
+          foreignKeys: [],
+        },
+        {
+          type: 'alterTable',
+          table: tableName,
+          addColumns: [],
+          changeColumns: [
+            { name: 'status', type: 'string', nullable: false, default: 'active' },
+            { name: 'amount', type: 'bigInteger', nullable: true },
+            { name: 'role', type: 'enum', enumValues: ['draft', 'published', 'archived'] },
+          ],
+          dropColumns: [],
+          addIndexes: [],
+          addForeignKeys: [],
+        },
+      ])
+
+      const columnsResult = await sql<{
+        column_name: string
+        data_type: string
+        is_nullable: string
+        column_default: string | null
+      }>`
+                select column_name, data_type, is_nullable, column_default
+                from information_schema.columns
+                where table_name = ${tableName}
+                  and column_name in ('status', 'amount')
+                order by column_name asc
+            `.execute(db)
+      const byName = Object.fromEntries(columnsResult.rows.map((row) => [row.column_name, row]))
+
+      expect(byName.amount?.data_type).toBe('bigint')
+      expect(byName.status?.is_nullable).toBe('NO')
+      expect(byName.status?.column_default).toContain('active')
+
+      const enumValues = await sql<{ enumlabel: string }>`
+                select enumlabel
+                from pg_enum
+                join pg_type on pg_type.oid = pg_enum.enumtypid
+                where pg_type.typname = ${enumName}
+                order by enumsortorder asc
+            `.execute(db)
+
+      expect(enumValues.rows.map((row) => row.enumlabel)).toEqual(['draft', 'published', 'archived'])
+    } finally {
+      await adapter.executeSchemaOperations?.([{ type: 'dropTable', table: tableName }])
+    }
+  })
+
   it('applies generated defaults for uuid-backed primary keys', async () => {
     const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
     const tableName = `arkorm_uuid_default_${suffix}`

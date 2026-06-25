@@ -130,6 +130,17 @@ export class EnumBuilder {
 
     return this
   }
+
+  /**
+   * Marks the enum column as an in-place change to an existing column.
+   *
+   * @returns
+   */
+  public change(): this {
+    this.tableBuilder.change(this.columnName)
+
+    return this
+  }
 }
 
 /**
@@ -142,6 +153,7 @@ export class EnumBuilder {
 export class TableBuilder {
   private readonly columns: SchemaColumn[] = []
   private readonly dropColumnNames: string[] = []
+  private readonly changeColumnNames = new Set<string>()
   private readonly indexes: SchemaIndex[] = []
   private readonly foreignKeys: SchemaForeignKey[] = []
   private readonly compositeUniqueConstraints: SchemaUniqueConstraint[] = []
@@ -574,6 +586,26 @@ export class TableBuilder {
   }
 
   /**
+   * Marks a (re)defined column as a change to an existing column rather than an
+   * addition. Use it at the end of a normal column chain inside `alterTable` to
+   * redefine the column's type, nullability, default, or enum values in place:
+   *
+   * ```ts
+   * table.string('status').default('active').change()
+   * table.enum('role', ['admin', 'user', 'guest']).change()
+   * ```
+   *
+   * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
+   * @returns          The current TableBuilder instance for chaining.
+   */
+  public change(columnName?: string): this {
+    const column = this.resolveColumn(columnName)
+    this.changeColumnNames.add(column.name)
+
+    return this
+  }
+
+  /**
    * Marks a column as nullable.
    *
    * @param columnName Optional explicit column name. When omitted, applies to the latest defined column.
@@ -705,10 +737,26 @@ export class TableBuilder {
    * @returns
    */
   public getColumns(): SchemaColumn[] {
-    return this.columns.map((column) => ({
-      ...column,
-      enumValues: column.enumValues ? [...column.enumValues] : undefined,
-    }))
+    return this.columns
+      .filter((column) => !this.changeColumnNames.has(column.name))
+      .map((column) => ({
+        ...column,
+        enumValues: column.enumValues ? [...column.enumValues] : undefined,
+      }))
+  }
+
+  /**
+   * Returns a deep copy of the columns flagged for in-place change via `change()`.
+   *
+   * @returns
+   */
+  public getChangeColumns(): SchemaColumn[] {
+    return this.columns
+      .filter((column) => this.changeColumnNames.has(column.name))
+      .map((column) => ({
+        ...column,
+        enumValues: column.enumValues ? [...column.enumValues] : undefined,
+      }))
   }
 
   /**

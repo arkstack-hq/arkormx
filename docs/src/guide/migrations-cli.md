@@ -79,6 +79,76 @@ export class AddBioToUsersMigration extends Migration {
 records operations; the active migration backend decides whether to execute
 them against the database or apply them to Prisma schema text.
 
+### Changing existing columns
+
+Redefine a column in place by chaining `.change()` at the end of a normal column
+definition inside `alterTable()`. The redefined type, nullability, default, and
+(for enums) values replace the existing column:
+
+```ts
+export class TweakUsersMigration extends Migration {
+  public up(schema: SchemaBuilder): void {
+    schema.alterTable('users', (table) => {
+      table.string('status').default('active').change() // type / default / not-null
+      table.bigInteger('points').nullable().change() // widen integer -> bigint
+      table.enum('role', ['admin', 'editor', 'viewer']).change() // change enum values
+    })
+  }
+
+  public down(schema: SchemaBuilder): void {
+    schema.alterTable('users', (table) => {
+      table.string('status').nullable().change()
+    })
+  }
+}
+```
+
+On the database-backed (Kysely) adapter, `.change()` emits `ALTER COLUMN`
+statements for the type (with a `USING` cast), nullability, and default, and
+re-applies a single-column unique constraint when `.unique()` is chained. Enum
+value changes recreate the enum type (rename → create → re-point the column →
+drop), which keeps the change transaction-safe. On the Prisma compatibility path
+the matching field line in `schema.prisma` is rewritten.
+
+Notes and limits: `.change()` redefines the full column signature, so include
+every modifier you want to keep (an omitted `.default()` drops the default, an
+omitted `.nullable()` makes it `NOT NULL`). Type conversions that PostgreSQL
+cannot cast implicitly (e.g. text → integer with non-numeric data, or setting
+`NOT NULL` on a column that contains nulls) still require a manual data fix or a
+raw migration. Dropping a unique constraint or index is done with explicit
+operations rather than through `.change()`.
+
+### Post-migration hook
+
+Besides `up()` and `down()`, a migration may define an optional
+`done(direction)` hook. It runs after the migration's schema operations have
+been applied to the database, for whichever direction ran — useful for seeding
+or data backfills once the schema is in place:
+
+```ts
+export class CreateRolesMigration extends Migration {
+  public up(schema: SchemaBuilder): void {
+    schema.createTable('roles', (table) => {
+      table.id()
+      table.string('slug').unique()
+    })
+  }
+
+  public down(schema: SchemaBuilder): void {
+    schema.dropTable('roles')
+  }
+
+  public async done(direction: 'up' | 'down'): Promise<void> {
+    if (direction === 'up') {
+      await DB.table('roles').insert([{ slug: 'owner' }, { slug: 'member' }])
+    }
+  }
+}
+```
+
+`done()` fires on the database-backed migration path (`migrate`, `migrate:fresh`,
+and `migrate:rollback`) once the schema operations succeed.
+
 ## Schema builder reference
 
 `SchemaBuilder` supports:
@@ -112,6 +182,8 @@ constraints](#toggling-foreign-key-constraints)):
 | `timestamps(casing?, mapCasing?)`                    | Add `createdAt` and `updatedAt` (casing configurable). |
 | `softDeletes(column?)`                               | Add a nullable soft-delete timestamp.                  |
 | `morphs(name)` / `nullableMorphs(name)`              | Add polymorphic type and id columns.                   |
+| `change()`                                           | Redefine the chained column in place (see above).      |
+| `dropColumn(name)`                                   | Drop a column (in `alterTable`).                       |
 
 Define a composite primary key at table level:
 

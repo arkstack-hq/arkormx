@@ -7,6 +7,7 @@ import {
   SchemaForeignKey,
   SchemaForeignKeyAction,
   SchemaIndex,
+  MigrationInstanceLike,
   SchemaOperation,
   SchemaPrimaryKey,
   SchemaTableAlterOperation,
@@ -18,7 +19,6 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import type { DatabaseAdapter } from 'src/types/adapter'
-import { Migration } from '../database/Migration'
 import { SchemaBuilder } from '../database/SchemaBuilder'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
@@ -722,13 +722,22 @@ export const applyAlterTableOperation = (
   if (!model)
     throw new ArkormException(`Prisma model for table [${operation.table}] was not found.`)
 
-  const schemaWithEnums = ensureEnumBlocks(schema, operation.addColumns)
+  const enumColumns = [...operation.addColumns, ...(operation.changeColumns ?? [])]
+  const schemaWithEnums = ensureEnumBlocks(schema, enumColumns)
   const refreshedModel = findModelBlock(schemaWithEnums, operation.table)
   if (!refreshedModel)
     throw new ArkormException(`Prisma model for table [${operation.table}] was not found.`)
 
   let block = refreshedModel.block
   const bodyLines = block.split('\n')
+
+  ;(operation.changeColumns ?? []).forEach((column) => {
+    const fieldLine = buildFieldLine(column)
+    const columnRegex = new RegExp(`^\\s*${escapeRegex(column.name)}\\s+`)
+    const index = bodyLines.findIndex((line) => columnRegex.test(line))
+    if (index >= 0) bodyLines.splice(index, 1, fieldLine)
+    else bodyLines.splice(Math.max(1, bodyLines.length - 1), 0, fieldLine)
+  })
 
   operation.dropColumns.forEach((column) => {
     const columnRegex = new RegExp(`^\\s*${escapeRegex(column)}\\s+`)
@@ -1026,7 +1035,7 @@ export const generateMigrationFile = (
  * @returns         A promise that resolves to an array of schema operations that would be performed.
  */
 export const getMigrationPlan = async (
-  migration: Migration | (new () => Migration),
+  migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
   direction: 'up' | 'down' = 'up',
 ): Promise<SchemaOperation[]> => {
   const instance = typeof migration === 'function' ? new migration() : migration
@@ -1068,30 +1077,34 @@ export const stripPrismaSchemaModelsAndEnums = (schema: string): string => {
 
 export const applyMigrationToDatabase = async (
   adapter: DatabaseAdapter,
-  migration: Migration | (new () => Migration),
+  migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
 ): Promise<{ operations: SchemaOperation[] }> => {
   if (!supportsDatabaseMigrationExecution(adapter))
     throw new ArkormException(
       'The configured adapter does not support database-backed migration execution.',
     )
 
-  const operations = await getMigrationPlan(migration, 'up')
+  const instance = typeof migration === 'function' ? new migration() : migration
+  const operations = await getMigrationPlan(instance, 'up')
   await adapter.executeSchemaOperations(operations)
+  await instance.done?.('up')
 
   return { operations }
 }
 
 export const applyMigrationRollbackToDatabase = async (
   adapter: DatabaseAdapter,
-  migration: Migration | (new () => Migration),
+  migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
 ): Promise<{ operations: SchemaOperation[] }> => {
   if (!supportsDatabaseMigrationExecution(adapter))
     throw new ArkormException(
       'The configured adapter does not support database-backed migration execution.',
     )
 
-  const operations = await getMigrationPlan(migration, 'down')
+  const instance = typeof migration === 'function' ? new migration() : migration
+  const operations = await getMigrationPlan(instance, 'down')
   await adapter.executeSchemaOperations(operations)
+  await instance.done?.('down')
 
   return { operations }
 }
@@ -1106,7 +1119,7 @@ export const applyMigrationRollbackToDatabase = async (
  * @returns         A promise that resolves to an object containing the updated schema, schema path, and list of operations applied.
  */
 export const applyMigrationToPrismaSchema = async (
-  migration: Migration | (new () => Migration),
+  migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
   options: PrismaSchemaSyncOptions = {},
 ): Promise<{ schema: string; schemaPath: string; operations: SchemaOperation[] }> => {
   const schemaPath = options.schemaPath ?? join(process.cwd(), 'prisma', 'schema.prisma')
@@ -1130,7 +1143,7 @@ export const applyMigrationToPrismaSchema = async (
  * @returns         A promise that resolves to an object containing the updated schema, schema path, and rollback operations applied.
  */
 export const applyMigrationRollbackToPrismaSchema = async (
-  migration: Migration | (new () => Migration),
+  migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
   options: PrismaSchemaSyncOptions = {},
 ): Promise<{ schema: string; schemaPath: string; operations: SchemaOperation[] }> => {
   const schemaPath = options.schemaPath ?? join(process.cwd(), 'prisma', 'schema.prisma')
@@ -1156,7 +1169,7 @@ export const applyMigrationRollbackToPrismaSchema = async (
  * @returns         A promise that resolves to an object containing the schema path and list of operations applied.
  */
 export const runMigrationWithPrisma = async (
-  migration: Migration | (new () => Migration),
+  migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
   options: PrismaMigrationWorkflowOptions = {},
 ): Promise<{ schemaPath: string; operations: SchemaOperation[] }> => {
   const cwd = options.cwd ?? process.cwd()
