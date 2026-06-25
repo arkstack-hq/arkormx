@@ -299,8 +299,7 @@ describe('PostgreSQL Kysely adapter', () => {
     )
 
     const deleted = await DbUser.query().whereKey('email', 'noah-kysely@example.com').delete()
-    if (!deleted) throw new Error('Expected deleted user to exist.')
-    expect(deleted.getAttribute('email')).toBe('noah-kysely@example.com')
+    expect(deleted).toBe(1)
 
     const liveArticles = await DbArticle.query().get()
     expect(liveArticles.all().map((article) => article.getAttribute('title'))).toEqual(['Live'])
@@ -1180,7 +1179,7 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(normalizedSql).toContain('update "users"')
   })
 
-  it('uses RETURNING-aware single-row update and delete for non-unique QueryBuilder writes', async () => {
+  it('uses RETURNING-aware single-row update and bulk delete for non-unique QueryBuilder writes', async () => {
     setPostgresModelAdapter(kyselyAdapter)
 
     await DbUser.query().create({
@@ -1200,20 +1199,18 @@ describe('PostgreSQL Kysely adapter', () => {
     )
 
     const deleted = await DbUser.query().where({ isActive: 1 }).delete()
-    if (!deleted) throw new Error('Expected deleted user to exist.')
-    expect(deleted.getAttribute('name')).toBeDefined()
+    expect(deleted).toBeGreaterThanOrEqual(1)
 
     const remaining = await DbUser.query().where({ isActive: 1 }).get()
-    expect(remaining.all()).toHaveLength(1)
+    expect(remaining.all()).toHaveLength(0)
 
     const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
     expect(normalizedSql).toContain(
       'with target_row as ( select "id" from "users" where "isActive" = $1 limit 1 ) update "users"',
     )
     expect(normalizedSql).toContain('returning "users".*')
-    expect(normalizedSql).toContain(
-      'with target_row as ( select "id" from "users" where "isActive" = $1 limit 1 ) delete from "users"',
-    )
+    // delete() now removes every match in one bulk statement (no single-row CTE).
+    expect(normalizedSql).toContain('delete from "users" where "isActive" = $1 returning "id"')
   })
 
   it('inspects compiled SQL for supported Kysely queries', () => {

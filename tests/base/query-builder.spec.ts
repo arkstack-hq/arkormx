@@ -240,7 +240,7 @@ describe('QueryBuilder', () => {
     const selectOneSpy = vi.spyOn(adapter, 'selectOne')
     const updateSpy = vi.spyOn(adapter, 'update')
     const updateManySpy = vi.spyOn(adapter, 'updateMany')
-    const deleteSpy = vi.spyOn(adapter, 'delete')
+    const deleteManySpy = vi.spyOn(adapter, 'deleteMany')
 
     User.setAdapter(adapter)
 
@@ -295,7 +295,7 @@ describe('QueryBuilder', () => {
       )
       expect(updateSpy).toHaveBeenCalled()
       expect(updateManySpy).toHaveBeenCalled()
-      expect(deleteSpy).toHaveBeenCalled()
+      expect(deleteManySpy).toHaveBeenCalled()
     } finally {
       User.setAdapter(undefined)
     }
@@ -502,6 +502,7 @@ describe('QueryBuilder', () => {
     const selectSpy = vi.fn(async () => [{ uuid: 'user-1', displayName: 'Jane' }])
     const updateSpy = vi.fn(async () => ({ uuid: 'user-1', displayName: 'Updated' }))
     const deleteSpy = vi.fn(async () => ({ uuid: 'user-1', displayName: 'Updated' }))
+    const deleteManySpy = vi.fn(async () => 1)
     const insertSpy = vi.fn(async () => ({ uuid: 'user-2', displayName: 'Created' }))
 
     const transaction: DatabaseAdapter['transaction'] = async <TResult>(
@@ -516,7 +517,7 @@ describe('QueryBuilder', () => {
       update: updateSpy,
       updateMany: async () => 0,
       delete: deleteSpy,
-      deleteMany: async () => 0,
+      deleteMany: deleteManySpy,
       count: async () => 0,
       exists: async () => false,
       transaction,
@@ -579,7 +580,7 @@ describe('QueryBuilder', () => {
       expect(insertSpy).toHaveBeenCalled()
 
       await saved.delete()
-      expect(deleteSpy).toHaveBeenCalledWith(
+      expect(deleteManySpy).toHaveBeenCalledWith(
         expect.objectContaining({
           where: {
             type: 'comparison',
@@ -1074,12 +1075,12 @@ describe('QueryBuilder', () => {
     )
   })
 
-  it('returns null when delete matches no records through a non-unique predicate', async () => {
+  it('returns 0 when delete matches no records through a non-unique predicate', async () => {
     const beforeCount = await User.query().count()
 
     const deleted = await User.query().where({ id: 1 }).whereNot({ id: 1 }).delete()
 
-    expect(deleted).toBeNull()
+    expect(deleted).toBe(0)
     await expect(User.query().count()).resolves.toBe(beforeCount)
     await expect(User.query().whereKey('id', 1).value('id')).resolves.toBe(1)
   })

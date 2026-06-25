@@ -5,7 +5,7 @@ import type {
   DatabaseAdapter,
   DatabaseRow,
   DatabaseValue,
-  DeleteSpec,
+  DeleteManySpec,
   EagerLoadConstraint,
   EagerLoadMap,
   InsertManySpec,
@@ -2935,12 +2935,13 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
-   * Deletes the first record matching the current query constraints and returns
-   * it as a hydrated model instance. Returns null when no record matches.
+   * Deletes every record matching the current query constraints and returns the
+   * number of rows deleted (Laravel parity: `int delete()`). A where clause is
+   * required — guarding against an accidental full-table delete.
    *
-   * @returns
+   * @returns the count of deleted rows (0 when nothing matched)
    */
-  public async delete(): Promise<TModel | null> {
+  public async delete(): Promise<number> {
     const where = this.buildWhere()
     if (!where)
       throw new QueryConstraintException('Delete requires a where clause.', {
@@ -2948,55 +2949,18 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         model: this.model.name,
       })
 
-    const directSpec = this.tryBuildDeleteSpec(where)
-    const adapter = this.requireAdapter()
-    if (
-      !this.isUniqueWhere(where as Record<string, unknown>) &&
-      directSpec &&
-      typeof adapter.deleteFirst === 'function'
-    ) {
-      const deleted = await adapter.deleteFirst(directSpec)
-      if (!deleted) return null
-
-      return this.hydrateDeleted(
-        deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0],
-      )
-    }
-
-    const uniqueWhere = await this.resolveUniqueWhere(where, false)
-    if (!uniqueWhere) return null
-
-    const deleted = await this.executeDeleteRow(uniqueWhere, false)
-    if (!deleted) return null
-
-    return this.hydrateDeleted(deleted as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
+    return this.executeDeleteManyRows(where)
   }
 
   /**
-   * Hydrate a row that was just deleted, marking the resulting model as no
-   * longer existing in the database.
+   * Deletes every record matching the current query constraints and throws when
+   * none matched.
    *
-   * @param attributes
-   * @returns
+   * @returns the count of deleted rows (always >= 1)
    */
-  private hydrateDeleted(
-    attributes: Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0],
-  ): TModel {
-    const model = this.model.hydrate(attributes)
-    ;(model as unknown as { exists: boolean }).exists = false
-
-    return model
-  }
-
-  /**
-   * Deletes the first record matching the current query constraints and throws
-   * when no record matches.
-   *
-   * @returns
-   */
-  public async deleteOrFail(): Promise<TModel> {
+  public async deleteOrFail(): Promise<number> {
     const deleted = await this.delete()
-    if (!deleted)
+    if (deleted === 0)
       throw new ModelNotFoundException(this.model.name, 'Record not found for delete operation.', {
         operation: 'delete',
       })
@@ -3066,18 +3030,6 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       target: this.buildQueryTarget(),
       where: condition,
       values: values as DatabaseRow,
-    }
-  }
-
-  private tryBuildDeleteSpec(
-    where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>,
-  ): DeleteSpec<TModel> | null {
-    const condition = this.tryBuildQueryCondition(where)
-    if (!condition) return null
-
-    return {
-      target: this.buildQueryTarget(),
-      where: condition,
     }
   }
 
@@ -4561,13 +4513,12 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return updated
   }
 
-  private async executeDeleteRow(
+  private async executeDeleteManyRows(
     where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>,
-    failIfMissing = true,
-  ): Promise<DatabaseRow | null> {
+  ): Promise<number> {
     const adapter = this.requireAdapter()
-    const spec = this.tryBuildDeleteSpec(where)
-    if (!spec)
+    const condition = this.tryBuildQueryCondition(where)
+    if (condition === null)
       throw new UnsupportedAdapterFeatureException(
         'Delete could not be compiled into an Arkorm delete specification.',
         {
@@ -4576,19 +4527,30 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         },
       )
 
-    const deleted = await adapter.delete(spec)
-    if (!deleted)
-      return failIfMissing
-        ? (() => {
-            throw new ModelNotFoundException(
-              this.model.name,
-              'Record not found for delete operation.',
-              {
-                operation: 'delete',
-              },
-            )
-          })()
-        : null
+    const spec: DeleteManySpec<TModel> = {
+      target: this.buildQueryTarget(),
+      where: condition,
+    }
+
+    if (typeof adapter.deleteMany === 'function') return await adapter.deleteMany(spec)
+
+    // Adapter has no bulk delete — select the matching rows and delete each.
+    const rows = await adapter.select({
+      target: spec.target,
+      where: spec.where,
+    })
+
+    let deleted = 0
+    for (const row of rows) {
+      const rowWhere = this.tryBuildQueryCondition(row)
+      if (!rowWhere) continue
+
+      const result = await adapter.delete({
+        target: spec.target,
+        where: rowWhere,
+      })
+      if (result) deleted += 1
+    }
 
     return deleted
   }
