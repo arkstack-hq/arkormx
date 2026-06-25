@@ -65,6 +65,13 @@ export class Product extends Model {
 }
 ```
 
+The `set` transform is applied once when you assign a value and `get` once when
+you read it, so a cast round-trips correctly through `save()` — reading `price`
+right after `product.fill({ price: 100 }).save()` returns `100`, not the stored
+`10000`. There is no need to re-fetch the row for the value to read back
+correctly, even for non-idempotent casts (money, arrays) where re-applying `set`
+would corrupt the value.
+
 ## Cast + mutator interaction
 
 Arkorm applies casts and mutators in this order:
