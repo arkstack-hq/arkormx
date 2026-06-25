@@ -115,8 +115,8 @@ importers:
         specifier: workspace:^
         version: link:../..
       clear-router:
-        specifier: ^2.8.8
-        version: 2.8.8(@h3ravel/support@2.2.0(@types/node@25.6.2))(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
+        specifier: ^2.8.9
+        version: 2.8.9(@h3ravel/support@2.2.0(@types/node@25.6.2))(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2)
       reflect-metadata:
         specifier: ^0.2.2
         version: 0.2.2
@@ -1622,11 +1622,11 @@ packages:
   citty@0.2.1:
     resolution: {integrity: sha512-kEV95lFBhQgtogAPlQfJJ0WGVSokvLr/UEoFPiKKOXF7pl98HfUVUD0ejsuTCld/9xH9vogSywZ5KqHzXrZpqg==}
 
-  clear-router@2.8.8:
-    resolution: {integrity: sha512-dYSNcG6dLItQ0U99zoh1NQkv6i7s8KGy0Cz9sCfZMEKUk2cYxc1l4RXcjuro9nZ+LXfu9wvICweSFXsNMCFYgQ==}
+  clear-router@2.8.9:
+    resolution: {integrity: sha512-ajwl879s2ILN7CcGlwVRq/lz5IYggAVq9mQIJWsLwuYQhEfQkEkGmA27BU3znj+lO+2/A1xngU0sWEa8PuAetw==}
     engines: {node: '>=20.0.0'}
     peerDependencies:
-      '@h3ravel/support': ^2.1.4
+      '@h3ravel/support': ^2.2.0
       '@koa/router': ^15.0.0
       express: ^5.1.0
       fastify: ^5.0.0
@@ -4930,7 +4930,7 @@ snapshots:
 
   citty@0.2.1: {}
 
-  clear-router@2.8.8(@h3ravel/support@2.2.0(@types/node@25.6.2))(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
+  clear-router@2.8.9(@h3ravel/support@2.2.0(@types/node@25.6.2))(express@5.2.1)(hono@4.12.10)(reflect-metadata@0.2.2):
     dependencies:
       jiti: 2.7.0
     optionalDependencies:
