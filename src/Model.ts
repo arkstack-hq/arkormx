@@ -953,6 +953,24 @@ export abstract class Model<
   }
 
   /**
+   * Merge already-stored (database representation) attribute values into the
+   * model without running set mutators or casts. Used to refresh the instance
+   * from a row returned by a write, where the values are already in storage
+   * form and must not be re-cast (re-applying a non-idempotent set-cast such as
+   * a money or array cast would corrupt the value).
+   *
+   * @param attributes
+   * @returns
+   */
+  protected fillRawAttributes(attributes: Record<string, unknown>): this {
+    Object.entries(attributes).forEach(([key, value]) => {
+      this.attributes[key] = Model.cloneAttributeValue(value)
+    })
+
+    return this
+  }
+
+  /**
    * Update the model's state in the database using data from a plain object.
    * If the model has no identifier (id), the process will be skipped and the
    * call will return false.
@@ -1077,7 +1095,7 @@ export abstract class Model<
       const model = await constructor
         .query()
         .create(payload as ModelCreateData<this, ModelQuerySchemaLike>)
-      this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+      this.fillRawAttributes((model as unknown as Model).getRawAttributes())
       this.syncChanges(previousOriginal)
       this.syncPrevious(previousOriginal)
       this.syncOriginal()
@@ -1107,7 +1125,7 @@ export abstract class Model<
       .query()
       .where({ [primaryKey]: identifier })
       .update(payload as ModelUpdateData<this, ModelQuerySchemaLike>)
-    this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.fillRawAttributes((model as unknown as Model).getRawAttributes())
     this.syncChanges(previousOriginal)
     this.syncPrevious(previousOriginal)
     this.syncOriginal()
@@ -1169,7 +1187,7 @@ export abstract class Model<
           this,
           ModelQuerySchemaLike
         >)
-      this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+      this.fillRawAttributes((model as unknown as Model).getRawAttributes())
       this.syncChanges(previousOriginal)
       this.syncOriginal()
 
@@ -1283,7 +1301,7 @@ export abstract class Model<
       .withTrashed()
       .where({ [primaryKey]: identifier })
       .update({ [softDeleteConfig.column]: null } as ModelUpdateData<this, ModelQuerySchemaLike>)
-    this.fill((model as unknown as Model).getRawAttributes() as Partial<TAttributes>)
+    this.fillRawAttributes((model as unknown as Model).getRawAttributes())
     this.syncChanges(previousOriginal)
     this.syncOriginal()
 
