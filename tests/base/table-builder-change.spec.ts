@@ -96,7 +96,9 @@ describe('Migration.done()', () => {
       }
     }
 
-    await expect(applyMigrationToDatabase(recordingAdapter(log), NoopMigration)).resolves.toBeDefined()
+    await expect(
+      applyMigrationToDatabase(recordingAdapter(log), NoopMigration),
+    ).resolves.toBeDefined()
     expect(log).toEqual(['operations:1'])
   })
 })
