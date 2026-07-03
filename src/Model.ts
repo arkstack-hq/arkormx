@@ -62,6 +62,9 @@ import {
 } from './helpers/column-mappings'
 import { QueryBuilder } from './QueryBuilder'
 import { ArkormCollection } from './Collection'
+import { Expression, expressionBuilder } from './Expression'
+import type { ExpressionBuilder } from './Expression'
+import type { ExpressionNode } from './types/expression'
 import { resolveCast } from './casts'
 import { str } from '@h3ravel/support'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -81,6 +84,7 @@ export abstract class Model<
 > {
   private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
   private static readonly castMapCache = new WeakMap<object, CastMap>()
+  private static readonly computedCache = new WeakMap<object, Record<string, ExpressionNode>>()
   private static readonly emittedDeprecationWarnings = new Set<string>()
   private static eventsSuppressed = 0
 
@@ -104,6 +108,18 @@ export abstract class Model<
   protected static softDeletes = false
   protected static deletedAtColumn = 'deletedAt'
   protected static globalScopes: Record<string, GlobalScope> = {}
+  /**
+   * Expression-backed virtual attributes. Each factory receives the expression
+   * builder and returns an {@link Expression}; the name may then be used in
+   * `select`, `where`, `groupBy`, `orderBy`, and `having`, and is expanded inline
+   * during query building.
+   *
+   * @example
+   * static computed = {
+   *   category: (e) => e.coalesce(e.col('override.category'), e.val('other')),
+   * }
+   */
+  protected static computed?: Record<string, (builder: ExpressionBuilder) => Expression>
   protected static eventListeners: Partial<Record<ModelEventName, ModelEventListener<any>[]>> = {}
   protected static dispatchesEvents: Partial<
     Record<ModelEventName, ModelEventDispatcher<any> | ModelEventDispatcher<any>[]>
@@ -292,6 +308,28 @@ export abstract class Model<
     Model.castMapCache.set(this, casts)
 
     return casts
+  }
+
+  /**
+   * Resolves the model's `static computed` declarations into expression nodes,
+   * cached per class. Returns an empty map when no computed attributes exist.
+   */
+  public static getComputed(): Record<string, ExpressionNode> {
+    const cached = Model.computedCache.get(this)
+    if (cached) return cached
+
+    const definitions = (this as typeof Model).computed
+    const resolved: Record<string, ExpressionNode> = {}
+
+    if (definitions) {
+      for (const [name, factory] of Object.entries(definitions)) {
+        resolved[name] = factory(expressionBuilder).toExpressionNode()
+      }
+    }
+
+    Model.computedCache.set(this, resolved)
+
+    return resolved
   }
 
   /**
