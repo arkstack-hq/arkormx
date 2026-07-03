@@ -15,17 +15,17 @@ import {
   writeAppliedMigrationsStateToStore,
 } from '../../helpers/migration-history'
 import { existsSync, readdirSync } from 'node:fs'
+import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
-
-import { CliApp } from '../CliApp'
-import { Command } from '@h3ravel/musket'
 import {
   resolvePersistedMetadataFeatures,
   syncPersistedColumnMappingsFromState,
 } from '../../helpers/column-mappings'
+
+import { CliApp } from '../CliApp'
+import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
-import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 
 /**
  * Rollback migration classes from the Prisma schema and run Prisma workflow.
@@ -38,12 +38,12 @@ export class MigrateRollbackCommand extends Command<CliApp> {
   protected signature = `migrate:rollback
         {--step= : Number of latest applied migration classes to rollback}
         {--dry-run : Preview rollback targets without applying changes}
-        {--deploy : Use prisma migrate deploy instead of migrate dev}
-        {--skip-generate : Skip prisma generate}
-        {--skip-migrate : Skip prisma migrate command}
+        {--deploy : Use prisma migrate deploy instead of migrate dev (Prisma compatibility driver only)}
+        {--skip-generate : Skip prisma generate (Prisma compatibility driver only)}
+        {--skip-migrate : Skip prisma migrate command (Prisma compatibility driver only)}
         {--state-file= : Path to applied migration state file}
-        {--schema= : Explicit prisma schema path}
-        {--migration-name= : Name for prisma migrate dev}
+        {--schema= : Explicit prisma schema path (Prisma compatibility driver only)}
+        {--migration-name= : Name for prisma migrate dev (Prisma compatibility driver only)}
     `
 
   protected description = 'Rollback migration classes from schema.prisma and run Prisma workflow'
@@ -73,7 +73,7 @@ export class MigrateRollbackCommand extends Command<CliApp> {
     const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
     let appliedState = await readAppliedMigrationsStateFromStore(adapter, stateFilePath)
 
-    const stepOption = this.option('step')
+    const stepOption = this.option('step', 1)
     const stepCount = stepOption == null ? undefined : Number(stepOption)
     if (
       stepCount != null &&
@@ -84,13 +84,13 @@ export class MigrateRollbackCommand extends Command<CliApp> {
     const targets = stepCount
       ? getLatestAppliedMigrations(appliedState, stepCount)
       : (() => {
-          const lastRun = getLastMigrationRun(appliedState)
-          if (!lastRun) return []
+        const lastRun = getLastMigrationRun(appliedState)
+        if (!lastRun) return []
 
-          return lastRun.migrationIds
-            .map((id) => appliedState.migrations.find((migration) => migration.id === id))
-            .filter((migration): migration is NonNullable<typeof migration> => Boolean(migration))
-        })()
+        return lastRun.migrationIds
+          .map((id) => appliedState.migrations.find((migration) => migration.id === id))
+          .filter((migration): migration is NonNullable<typeof migration> => Boolean(migration))
+      })()
 
     if (targets.length === 0)
       return void this.error('Error: No tracked migrations available to rollback.')

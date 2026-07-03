@@ -36,8 +36,9 @@ import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 import { loadArkormConfig } from '../../helpers/runtime-config'
 
 /**
- * The MigrateCommand class implements the CLI command for applying migration
- * classes to the Prisma schema and running the Prisma workflow.
+ * The MigrateCommand class implements the CLI command for applying migration 
+ * classes to the database or Prisma schema and running the Prisma workflow when
+ * using the Prisma compatibility driver.
  *
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
@@ -46,23 +47,23 @@ export class MigrateCommand extends Command<CliApp> {
   protected signature = `migrate
         {name? : Migration class or file name}
         {--all : Run all migrations from the configured migrations directory}
-        {--deploy : Use prisma migrate deploy instead of migrate dev}
-        {--skip-generate : Skip prisma generate}
+        {--deploy : Use prisma migrate deploy instead of migrate dev (Prisma compatibility driver only)}
+        {--skip-generate : Skip prisma generate (Prisma compatibility driver only)}
         {--skip-migrate : Skip prisma migrate command}
         {--state-file= : Path to applied migration state file}
-        {--schema= : Explicit prisma schema path}
-        {--migration-name= : Name for prisma migrate dev}
+        {--schema= : Explicit prisma schema path (Prisma compatibility driver only)}
+        {--migration-name= : Name for prisma migrate dev (Prisma compatibility driver only)}
         {--create-database : Create the configured database without prompting}
     `
 
-  protected description = 'Apply migration classes to schema.prisma and run Prisma workflow'
+  protected description = 'Apply migration classes to the database or schema.prisma and run Prisma workflow when using the Prisma compatibility driver'
 
   /**
    * Command handler for the migrate command.
    * This method is responsible for orchestrating the migration
    * process, including loading migration classes, applying them to
-   * the Prisma schema, and running the appropriate Prisma commands
-   * based on the provided options.
+   * the the database or Prisma schema, and running the appropriate Prisma commands
+   * when using the Prisma compatibility driver based on the provided options.
    *
    * @returns
    */
@@ -91,8 +92,8 @@ export class MigrateCommand extends Command<CliApp> {
       this.option('all') || !this.argument('name')
         ? await this.loadAllMigrations(migrationDirs)
         : ((await this.loadNamedMigration(migrationDirs, this.argument('name'))).filter(
-            ([cls]) => cls !== undefined,
-          ) as [MigrationClass, string][])
+          ([cls]) => cls !== undefined,
+        ) as [MigrationClass, string][])
 
     if (classes.length === 0) return void this.error('Error: No migration classes found to run.')
 
@@ -107,8 +108,8 @@ export class MigrateCommand extends Command<CliApp> {
 
     const appliedState = shouldTrackApplied
       ? await this.runWithDatabaseCreationRetry(adapter, () =>
-          readAppliedMigrationsStateFromStore(adapter, stateFilePath),
-        )
+        readAppliedMigrationsStateFromStore(adapter, stateFilePath),
+      )
       : { ok: true, value: undefined }
 
     if (!appliedState.ok) return
