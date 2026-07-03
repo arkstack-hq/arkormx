@@ -2692,10 +2692,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param callback  Receives each chunk and its 1-based page number.
    * @returns
    */
-  public async chunk(
-    count: number,
-    callback: ChunkCallback<TModel>,
-  ): Promise<boolean> {
+  public async chunk(count: number, callback: ChunkCallback<TModel>): Promise<boolean> {
     this.assertPositiveChunkSize(count, 'chunk')
 
     let page = 1
