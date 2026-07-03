@@ -610,7 +610,10 @@ The families carried over from the query builder include:
 For an escape hatch, `constrain(query => …)` injects a raw query-builder callback:
 
 ```ts
-await user.posts().constrain((query) => query.whereRaw('char_length(title) > ?', [10])).get()
+await user
+  .posts()
+  .constrain((query) => query.whereRaw('char_length(title) > ?', [10]))
+  .get()
 ```
 
 See the [Query Builder](/guide/query-builder) guide for the full semantics of

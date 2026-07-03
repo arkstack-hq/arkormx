@@ -209,16 +209,10 @@ when a new record is built:
 
 ```ts
 // Returns the match, or a new unsaved User (call .save() yourself).
-const draft = await User.query().firstOrNew(
-  { email: 'jane@example.com' },
-  { name: 'Jane' },
-)
+const draft = await User.query().firstOrNew({ email: 'jane@example.com' }, { name: 'Jane' })
 
 // Returns the match, or inserts { email, name } and returns the saved model.
-const user = await User.query().firstOrCreate(
-  { email: 'jane@example.com' },
-  { name: 'Jane' },
-)
+const user = await User.query().firstOrCreate({ email: 'jane@example.com' }, { name: 'Jane' })
 
 // Updates the matching row's name, or inserts { email, name }.
 const settled = await User.query().updateOrCreate(
@@ -707,5 +701,5 @@ const required = await User.query().whereKey('id', 2).deleteOrFail() // number, 
 
 Both query-builder deletes return the number of affected rows. Deletes require a
 `where` clause. `deleteOrFail()` throws `ModelNotFoundException` when no record
-matches. (Deleting a hydrated model *instance* with `model.delete()` returns the
+matches. (Deleting a hydrated model _instance_ with `model.delete()` returns the
 model — see [Models](./models.md), which also covers soft deletes.)

@@ -35,19 +35,23 @@ describe('query expressions on the Prisma compatibility adapter', () => {
 
   it('rejects expression select columns', async () => {
     await expect(
-      User.query().select({ tier: caseWhen(col('isActive').eq(1), 'yes').else('no') }).get(),
+      User.query()
+        .select({ tier: caseWhen(col('isActive').eq(1), 'yes').else('no') })
+        .get(),
     ).rejects.toBeInstanceOf(UnsupportedAdapterFeatureException)
   })
 
   it('rejects boolean expression where predicates', async () => {
-    await expect(
-      User.query().where(col('isActive').eq(1)).get(),
-    ).rejects.toBeInstanceOf(UnsupportedAdapterFeatureException)
+    await expect(User.query().where(col('isActive').eq(1)).get()).rejects.toBeInstanceOf(
+      UnsupportedAdapterFeatureException,
+    )
   })
 
   it('rejects aggregate expression selects', async () => {
     await expect(
-      User.query().select({ total: sum('id') }).get(),
+      User.query()
+        .select({ total: sum('id') })
+        .get(),
     ).rejects.toBeInstanceOf(UnsupportedAdapterFeatureException)
   })
 

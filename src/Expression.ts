@@ -1,4 +1,8 @@
-import type { AggregateOperation, DatabaseValue, QueryScalarComparisonOperator } from './types/adapter'
+import type {
+  AggregateOperation,
+  DatabaseValue,
+  QueryScalarComparisonOperator,
+} from './types/adapter'
 import type {
   CaseExpressionBranch,
   ExpressionBinaryOperator,
@@ -12,13 +16,13 @@ import type {
  * `having`, and the aggregate helpers. Adapters compile the underlying node tree.
  */
 export abstract class Expression {
-  /** 
-   * Serializes this expression to an adapter-compilable {@link ExpressionNode}. 
+  /**
+   * Serializes this expression to an adapter-compilable {@link ExpressionNode}.
    */
   abstract toExpressionNode(): ExpressionNode
 
-  /** 
-   * Type guard for values that came out of the expression builder. 
+  /**
+   * Type guard for values that came out of the expression builder.
    */
   static isExpression(value: unknown): value is Expression {
     return value instanceof Expression
@@ -115,8 +119,8 @@ export abstract class Expression {
   }
 }
 
-/** 
- * Concrete expression backed by a pre-built node. 
+/**
+ * Concrete expression backed by a pre-built node.
  */
 class NodeExpression extends Expression {
   constructor(private readonly node: ExpressionNode) {
@@ -128,7 +132,7 @@ class NodeExpression extends Expression {
   }
 }
 
-/** 
+/**
  * Fluent `CASE … WHEN … THEN … ELSE … END` builder. Immutable.
  */
 export class CaseExpression extends Expression {
@@ -165,8 +169,8 @@ interface CaseBranch {
   then: Expression
 }
 
-/** 
- * JSON-path value extraction (`metadata ->> 'billType'`), with optional casts. 
+/**
+ * JSON-path value extraction (`metadata ->> 'billType'`), with optional casts.
  */
 export class JsonExpression extends Expression {
   constructor(
@@ -194,8 +198,8 @@ export class JsonExpression extends Expression {
   }
 }
 
-/** 
- * Aggregate expression (`sum`, `count`, `avg`, `min`, `max`) with optional filter. 
+/**
+ * Aggregate expression (`sum`, `count`, `avg`, `min`, `max`) with optional filter.
  */
 export class AggregateExpression extends Expression {
   constructor(
@@ -206,8 +210,8 @@ export class AggregateExpression extends Expression {
     super()
   }
 
-  /** 
-   * Restricts the aggregate to rows matching `predicate` (`FILTER (WHERE …)`). 
+  /**
+   * Restricts the aggregate to rows matching `predicate` (`FILTER (WHERE …)`).
    */
   filter(predicate: Expression): AggregateExpression {
     return new AggregateExpression(this.fn, this.arg, { ...this.options, filterExpr: predicate })
@@ -240,8 +244,8 @@ const binary = (
     right: right.toExpressionNode(),
   })
 
-/** 
- * Coerces a raw value into a bound-literal expression; passes expressions through. 
+/**
+ * Coerces a raw value into a bound-literal expression; passes expressions through.
  */
 const coerceValue = (value: unknown): Expression => {
   if (value instanceof Expression) return value
@@ -249,8 +253,8 @@ const coerceValue = (value: unknown): Expression => {
   return new NodeExpression({ kind: 'value', value: value as DatabaseValue })
 }
 
-/** 
- * Coerces a bare string into a column reference; passes expressions through. 
+/**
+ * Coerces a bare string into a column reference; passes expressions through.
  */
 const coerceColumn = (value: unknown): Expression => {
   if (value instanceof Expression) return value
@@ -272,25 +276,26 @@ export const fromExpressionNode = (node: ExpressionNode): Expression => new Node
  */
 export const col = (name: string): Expression => new NodeExpression({ kind: 'column', name })
 
-/** 
- * A bound literal value (parameterized, never interpolated). 
+/**
+ * A bound literal value (parameterized, never interpolated).
  */
-export const val = (value: DatabaseValue): Expression => new NodeExpression({ kind: 'value', value })
+export const val = (value: DatabaseValue): Expression =>
+  new NodeExpression({ kind: 'value', value })
 
-/** 
- * Raw SQL escape hatch with positional `?` bindings. 
+/**
+ * Raw SQL escape hatch with positional `?` bindings.
  */
 export const raw = (sql: string, bindings: DatabaseValue[] = []): Expression =>
   new NodeExpression({ kind: 'raw', sql, bindings })
 
-/** 
- * Starts a `CASE WHEN condition THEN result` expression. 
+/**
+ * Starts a `CASE WHEN condition THEN result` expression.
  */
 export const caseWhen = (condition: Expression, result: unknown): CaseExpression =>
   new CaseExpression([{ when: condition, then: coerceValue(result) }])
 
-/** 
- * `COALESCE(a, b, …)` — first non-null argument. Bare strings are columns. 
+/**
+ * `COALESCE(a, b, …)` — first non-null argument. Bare strings are columns.
  */
 export const coalesce = (...args: unknown[]): Expression =>
   new NodeExpression({
@@ -299,8 +304,8 @@ export const coalesce = (...args: unknown[]): Expression =>
     args: args.map((arg) => coerceColumn(arg).toExpressionNode()),
   })
 
-/** 
- * An arbitrary SQL function call. Bare-string arguments are treated as columns. 
+/**
+ * An arbitrary SQL function call. Bare-string arguments are treated as columns.
  */
 export const fn = (name: string, ...args: unknown[]): Expression =>
   new NodeExpression({
@@ -309,38 +314,38 @@ export const fn = (name: string, ...args: unknown[]): Expression =>
     args: args.map((arg) => coerceColumn(arg).toExpressionNode()),
   })
 
-/** 
- * JSON value extraction: `json('metadata', 'billType')` => `metadata ->> 'billType'`. 
+/**
+ * JSON value extraction: `json('metadata', 'billType')` => `metadata ->> 'billType'`.
  */
 export const json = (column: string, ...path: Array<string | number>): JsonExpression =>
   new JsonExpression(column, path.map(String))
 
-/** 
- * `SUM(expr)`; a bare-string argument is treated as a column. 
+/**
+ * `SUM(expr)`; a bare-string argument is treated as a column.
  */
 export const sum = (arg: unknown): AggregateExpression =>
   new AggregateExpression('sum', coerceColumn(arg))
 
-/** 
- * `AVG(expr)`; a bare-string argument is treated as a column. 
+/**
+ * `AVG(expr)`; a bare-string argument is treated as a column.
  */
 export const avg = (arg: unknown): AggregateExpression =>
   new AggregateExpression('avg', coerceColumn(arg))
 
-/** 
- * `MIN(expr)`; a bare-string argument is treated as a column. 
+/**
+ * `MIN(expr)`; a bare-string argument is treated as a column.
  */
 export const min = (arg: unknown): AggregateExpression =>
   new AggregateExpression('min', coerceColumn(arg))
 
-/** 
- * `MAX(expr)`; a bare-string argument is treated as a column. 
+/**
+ * `MAX(expr)`; a bare-string argument is treated as a column.
  */
 export const max = (arg: unknown): AggregateExpression =>
   new AggregateExpression('max', coerceColumn(arg))
 
-/** 
- * `COUNT(expr)` — or `COUNT(*)` when called without an argument. 
+/**
+ * `COUNT(expr)` — or `COUNT(*)` when called without an argument.
  */
 export const count = (arg?: unknown): AggregateExpression =>
   new AggregateExpression('count', arg === undefined ? undefined : coerceColumn(arg))
@@ -366,7 +371,14 @@ const EXPRESSION_OPERATORS: Record<string, ExpressionBinaryOperator> = {
  */
 export const where = (
   column: string,
-  operator: QueryScalarComparisonOperator | 'like' | 'ilike' | 'not like' | 'not ilike' | '<>' | '==',
+  operator:
+    | QueryScalarComparisonOperator
+    | 'like'
+    | 'ilike'
+    | 'not like'
+    | 'not ilike'
+    | '<>'
+    | '==',
   value: unknown,
 ): Expression => {
   const normalized = EXPRESSION_OPERATORS[operator]

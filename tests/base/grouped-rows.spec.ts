@@ -20,8 +20,8 @@ describe('grouped result rows (#14)', () => {
   })
 
   it('rejects Prisma-style groupBy on the compatibility adapter', async () => {
-    await expect(
-      User.query().groupBy({ by: ['isActive'], _count: true }),
-    ).rejects.toBeInstanceOf(UnsupportedAdapterFeatureException)
+    await expect(User.query().groupBy({ by: ['isActive'], _count: true })).rejects.toBeInstanceOf(
+      UnsupportedAdapterFeatureException,
+    )
   })
 })

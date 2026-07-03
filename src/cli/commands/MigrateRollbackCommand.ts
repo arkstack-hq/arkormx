@@ -84,13 +84,13 @@ export class MigrateRollbackCommand extends Command<CliApp> {
     const targets = stepCount
       ? getLatestAppliedMigrations(appliedState, stepCount)
       : (() => {
-        const lastRun = getLastMigrationRun(appliedState)
-        if (!lastRun) return []
+          const lastRun = getLastMigrationRun(appliedState)
+          if (!lastRun) return []
 
-        return lastRun.migrationIds
-          .map((id) => appliedState.migrations.find((migration) => migration.id === id))
-          .filter((migration): migration is NonNullable<typeof migration> => Boolean(migration))
-      })()
+          return lastRun.migrationIds
+            .map((id) => appliedState.migrations.find((migration) => migration.id === id))
+            .filter((migration): migration is NonNullable<typeof migration> => Boolean(migration))
+        })()
 
     if (targets.length === 0)
       return void this.error('Error: No tracked migrations available to rollback.')

@@ -1818,18 +1818,17 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     spec: TSpec,
   ): Promise<GroupByAggregateRow<TModel, TSpec>[]>
   public groupBy(
-    ...columns: Array<string | Expression | Array<string | Expression> | GroupByAggregateSpec<TModel>>
+    ...columns: Array<
+      string | Expression | Array<string | Expression> | GroupByAggregateSpec<TModel>
+    >
   ): this | Promise<Record<string, unknown>[]> {
     const first = columns[0]
-    if (
-      columns.length === 1 &&
-      this.isGroupByAggregateSpec(first)
-    )
+    if (columns.length === 1 && this.isGroupByAggregateSpec(first))
       return this.executeGroupByAggregate(first)
 
-    const normalized = (
-      Array.isArray(columns[0]) ? columns[0] : columns
-    ) as Array<string | Expression>
+    const normalized = (Array.isArray(columns[0]) ? columns[0] : columns) as Array<
+      string | Expression
+    >
     if (normalized.length === 0)
       throw new QueryConstraintException('groupBy requires at least one column.', {
         operation: 'groupBy',
@@ -1860,9 +1859,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * A bare string that matches a select-column alias is expanded to that column's
    * underlying expression (group-by-alias); otherwise it is treated as a column.
    */
-  private buildGroupByItems(
-    selectColumns?: QuerySelectColumn[],
-  ): QueryGroupByItem[] | undefined {
+  private buildGroupByItems(selectColumns?: QuerySelectColumn[]): QueryGroupByItem[] | undefined {
     if (!this.queryGroupBy || this.queryGroupBy.length === 0) return undefined
 
     const expressionAliases = new Map<string, string>()
@@ -4657,9 +4654,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
       const expression = computed[column.column]
 
-      return expression
-        ? { ...column, expression, alias: column.alias ?? column.column }
-        : column
+      return expression ? { ...column, expression, alias: column.alias ?? column.column } : column
     })
 
     const selectedComputedAliases = new Set(
@@ -4716,7 +4711,10 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     if (condition.type === 'not') {
-      return { ...condition, condition: this.expandComputedCondition(condition.condition, computed) }
+      return {
+        ...condition,
+        condition: this.expandComputedCondition(condition.condition, computed),
+      }
     }
 
     return condition

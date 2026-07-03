@@ -1,9 +1,4 @@
-import {
-  DbPost,
-  DbUser,
-  seedPostgresFixtures,
-  setPostgresModelAdapter,
-} from './helpers/fixtures'
+import { DbPost, DbUser, seedPostgresFixtures, setPostgresModelAdapter } from './helpers/fixtures'
 import { Kysely, PostgresDialect } from 'kysely'
 import { afterAll, beforeEach, describe, expect, it } from 'vitest'
 import { Pool } from 'pg'

@@ -43,7 +43,9 @@ describe('Computed / virtual model attributes (#15)', () => {
   })
 
   it('expands a computed name in groupBy', () => {
-    const sql = compile(() => ComputedUser.query().select({ tier: true, n: count() }).groupBy('tier'))
+    const sql = compile(() =>
+      ComputedUser.query().select({ tier: true, n: count() }).groupBy('tier'),
+    )
 
     // The selected computed alias is referenced (avoids re-binding params).
     expect(sql).toContain('as "tier"')
@@ -74,9 +76,7 @@ describe('Computed / virtual model attributes (#15)', () => {
   })
 
   it('filters by a computed attribute end to end', async () => {
-    const rows = await ComputedUser.query()
-      .where({ tier: 'active' })
-      .getRows<{ id: number }>()
+    const rows = await ComputedUser.query().where({ tier: 'active' }).getRows<{ id: number }>()
 
     expect(rows.map((row) => Number(row.id))).toEqual([1])
   })

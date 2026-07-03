@@ -34,7 +34,9 @@ describe('Group-by expressions (#12)', () => {
   it('references the select alias when the grouped expression is projected', () => {
     const tier = caseWhen(col('isActive').eq(1), 'active').else('inactive')
     const sql = compile(() =>
-      DbUser.query().select({ tier, total: sum('id') }).groupBy(tier),
+      DbUser.query()
+        .select({ tier, total: sum('id') })
+        .groupBy(tier),
     )
 
     // Grouping by the same expression that is selected references the output alias
@@ -46,7 +48,9 @@ describe('Group-by expressions (#12)', () => {
   it('groups by a select alias name by referencing the alias', () => {
     const tier = caseWhen(col('isActive').eq(1), 'active').else('inactive')
     const sql = compile(() =>
-      DbUser.query().select({ tier, total: sum('id') }).groupBy('tier'),
+      DbUser.query()
+        .select({ tier, total: sum('id') })
+        .groupBy('tier'),
     )
 
     expect(sql).toContain('group by "tier"')
@@ -74,10 +78,7 @@ describe('Group-by expressions (#12)', () => {
   it('composes having with expression grouping', () => {
     const tier = caseWhen(col('isActive').eq(1), 'active').else('inactive')
     const sql = compile(() =>
-      DbUser.query()
-        .select({ tier, total: count() })
-        .groupBy(tier)
-        .having(count(), '>', 5),
+      DbUser.query().select({ tier, total: count() }).groupBy(tier).having(count(), '>', 5),
     )
 
     expect(sql).toContain('having ((count(*))::bigint > $')
