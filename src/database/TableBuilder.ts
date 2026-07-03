@@ -11,6 +11,10 @@ import {
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
+import {
+  type GeneratedColumnExpression,
+  resolveGeneratedExpression,
+} from '../helpers/generated-column'
 
 const PRISMA_ENUM_MEMBER_REGEX = /^[A-Za-z][A-Za-z0-9_]*$/
 
@@ -451,6 +455,35 @@ export class TableBuilder {
   }
 
   /**
+   * Defines a database-computed column (`GENERATED ALWAYS AS (…) STORED`). The
+   * expression may be a raw SQL string or an expression-builder factory, and must
+   * be immutable and reference only the row's own columns. Combine with
+   * {@link index} to index the generated value.
+   *
+   * @example
+   * table.generated('category', "case when metadata->>'kind' = 'a' then 'x' else 'y' end", {
+   *   type: 'text',
+   * })
+   * table.generated('total', (e) => e.col('price').times(e.col('quantity')), { type: 'integer' })
+   *
+   * @param name        The generated column name.
+   * @param expression  The SQL expression string, or a builder factory.
+   * @param options     Column type (default `text`), `stored` flag, and nullability.
+   * @returns
+   */
+  public generated(
+    name: string,
+    expression: GeneratedColumnExpression,
+    options: { type?: SchemaColumnType; stored?: boolean; nullable?: boolean } = {},
+  ): this {
+    return this.column(name, options.type ?? 'text', {
+      generatedExpression: resolveGeneratedExpression(expression),
+      generatedStored: options.stored ?? true,
+      nullable: options.nullable,
+    })
+  }
+
+  /**
    * Defines colonns for a polymorphic relationship in the table.
    *
    * @param name    The base name for the polymorphic relationship columns.
@@ -835,6 +868,8 @@ export class TableBuilder {
       updatedAt: options.updatedAt,
       precision: options.precision,
       scale: options.scale,
+      generatedExpression: options.generatedExpression,
+      generatedStored: options.generatedStored,
       primaryKeyGeneration: options.primaryKeyGeneration,
     })
     const column = this.columns[this.columns.length - 1]
