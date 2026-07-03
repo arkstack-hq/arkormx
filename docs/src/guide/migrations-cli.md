@@ -12,21 +12,29 @@ Use this once per project to scaffold `arkormx.config.*` and bootstrap the expec
 npx arkorm init
 ```
 
+Pass `--force` to re-run `init` in an already-configured project; the existing
+`arkormx.config.*` is backed up before being replaced.
+
 ## Generate files
 
 Use generators to create consistent project files quickly:
 
-- `make:model`: creates a model class. Add `--all` to also generate factory, seeder, and migration.
+- `make:model`: creates a model class. Add `--all` to also generate factory, seeder, and migration, or select individual companions with `--factory`, `--seeder`, and `--migration`. Use `--pivot` (`-p`) to scaffold an intermediate pivot model.
 - `make:factory`: creates a factory class for model test/seed data generation.
 - `make:seeder`: creates a seeder class used by the `seed` command.
 - `make:migration`: creates a timestamped migration class file.
 
+All `make:*` generators accept `--force` (`-f`) to overwrite an existing file.
+
 ```sh
 npx arkorm make:model User
 npx arkorm make:model User --all
+npx arkorm make:model User --factory --migration
+npx arkorm make:model RoleUser --pivot
 npx arkorm make:factory User
 npx arkorm make:seeder Database
 npx arkorm make:migration "create users table"
+npx arkorm make:model User --force
 ```
 
 ## Author migrations
@@ -167,23 +175,24 @@ constraints](#toggling-foreign-key-constraints)):
 
 `TableBuilder` column methods:
 
-| Method                                               | Purpose                                                |
-| ---------------------------------------------------- | ------------------------------------------------------ |
-| `id(name?, type?)`                                   | Primary key column, defaulting to `id`.                |
-| `uuid(name)`                                         | UUID column. Chain `primary()` for a UUID primary key. |
-| `string(name)` / `text(name)`                        | Short or long text columns.                            |
-| `integer(name)` / `bigInteger(name)` / `float(name)` | Numeric columns.                                       |
-| `decimal(name, precision?, scale?)`                  | Fixed-precision decimal (`numeric`), defaults `8, 2`.  |
-| `boolean(name)`                                      | Boolean column.                                        |
-| `json(name)`                                         | JSON column.                                           |
-| `date(name)` / `timestamp(name)`                     | Date and timestamp (`timestamptz`) columns.            |
-| `dateTime(name)`                                     | Timestamp without time zone.                           |
-| `enum(name, valuesOrEnumName)`                       | Define or reuse an enum.                               |
-| `timestamps(casing?, mapCasing?)`                    | Add `createdAt` and `updatedAt` (casing configurable). |
-| `softDeletes(column?)`                               | Add a nullable soft-delete timestamp.                  |
-| `morphs(name)` / `nullableMorphs(name)`              | Add polymorphic type and id columns.                   |
-| `change()`                                           | Redefine the chained column in place (see above).      |
-| `dropColumn(name)`                                   | Drop a column (in `alterTable`).                       |
+| Method                                                     | Purpose                                                    |
+| ---------------------------------------------------------- | ---------------------------------------------------------- |
+| `id(name?, type?)`                                         | Primary key column, defaulting to `id`.                    |
+| `uuid(name)`                                               | UUID column. Chain `primary()` for a UUID primary key.     |
+| `string(name)` / `text(name)`                              | Short or long text columns.                                |
+| `integer(name)` / `bigInteger(name)` / `float(name)`       | Numeric columns.                                           |
+| `decimal(name, precision?, scale?)`                        | Fixed-precision decimal (`numeric`), defaults `8, 2`.      |
+| `boolean(name)`                                            | Boolean column.                                            |
+| `json(name)`                                               | JSON column.                                               |
+| `date(name)` / `timestamp(name)`                           | Date and timestamp (`timestamptz`) columns.                |
+| `dateTime(name)`                                           | Timestamp without time zone.                               |
+| `enum(name, valuesOrEnumName)`                             | Define or reuse an enum.                                   |
+| `timestamps(casing?, mapCasing?)`                          | Add `createdAt` and `updatedAt` (casing configurable).     |
+| `softDeletes(column?)`                                     | Add a nullable soft-delete timestamp.                      |
+| `morphs(name, nullable?)` / `nullableMorphs(name)`         | Add polymorphic `{name}Type` + integer `{name}Id` columns. |
+| `uuidMorphs(name, nullable?)` / `nullableUuidMorphs(name)` | Same, but with a UUID `{name}Id` column.                   |
+| `change()`                                                 | Redefine the chained column in place (see above).          |
+| `dropColumn(name)`                                         | Drop a column (in `alterTable`).                           |
 
 Define a composite primary key at table level:
 
@@ -360,6 +369,8 @@ npx arkorm models:sync --schema ./prisma/schema.prisma --models ./src/models
 - `--skip-migrate`: skip `prisma migrate dev/deploy`.
 - `--deploy`: use `prisma migrate deploy` instead of `prisma migrate dev`.
 - `--create-database`: for adapters that support database creation, create the configured database when missing instead of prompting.
+- `--state-file=<path>`: use a custom applied-migration state file instead of the default.
+- `--schema=<path>`: override the `schema.prisma` path (Prisma/file-backed flows).
 
 ```sh
 npx arkorm migrate --all
@@ -368,6 +379,28 @@ npx arkorm migrate --all --skip-generate --skip-migrate
 npx arkorm migrate --all --deploy
 npx arkorm migrate --all --create-database
 ```
+
+### Rebuild the schema from scratch
+
+`migrate:fresh` drops the database schema and re-runs every migration from zero —
+useful in local development and CI when you want a clean database rather than an
+incremental change.
+
+- `--skip-generate` / `--skip-migrate`: skip the Prisma generate / sync steps.
+- `--create-database`: create the configured database when missing instead of prompting.
+- `--state-file=<path>`: use a custom applied-migration state file.
+- `--schema=<path>`: override the `schema.prisma` path.
+
+```sh
+npx arkorm migrate:fresh
+npx arkorm migrate:fresh --skip-generate --skip-migrate
+npx arkorm migrate:fresh --create-database
+```
+
+::: warning
+`migrate:fresh` is destructive — it discards all data in the schema. Never run it
+against a production database.
+:::
 
 ### Package and plugin migrations
 

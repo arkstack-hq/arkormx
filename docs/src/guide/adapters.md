@@ -43,6 +43,32 @@ const adapter = createPrismaDatabaseAdapter(prisma, {
 See [Prisma Compatibility](./prisma-compatibility.md) for its intentionally
 narrower feature surface.
 
+## Accessing and overriding the adapter
+
+The adapter is normally set once through [configuration](./configuration.md), but
+the `DB` facade exposes it directly:
+
+```ts
+import { DB } from 'arkormx'
+
+const adapter = DB.getAdapter() // the effective runtime adapter (or undefined)
+DB.setAdapter(myAdapter) // override the process-wide adapter
+```
+
+`Model.getAdapter()` returns the adapter a specific model resolves to (its bound
+adapter, or the runtime one). `Model.setAdapter(adapter)` binds an adapter to a
+single model class — handy in tests or multi-database setups.
+
+A scoped `DB` instance runs its operations through a specific adapter without
+touching global state — this is how [transactions](./transactions.md) route work
+to the transaction connection:
+
+```ts
+const scoped = new DB(myAdapter)
+await scoped.raw('select 1')
+await scoped.table('users').where({ id: 1 }).first()
+```
+
 ## Capability matrix
 
 Capabilities let the query builder select optimized paths without assuming

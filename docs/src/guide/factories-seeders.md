@@ -31,6 +31,39 @@ await User.factory().create()
 await User.factory(10).createMany()
 ```
 
+`Model.factory(n)` is shorthand for setting how many models to build. The same is
+expressed explicitly with `count()`, and for synchronous definitions `make()` /
+`makeMany()` build in-memory models without persisting:
+
+```ts
+const one = User.factory().make() // single, unsaved
+const many = User.factory().count(3).makeMany() // three, unsaved
+const saved = await User.factory().count(3).createMany() // three, persisted
+```
+
+`makeMany(amount?, overrides?)` accepts an explicit count and per-model attribute
+overrides.
+
+### Inline factories
+
+When a full factory class is unnecessary, `defineFactory()` builds one from a
+model and a definition function:
+
+```ts
+import { defineFactory } from 'arkormx'
+
+const userFactory = defineFactory(User, (sequence) => ({
+  name: `User ${sequence}`,
+  email: `user${sequence}@example.com`,
+}))
+
+await userFactory.count(5).createMany()
+```
+
+The returned factory supports the same chain (`count`, `state`, `has`, `for`,
+`make`/`makeMany`/`create`/`createMany`, and the async variants) as a class-based
+factory.
+
 ### Async definitions
 
 Factory definitions can perform async work, use `makeAsync()` when a definition
