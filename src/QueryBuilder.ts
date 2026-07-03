@@ -49,10 +49,13 @@ import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/q
 import { LengthAwarePaginator, Paginator } from './Paginator'
 import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
 import { Expression } from './Expression'
-import type { QueryExpressionCondition } from './types'
+import type { ExpressionNode, QueryExpressionCondition, QueryGroupByItem } from './types'
 
 /** Object select projection whose values may be expressions, columns, or booleans. */
 export type ExpressionSelectMap = Record<string, Expression | boolean | string>
+
+/** A `group by` source: a column/select-alias name, an expression, or a raw fragment. */
+type GroupBySource = string | Expression | { raw: { sql: string; bindings: DatabaseValue[] } }
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -84,7 +87,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   private queryOrderBy?: QueryOrderBy[]
   private querySelect?: QuerySelectColumn[]
   private queryDistinct = false
-  private queryGroupBy?: string[]
+  private queryGroupBy?: GroupBySource[]
   private queryHaving?: QueryCondition
   private queryJoins?: QueryJoin[]
   private offsetValue?: number
@@ -1768,8 +1771,12 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public groupBy<TKey extends keyof ModelAttributes<TModel> & string>(columns: TKey[]): this
   public groupBy<TKey extends keyof ModelAttributes<TModel> & string>(...columns: TKey[]): this
-  public groupBy(...columns: Array<string | string[]>): this {
-    const normalized = (Array.isArray(columns[0]) ? columns[0] : columns) as string[]
+  public groupBy(columns: Array<string | Expression>): this
+  public groupBy(...columns: Array<string | Expression>): this
+  public groupBy(...columns: Array<string | Expression | Array<string | Expression>>): this {
+    const normalized = (
+      Array.isArray(columns[0]) ? columns[0] : columns
+    ) as Array<string | Expression>
     if (normalized.length === 0)
       throw new QueryConstraintException('groupBy requires at least one column.', {
         operation: 'groupBy',
@@ -1779,6 +1786,46 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     this.queryGroupBy = [...normalized]
 
     return this
+  }
+
+  /**
+   * Appends a raw SQL `group by` fragment (with positional `?` bindings), mirroring
+   * `whereRaw`/`havingRaw`. Combines with any columns/expressions already grouped.
+   *
+   * @param sql
+   * @param bindings
+   * @returns
+   */
+  public groupByRaw(sql: string, bindings: DatabaseValue[] = []): this {
+    this.queryGroupBy = [...(this.queryGroupBy ?? []), { raw: { sql, bindings } }]
+
+    return this
+  }
+
+  /**
+   * Resolves the recorded group-by sources into adapter {@link QueryGroupByItem}s.
+   * A bare string that matches a select-column alias is expanded to that column's
+   * underlying expression (group-by-alias); otherwise it is treated as a column.
+   */
+  private buildGroupByItems(
+    selectColumns?: QuerySelectColumn[],
+  ): QueryGroupByItem[] | undefined {
+    if (!this.queryGroupBy || this.queryGroupBy.length === 0) return undefined
+
+    const aliasExpressions = new Map<string, ExpressionNode>()
+    selectColumns?.forEach((column) => {
+      if (column.expression && column.alias) aliasExpressions.set(column.alias, column.expression)
+    })
+
+    return this.queryGroupBy.map((source): QueryGroupByItem => {
+      if (source instanceof Expression) return { expression: source.toExpressionNode() }
+
+      if (typeof source === 'object') return { raw: source.raw }
+
+      const aliased = aliasExpressions.get(source)
+
+      return aliased ? { expression: aliased } : source
+    })
   }
 
   private appendHavingCondition(boolean: 'AND' | 'OR', condition: QueryCondition): void {
@@ -3983,7 +4030,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
           offset: normalizedQuery.offsetValue,
           columns: normalizedQuery.querySelect ? [...normalizedQuery.querySelect] : undefined,
           distinct: normalizedQuery.queryDistinct || undefined,
-          groupBy: normalizedQuery.queryGroupBy ? [...normalizedQuery.queryGroupBy] : undefined,
+          groupBy: normalizedQuery.queryGroupBy
+            ? normalizedQuery.queryGroupBy.filter(
+                (source): source is string => typeof source === 'string',
+              )
+            : undefined,
           relationLoads: this.mergeRelationLoadPlans(
             normalizedQuery.queryRelationLoads
               ? this.cloneRelationLoads(normalizedQuery.queryRelationLoads)
@@ -4411,7 +4462,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       target: this.buildQueryTarget(),
       columns,
       distinct: this.queryDistinct || undefined,
-      groupBy: this.queryGroupBy ? [...this.queryGroupBy] : undefined,
+      groupBy: this.buildGroupByItems(columns ?? undefined),
       having: this.queryHaving,
       joins: this.queryJoins ? [...this.queryJoins] : undefined,
       where: condition,
