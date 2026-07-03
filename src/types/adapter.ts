@@ -97,6 +97,7 @@ export interface QueryOrderBy {
  */
 export type QueryGroupByItem =
   | string
+  | { alias: string }
   | { expression: ExpressionNode }
   | { raw: { sql: string; bindings?: DatabaseValue[] } }
 
