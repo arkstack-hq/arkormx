@@ -157,6 +157,42 @@ export class CreateRolesMigration extends Migration {
 `done()` fires on the database-backed migration path (`migrate`, `migrate:fresh`,
 and `migrate:rollback`) once the schema operations succeed.
 
+## Generated columns
+
+`table.generated(name, expression, options)` defines a PostgreSQL
+`GENERATED ALWAYS AS (…) STORED` column — a value the database computes from the
+row's own columns on every write. This gives you zero write-path code,
+database-guaranteed consistency, and a fast, indexable `GROUP BY`.
+
+The expression may be a raw SQL string or an
+[expression-builder](./expressions.md) factory:
+
+```ts
+schema.createTable('line_items', (table) => {
+  table.id()
+  table.integer('price')
+  table.integer('quantity')
+
+  // String form
+  table.generated('total_cents', '"price" * "quantity" * 100', { type: 'integer' })
+
+  // Expression-builder form
+  table.generated('total', (e) => e.col('price').times(e.col('quantity')), { type: 'integer' })
+
+  table.index('total') // generated columns are indexable
+})
+```
+
+`options` accepts `type` (the column type, default `text`), `stored` (default
+`true`), and `nullable`.
+
+Constraints: the expression must be **immutable** and reference only the row's
+own columns (no subqueries or references to other tables — use a
+[computed attribute](./expressions.md#computed-virtual-attributes) for
+cross-table logic). Generated columns are read-only: the database rejects any
+attempt to write them, and the generated Prisma schema models them as
+`@default(dbgenerated("…"))` so Prisma never writes the value.
+
 ## Schema builder reference
 
 `SchemaBuilder` supports:
@@ -186,6 +222,7 @@ constraints](#toggling-foreign-key-constraints)):
 | `json(name)`                                               | JSON column.                                               |
 | `date(name)` / `timestamp(name)`                           | Date and timestamp (`timestamptz`) columns.                |
 | `dateTime(name)`                                           | Timestamp without time zone.                               |
+| `generated(name, expression, options?)`                    | Database-computed `GENERATED ALWAYS AS (…) STORED` column. |
 | `enum(name, valuesOrEnumName)`                             | Define or reuse an enum.                                   |
 | `timestamps(casing?, mapCasing?)`                          | Add `createdAt` and `updatedAt` (casing configurable).     |
 | `softDeletes(column?)`                                     | Add a nullable soft-delete timestamp.                      |

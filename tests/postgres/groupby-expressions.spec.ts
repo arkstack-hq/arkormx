@@ -24,24 +24,32 @@ describe('Group-by expressions (#12)', () => {
     expect(sql).toContain('group by "isActive"')
   })
 
-  it('groups by an expression node', () => {
+  it('inlines an expression node that is not also projected', () => {
     const tier = caseWhen(col('isActive').eq(1), 'active').else('inactive')
-    const sql = compile(() =>
-      DbUser.query().select({ tier, total: count() }).groupBy(tier),
-    )
+    const sql = compile(() => DbUser.query().select({ total: count() }).groupBy(tier))
 
     expect(sql).toContain('group by case when ("isActive" = $')
   })
 
-  it('groups by a select alias by repeating the underlying expression', () => {
+  it('references the select alias when the grouped expression is projected', () => {
+    const tier = caseWhen(col('isActive').eq(1), 'active').else('inactive')
+    const sql = compile(() =>
+      DbUser.query().select({ tier, total: sum('id') }).groupBy(tier),
+    )
+
+    // Grouping by the same expression that is selected references the output alias
+    // (Postgres cannot match a re-bound duplicate expression against the SELECT).
+    expect(sql).toContain('as "tier"')
+    expect(sql).toContain('group by "tier"')
+  })
+
+  it('groups by a select alias name by referencing the alias', () => {
     const tier = caseWhen(col('isActive').eq(1), 'active').else('inactive')
     const sql = compile(() =>
       DbUser.query().select({ tier, total: sum('id') }).groupBy('tier'),
     )
 
-    // The alias `tier` in group by is expanded to the CASE expression, not a bare ref.
-    expect(sql).toContain('group by case when')
-    expect(sql).not.toContain('group by "tier"')
+    expect(sql).toContain('group by "tier"')
   })
 
   it('supports groupByRaw with bindings', () => {
