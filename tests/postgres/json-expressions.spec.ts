@@ -43,9 +43,9 @@ describe('JSON value extraction in expressions (#11)', () => {
   })
 
   it('is groupable', () => {
-    const bill = json('metadata', 'billType')
+    // Grouping by an expression that is not also projected inlines it directly.
     const sql = compile(() =>
-      DbUser.query().select({ bill, total: count() }).groupBy(bill),
+      DbUser.query().select({ total: count() }).groupBy(json('metadata', 'billType')),
     )
 
     expect(sql).toContain('group by ("metadata"::jsonb ->> $')
