@@ -48,7 +48,15 @@ import type {
 import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/query-builder'
 import { LengthAwarePaginator, Paginator } from './Paginator'
 import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
-import { Expression } from './Expression'
+import {
+  Expression,
+  avg as avgExpr,
+  count as countExpr,
+  fromExpressionNode,
+  max as maxExpr,
+  min as minExpr,
+  sum as sumExpr,
+} from './Expression'
 import type { ExpressionNode, QueryExpressionCondition, QueryGroupByItem } from './types'
 
 /** Object select projection whose values may be expressions, columns, or booleans. */
@@ -56,6 +64,39 @@ export type ExpressionSelectMap = Record<string, Expression | boolean | string>
 
 /** A `group by` source: a column/select-alias name, an expression, or a raw fragment. */
 type GroupBySource = string | Expression | { raw: { sql: string; bindings: DatabaseValue[] } }
+
+/** Map of model attributes selected for an aggregate (`{ amount: true }`). */
+type AggregateColumnMap<TModel> = Partial<Record<keyof ModelAttributes<TModel> & string, true>>
+
+/**
+ * Prisma-style grouped-aggregate request: group by `by` columns and compute the
+ * requested `_sum`/`_avg`/`_min`/`_max`/`_count` aggregates per group.
+ */
+export interface GroupByAggregateSpec<TModel> {
+  by: Array<keyof ModelAttributes<TModel> & string>
+  _count?: true | AggregateColumnMap<TModel>
+  _sum?: AggregateColumnMap<TModel>
+  _avg?: AggregateColumnMap<TModel>
+  _min?: AggregateColumnMap<TModel>
+  _max?: AggregateColumnMap<TModel>
+}
+
+type SameTypeAggregate<TModel, TMap> = {
+  [K in keyof TMap]: K extends keyof ModelAttributes<TModel> ? ModelAttributes<TModel>[K] : unknown
+}
+
+/** The typed plain row returned for a {@link GroupByAggregateSpec} query. */
+export type GroupByAggregateRow<TModel, TSpec extends GroupByAggregateSpec<TModel>> = {
+  [K in TSpec['by'][number]]: K extends keyof ModelAttributes<TModel>
+    ? ModelAttributes<TModel>[K]
+    : unknown
+} & (TSpec extends { _count: infer C }
+  ? { _count: C extends AggregateColumnMap<TModel> ? { [K in keyof C]: number } : number }
+  : object) &
+  (TSpec extends { _sum: infer S } ? { _sum: { [K in keyof S]: number | null } } : object) &
+  (TSpec extends { _avg: infer A } ? { _avg: { [K in keyof A]: number | null } } : object) &
+  (TSpec extends { _min: infer M } ? { _min: SameTypeAggregate<TModel, M> } : object) &
+  (TSpec extends { _max: infer M } ? { _max: SameTypeAggregate<TModel, M> } : object)
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -1773,7 +1814,19 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   public groupBy<TKey extends keyof ModelAttributes<TModel> & string>(...columns: TKey[]): this
   public groupBy(columns: Array<string | Expression>): this
   public groupBy(...columns: Array<string | Expression>): this
-  public groupBy(...columns: Array<string | Expression | Array<string | Expression>>): this {
+  public groupBy<TSpec extends GroupByAggregateSpec<TModel>>(
+    spec: TSpec,
+  ): Promise<GroupByAggregateRow<TModel, TSpec>[]>
+  public groupBy(
+    ...columns: Array<string | Expression | Array<string | Expression> | GroupByAggregateSpec<TModel>>
+  ): this | Promise<Record<string, unknown>[]> {
+    const first = columns[0]
+    if (
+      columns.length === 1 &&
+      this.isGroupByAggregateSpec(first)
+    )
+      return this.executeGroupByAggregate(first)
+
     const normalized = (
       Array.isArray(columns[0]) ? columns[0] : columns
     ) as Array<string | Expression>
@@ -1812,20 +1865,122 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   ): QueryGroupByItem[] | undefined {
     if (!this.queryGroupBy || this.queryGroupBy.length === 0) return undefined
 
-    const aliasExpressions = new Map<string, ExpressionNode>()
+    const expressionAliases = new Map<string, string>()
     selectColumns?.forEach((column) => {
-      if (column.expression && column.alias) aliasExpressions.set(column.alias, column.expression)
+      if (column.expression && column.alias)
+        expressionAliases.set(JSON.stringify(column.expression), column.alias)
     })
+    const aliasNames = new Set(expressionAliases.values())
 
     return this.queryGroupBy.map((source): QueryGroupByItem => {
-      if (source instanceof Expression) return { expression: source.toExpressionNode() }
+      if (source instanceof Expression) {
+        const node = source.toExpressionNode()
+        const alias = expressionAliases.get(JSON.stringify(node))
+
+        // Group by the select alias when the same expression is projected, so the
+        // adapter references the output column instead of re-binding parameters.
+        return alias ? { alias } : { expression: node }
+      }
 
       if (typeof source === 'object') return { raw: source.raw }
 
-      const aliased = aliasExpressions.get(source)
-
-      return aliased ? { expression: aliased } : source
+      // A bare string that names an expression-backed select alias.
+      return aliasNames.has(source) ? { alias: source } : source
     })
+  }
+
+  private isGroupByAggregateSpec(value: unknown): value is GroupByAggregateSpec<TModel> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      !(value instanceof Expression) &&
+      Array.isArray((value as { by?: unknown }).by)
+    )
+  }
+
+  /**
+   * Executes the query and returns plain, un-hydrated rows keyed by their select
+   * alias — the natural shape for `select` + `groupBy` aggregate reports. Pass a
+   * row type to describe the projection.
+   *
+   * @returns
+   */
+  public async getRows<TRow = Record<string, DatabaseValue>>(): Promise<TRow[]> {
+    const rows = await this.executeReadRows()
+
+    return rows as TRow[]
+  }
+
+  /**
+   * Runs a Prisma-style grouped aggregate and returns typed rows shaped as
+   * `{ <by columns>, _sum, _avg, _min, _max, _count }`.
+   */
+  private async executeGroupByAggregate(
+    spec: GroupByAggregateSpec<TModel>,
+  ): Promise<Record<string, unknown>[]> {
+    const selectMap: Record<string, Expression | boolean> = {}
+    spec.by.forEach((column) => {
+      selectMap[column] = true
+    })
+
+    const aggregates: Array<{ group: string; column: string; alias: string; numeric: boolean }> = []
+    const register = (
+      group: string,
+      factory: (column: string) => Expression,
+      map: AggregateColumnMap<TModel>,
+      numeric: boolean,
+    ): void => {
+      Object.keys(map).forEach((column) => {
+        if (!(map as Record<string, unknown>)[column]) return
+
+        const alias = `${group}_${column}`
+        selectMap[alias] = factory(column)
+        aggregates.push({ group, column, alias, numeric })
+      })
+    }
+
+    if (spec._sum) register('_sum', (column) => sumExpr(column), spec._sum, true)
+    if (spec._avg) register('_avg', (column) => avgExpr(column), spec._avg, true)
+    if (spec._min) register('_min', (column) => minExpr(column), spec._min, false)
+    if (spec._max) register('_max', (column) => maxExpr(column), spec._max, false)
+
+    let countAllAlias: string | undefined
+    if (spec._count === true) {
+      countAllAlias = '_count_all'
+      selectMap[countAllAlias] = countExpr()
+    } else if (spec._count) {
+      register('_count', (column) => countExpr(column), spec._count, true)
+    }
+
+    this.select(selectMap)
+    this.groupBy(spec.by as string[])
+
+    const rows = await this.getRows<Record<string, unknown>>()
+
+    return rows.map((row) => {
+      const result: Record<string, unknown> = {}
+      spec.by.forEach((column) => {
+        result[column] = row[column]
+      })
+
+      const grouped: Record<string, Record<string, unknown>> = {}
+      aggregates.forEach(({ group, column, alias, numeric }) => {
+        grouped[group] ??= {}
+        grouped[group][column] = numeric ? this.coerceNumeric(row[alias]) : row[alias]
+      })
+      Object.assign(result, grouped)
+
+      if (countAllAlias) result._count = this.coerceNumeric(row[countAllAlias])
+
+      return result
+    })
+  }
+
+  private coerceNumeric(value: unknown): number | null {
+    if (value === null || value === undefined) return null
+
+    return Number(value)
   }
 
   private appendHavingCondition(boolean: 'AND' | 'OR', condition: QueryCondition): void {
@@ -4458,7 +4613,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     )
       return null
 
-    return {
+    return this.expandComputedAttributes({
       target: this.buildQueryTarget(),
       columns,
       distinct: this.queryDistinct || undefined,
@@ -4476,6 +4631,133 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       relationAggregates: this.canExecuteRelationAggregatesInAdapter()
         ? (relationAggregates ?? undefined)
         : undefined,
+    })
+  }
+
+  /** Reads and caches the model's resolved `static computed` expression map. */
+  private computedAttributes(): Record<string, ExpressionNode> {
+    const model = this.model as unknown as {
+      getComputed?: () => Record<string, ExpressionNode>
+    }
+
+    return typeof model.getComputed === 'function' ? model.getComputed() : {}
+  }
+
+  /**
+   * Expands references to `static computed` attribute names into their backing
+   * expressions across a select spec's columns, group by, order by, where, and
+   * having clauses. A no-op when the model declares no computed attributes.
+   */
+  private expandComputedAttributes(spec: SelectSpec<TModel>): SelectSpec<TModel> {
+    const computed = this.computedAttributes()
+    if (Object.keys(computed).length === 0) return spec
+
+    const columns = spec.columns?.map((column) => {
+      if (column.expression || column.raw || column.wildcard) return column
+
+      const expression = computed[column.column]
+
+      return expression
+        ? { ...column, expression, alias: column.alias ?? column.column }
+        : column
+    })
+
+    const selectedComputedAliases = new Set(
+      columns?.filter((column) => column.expression && column.alias).map((column) => column.alias!),
+    )
+
+    return {
+      ...spec,
+      columns,
+      groupBy: spec.groupBy?.map((item) => {
+        if (typeof item !== 'string') return item
+
+        const expression = computed[item]
+        if (!expression) return item
+
+        // Reference the projected alias when selected; otherwise inline the
+        // expression (Postgres cannot match a re-bound duplicate against SELECT).
+        return selectedComputedAliases.has(item) ? { alias: item } : { expression }
+      }),
+      orderBy: spec.orderBy?.map((clause) => {
+        if (clause.expression) return clause
+
+        const expression = computed[clause.column]
+
+        return expression ? { ...clause, expression } : clause
+      }),
+      where: spec.where ? this.expandComputedCondition(spec.where, computed) : spec.where,
+      having: spec.having ? this.expandComputedCondition(spec.having, computed) : spec.having,
+    }
+  }
+
+  private expandComputedCondition(
+    condition: QueryCondition,
+    computed: Record<string, ExpressionNode>,
+  ): QueryCondition {
+    if (condition.type === 'comparison' && computed[condition.column]) {
+      return {
+        type: 'expression',
+        expression: this.computedComparison(
+          computed[condition.column],
+          condition.operator,
+          condition.value,
+        ),
+      }
+    }
+
+    if (condition.type === 'group') {
+      return {
+        ...condition,
+        conditions: condition.conditions.map((entry) =>
+          this.expandComputedCondition(entry, computed),
+        ),
+      }
+    }
+
+    if (condition.type === 'not') {
+      return { ...condition, condition: this.expandComputedCondition(condition.condition, computed) }
+    }
+
+    return condition
+  }
+
+  /** Converts a where comparison against a computed attribute into an expression. */
+  private computedComparison(
+    node: ExpressionNode,
+    operator: QueryComparisonOperator,
+    value: DatabaseValue | DatabaseValue[] | undefined,
+  ): ExpressionNode {
+    const expression = fromExpressionNode(node)
+    const list = Array.isArray(value) ? value : []
+
+    switch (operator) {
+      case '!=':
+        return expression.ne(value).toExpressionNode()
+      case '>':
+        return expression.gt(value).toExpressionNode()
+      case '>=':
+        return expression.gte(value).toExpressionNode()
+      case '<':
+        return expression.lt(value).toExpressionNode()
+      case '<=':
+        return expression.lte(value).toExpressionNode()
+      case 'in':
+        return expression.in(list).toExpressionNode()
+      case 'not-in':
+        return expression.notIn(list).toExpressionNode()
+      case 'is-null':
+        return expression.isNull().toExpressionNode()
+      case 'is-not-null':
+        return expression.isNotNull().toExpressionNode()
+      case 'contains':
+        return expression.like(`%${String(value)}%`).toExpressionNode()
+      case 'starts-with':
+        return expression.like(`${String(value)}%`).toExpressionNode()
+      case 'ends-with':
+        return expression.like(`%${String(value)}`).toExpressionNode()
+      default:
+        return expression.eq(value).toExpressionNode()
     }
   }
 

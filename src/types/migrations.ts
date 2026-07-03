@@ -44,6 +44,13 @@ export interface SchemaColumn {
   precision?: number
   /** Number of digits to the right of the decimal point for `decimal` columns. */
   scale?: number
+  /**
+   * SQL expression for a database-computed column (`GENERATED ALWAYS AS (…)`).
+   * The expression must be immutable and reference only the row's own columns.
+   */
+  generatedExpression?: string
+  /** Whether the generated column is `STORED` (Postgres only supports stored). */
+  generatedStored?: boolean
   primaryKeyGeneration?: PrimaryKeyGeneration
 }
 
