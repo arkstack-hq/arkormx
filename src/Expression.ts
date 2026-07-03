@@ -262,8 +262,13 @@ const coerceColumn = (value: unknown): Expression => {
 
 // -- factory functions ---------------------------------------------------------
 
-/** 
- * A typed column reference. Supports joined `table.column` syntax. 
+/**
+ * Rebuilds an {@link Expression} around an already-serialized node.
+ */
+export const fromExpressionNode = (node: ExpressionNode): Expression => new NodeExpression(node)
+
+/**
+ * A typed column reference. Supports joined `table.column` syntax.
  */
 export const col = (name: string): Expression => new NodeExpression({ kind: 'column', name })
 
