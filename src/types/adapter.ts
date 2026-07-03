@@ -7,6 +7,7 @@ import type {
 } from './migrations'
 
 import type { ModelStatic } from './ModelStatic'
+import type { ExpressionNode } from './expression'
 
 export type DatabasePrimitive = string | number | boolean | bigint | Date | null
 
@@ -32,6 +33,7 @@ export type AdapterCapability =
   | 'distinct'
   | 'groupBy'
   | 'joins'
+  | 'expressions'
 
 export type AdapterCapabilities = Partial<Record<AdapterCapability, boolean>>
 
@@ -77,12 +79,27 @@ export interface QuerySelectColumn {
   alias?: string
   raw?: boolean
   wildcard?: boolean
+  /** A compiled expression projected in place of a physical column. */
+  expression?: ExpressionNode
 }
 
 export interface QueryOrderBy {
   column: string
   direction: SortDirection
+  /** Orders by a compiled expression instead of a physical column. */
+  expression?: ExpressionNode
 }
+
+/**
+ * A `GROUP BY` entry: either a logical column name (string) or a compiled
+ * expression / raw fragment. The query builder resolves select-alias grouping to
+ * the underlying expression before it reaches the adapter.
+ */
+export type QueryGroupByItem =
+  | string
+  | { alias: string }
+  | { expression: ExpressionNode }
+  | { raw: { sql: string; bindings?: DatabaseValue[] } }
 
 export interface QueryComparisonCondition {
   type: 'comparison'
@@ -162,6 +179,12 @@ export interface RawQuerySpec {
   bindings?: DatabaseValue[]
 }
 
+/** A boolean-valued expression used directly as a predicate (where / having). */
+export interface QueryExpressionCondition {
+  type: 'expression'
+  expression: ExpressionNode
+}
+
 export type QueryCondition =
   | QueryComparisonCondition
   | QueryColumnComparisonCondition
@@ -170,6 +193,7 @@ export type QueryCondition =
   | QueryExistsCondition
   | QueryFullTextCondition
   | QueryJsonCondition
+  | QueryExpressionCondition
   | QueryGroupCondition
   | QueryNotCondition
   | QueryRawCondition
@@ -270,7 +294,7 @@ export interface SelectSpec<TModel = unknown> {
   target: QueryTarget<TModel>
   columns?: QuerySelectColumn[]
   distinct?: boolean
-  groupBy?: string[]
+  groupBy?: QueryGroupByItem[]
   having?: QueryCondition
   joins?: QueryJoin[]
   where?: QueryCondition

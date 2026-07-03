@@ -48,6 +48,55 @@ import type {
 import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/query-builder'
 import { LengthAwarePaginator, Paginator } from './Paginator'
 import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
+import {
+  Expression,
+  avg as avgExpr,
+  count as countExpr,
+  fromExpressionNode,
+  max as maxExpr,
+  min as minExpr,
+  sum as sumExpr,
+} from './Expression'
+import type { ExpressionNode, QueryExpressionCondition, QueryGroupByItem } from './types'
+
+/** Object select projection whose values may be expressions, columns, or booleans. */
+export type ExpressionSelectMap = Record<string, Expression | boolean | string>
+
+/** A `group by` source: a column/select-alias name, an expression, or a raw fragment. */
+type GroupBySource = string | Expression | { raw: { sql: string; bindings: DatabaseValue[] } }
+
+/** Map of model attributes selected for an aggregate (`{ amount: true }`). */
+type AggregateColumnMap<TModel> = Partial<Record<keyof ModelAttributes<TModel> & string, true>>
+
+/**
+ * Prisma-style grouped-aggregate request: group by `by` columns and compute the
+ * requested `_sum`/`_avg`/`_min`/`_max`/`_count` aggregates per group.
+ */
+export interface GroupByAggregateSpec<TModel> {
+  by: Array<keyof ModelAttributes<TModel> & string>
+  _count?: true | AggregateColumnMap<TModel>
+  _sum?: AggregateColumnMap<TModel>
+  _avg?: AggregateColumnMap<TModel>
+  _min?: AggregateColumnMap<TModel>
+  _max?: AggregateColumnMap<TModel>
+}
+
+type SameTypeAggregate<TModel, TMap> = {
+  [K in keyof TMap]: K extends keyof ModelAttributes<TModel> ? ModelAttributes<TModel>[K] : unknown
+}
+
+/** The typed plain row returned for a {@link GroupByAggregateSpec} query. */
+export type GroupByAggregateRow<TModel, TSpec extends GroupByAggregateSpec<TModel>> = {
+  [K in TSpec['by'][number]]: K extends keyof ModelAttributes<TModel>
+    ? ModelAttributes<TModel>[K]
+    : unknown
+} & (TSpec extends { _count: infer C }
+  ? { _count: C extends AggregateColumnMap<TModel> ? { [K in keyof C]: number } : number }
+  : object) &
+  (TSpec extends { _sum: infer S } ? { _sum: { [K in keyof S]: number | null } } : object) &
+  (TSpec extends { _avg: infer A } ? { _avg: { [K in keyof A]: number | null } } : object) &
+  (TSpec extends { _min: infer M } ? { _min: SameTypeAggregate<TModel, M> } : object) &
+  (TSpec extends { _max: infer M } ? { _max: SameTypeAggregate<TModel, M> } : object)
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -79,7 +128,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   private queryOrderBy?: QueryOrderBy[]
   private querySelect?: QuerySelectColumn[]
   private queryDistinct = false
-  private queryGroupBy?: string[]
+  private queryGroupBy?: GroupBySource[]
   private queryHaving?: QueryCondition
   private queryJoins?: QueryJoin[]
   private offsetValue?: number
@@ -142,9 +191,13 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public where(where: QuerySchemaWhere<TDelegate>): this
   public where(callback: WhereCallback<TModel, TDelegate>): this
+  public where(expression: Expression): this
   public where(
-    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate>,
+    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate> | Expression,
   ): this {
+    if (whereOrCallback instanceof Expression)
+      return this.appendExpressionCondition('AND', whereOrCallback)
+
     if (typeof whereOrCallback === 'function') return this.appendNestedWhere('AND', whereOrCallback)
 
     return this.addLogicalWhere('AND', whereOrCallback)
@@ -159,12 +212,38 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public orWhere(where: QuerySchemaWhere<TDelegate>): this
   public orWhere(callback: WhereCallback<TModel, TDelegate>): this
+  public orWhere(expression: Expression): this
   public orWhere(
-    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate>,
+    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate> | Expression,
   ): this {
+    if (whereOrCallback instanceof Expression)
+      return this.appendExpressionCondition('OR', whereOrCallback)
+
     if (typeof whereOrCallback === 'function') return this.appendNestedWhere('OR', whereOrCallback)
 
     return this.addLogicalWhere('OR', whereOrCallback)
+  }
+
+  /**
+   * Appends a boolean {@link Expression} as a where predicate. When the query is
+   * using the Prisma-like legacy where representation, the expression is merged in
+   * as a structured condition alongside it.
+   */
+  private appendExpressionCondition(boolean: 'AND' | 'OR', expression: Expression): this {
+    const condition: QueryExpressionCondition = {
+      type: 'expression',
+      expression: expression.toExpressionNode(),
+    }
+
+    if (this.legacyWhere) {
+      const existing = this.tryBuildQueryCondition(this.legacyWhere)
+      this.legacyWhere = undefined
+      if (existing) this.queryWhere = existing
+    }
+
+    this.appendQueryCondition(boolean, condition)
+
+    return this
   }
 
   /**
@@ -1154,9 +1233,24 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param orderBy
    * @returns
    */
-  public orderBy(orderBy: QuerySchemaOrderBy<TDelegate>): this {
+  public orderBy(orderBy: QuerySchemaOrderBy<TDelegate>): this
+  public orderBy(expression: Expression, direction?: 'asc' | 'desc'): this
+  public orderBy(
+    orderByOrExpression: QuerySchemaOrderBy<TDelegate> | Expression,
+    direction: 'asc' | 'desc' = 'asc',
+  ): this {
     this.randomOrderEnabled = false
-    const normalized = this.normalizeQueryOrderBy(orderBy)
+
+    if (orderByOrExpression instanceof Expression) {
+      this.queryOrderBy = [
+        ...(this.queryOrderBy ?? []),
+        { column: '', direction, expression: orderByOrExpression.toExpressionNode() },
+      ]
+
+      return this
+    }
+
+    const normalized = this.normalizeQueryOrderBy(orderByOrExpression)
     if (!normalized)
       throw new UnsupportedAdapterFeatureException(
         'Order clauses must use Arkorm-normalizable column directions.',
@@ -1167,6 +1261,29 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       )
 
     this.queryOrderBy = normalized
+
+    return this
+  }
+
+  /**
+   * Appends a raw SQL `order by` fragment (with positional `?` bindings), useful
+   * for ordering by a computed expression the builder does not model directly.
+   *
+   * @param sql
+   * @param bindings
+   * @param direction
+   * @returns
+   */
+  public orderByRaw(
+    sql: string,
+    bindings: DatabaseValue[] = [],
+    direction: 'asc' | 'desc' = 'asc',
+  ): this {
+    this.randomOrderEnabled = false
+    this.queryOrderBy = [
+      ...(this.queryOrderBy ?? []),
+      { column: '', direction, expression: { kind: 'raw', sql, bindings } },
+    ]
 
     return this
   }
@@ -1633,7 +1750,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param select
    * @returns
    */
-  public select(select: QuerySchemaSelect<TDelegate>): this {
+  public select(select: QuerySchemaSelect<TDelegate>): this
+  public select(select: Record<string, Expression | boolean | string>): this
+  public select(select: QuerySchemaSelect<TDelegate> | ExpressionSelectMap): this {
     const normalized = this.normalizeQuerySelect(select)
     if (normalized === null)
       throw new UnsupportedAdapterFeatureException(
@@ -1655,7 +1774,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param select
    * @returns
    */
-  public addSelect(select: QuerySchemaSelect<TDelegate>): this {
+  public addSelect(select: QuerySchemaSelect<TDelegate>): this
+  public addSelect(select: Record<string, Expression | boolean | string>): this
+  public addSelect(select: QuerySchemaSelect<TDelegate> | ExpressionSelectMap): this {
     const normalized = this.normalizeQuerySelect(select)
     if (normalized === null)
       throw new UnsupportedAdapterFeatureException(
@@ -1691,8 +1812,24 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public groupBy<TKey extends keyof ModelAttributes<TModel> & string>(columns: TKey[]): this
   public groupBy<TKey extends keyof ModelAttributes<TModel> & string>(...columns: TKey[]): this
-  public groupBy(...columns: Array<string | string[]>): this {
-    const normalized = (Array.isArray(columns[0]) ? columns[0] : columns) as string[]
+  public groupBy(columns: Array<string | Expression>): this
+  public groupBy(...columns: Array<string | Expression>): this
+  public groupBy<TSpec extends GroupByAggregateSpec<TModel>>(
+    spec: TSpec,
+  ): Promise<GroupByAggregateRow<TModel, TSpec>[]>
+  public groupBy(
+    ...columns: Array<string | Expression | Array<string | Expression> | GroupByAggregateSpec<TModel>>
+  ): this | Promise<Record<string, unknown>[]> {
+    const first = columns[0]
+    if (
+      columns.length === 1 &&
+      this.isGroupByAggregateSpec(first)
+    )
+      return this.executeGroupByAggregate(first)
+
+    const normalized = (
+      Array.isArray(columns[0]) ? columns[0] : columns
+    ) as Array<string | Expression>
     if (normalized.length === 0)
       throw new QueryConstraintException('groupBy requires at least one column.', {
         operation: 'groupBy',
@@ -1702,6 +1839,148 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     this.queryGroupBy = [...normalized]
 
     return this
+  }
+
+  /**
+   * Appends a raw SQL `group by` fragment (with positional `?` bindings), mirroring
+   * `whereRaw`/`havingRaw`. Combines with any columns/expressions already grouped.
+   *
+   * @param sql
+   * @param bindings
+   * @returns
+   */
+  public groupByRaw(sql: string, bindings: DatabaseValue[] = []): this {
+    this.queryGroupBy = [...(this.queryGroupBy ?? []), { raw: { sql, bindings } }]
+
+    return this
+  }
+
+  /**
+   * Resolves the recorded group-by sources into adapter {@link QueryGroupByItem}s.
+   * A bare string that matches a select-column alias is expanded to that column's
+   * underlying expression (group-by-alias); otherwise it is treated as a column.
+   */
+  private buildGroupByItems(
+    selectColumns?: QuerySelectColumn[],
+  ): QueryGroupByItem[] | undefined {
+    if (!this.queryGroupBy || this.queryGroupBy.length === 0) return undefined
+
+    const expressionAliases = new Map<string, string>()
+    selectColumns?.forEach((column) => {
+      if (column.expression && column.alias)
+        expressionAliases.set(JSON.stringify(column.expression), column.alias)
+    })
+    const aliasNames = new Set(expressionAliases.values())
+
+    return this.queryGroupBy.map((source): QueryGroupByItem => {
+      if (source instanceof Expression) {
+        const node = source.toExpressionNode()
+        const alias = expressionAliases.get(JSON.stringify(node))
+
+        // Group by the select alias when the same expression is projected, so the
+        // adapter references the output column instead of re-binding parameters.
+        return alias ? { alias } : { expression: node }
+      }
+
+      if (typeof source === 'object') return { raw: source.raw }
+
+      // A bare string that names an expression-backed select alias.
+      return aliasNames.has(source) ? { alias: source } : source
+    })
+  }
+
+  private isGroupByAggregateSpec(value: unknown): value is GroupByAggregateSpec<TModel> {
+    return (
+      typeof value === 'object' &&
+      value !== null &&
+      !Array.isArray(value) &&
+      !(value instanceof Expression) &&
+      Array.isArray((value as { by?: unknown }).by)
+    )
+  }
+
+  /**
+   * Executes the query and returns plain, un-hydrated rows keyed by their select
+   * alias — the natural shape for `select` + `groupBy` aggregate reports. Pass a
+   * row type to describe the projection.
+   *
+   * @returns
+   */
+  public async getRows<TRow = Record<string, DatabaseValue>>(): Promise<TRow[]> {
+    const rows = await this.executeReadRows()
+
+    return rows as TRow[]
+  }
+
+  /**
+   * Runs a Prisma-style grouped aggregate and returns typed rows shaped as
+   * `{ <by columns>, _sum, _avg, _min, _max, _count }`.
+   */
+  private async executeGroupByAggregate(
+    spec: GroupByAggregateSpec<TModel>,
+  ): Promise<Record<string, unknown>[]> {
+    const selectMap: Record<string, Expression | boolean> = {}
+    spec.by.forEach((column) => {
+      selectMap[column] = true
+    })
+
+    const aggregates: Array<{ group: string; column: string; alias: string; numeric: boolean }> = []
+    const register = (
+      group: string,
+      factory: (column: string) => Expression,
+      map: AggregateColumnMap<TModel>,
+      numeric: boolean,
+    ): void => {
+      Object.keys(map).forEach((column) => {
+        if (!(map as Record<string, unknown>)[column]) return
+
+        const alias = `${group}_${column}`
+        selectMap[alias] = factory(column)
+        aggregates.push({ group, column, alias, numeric })
+      })
+    }
+
+    if (spec._sum) register('_sum', (column) => sumExpr(column), spec._sum, true)
+    if (spec._avg) register('_avg', (column) => avgExpr(column), spec._avg, true)
+    if (spec._min) register('_min', (column) => minExpr(column), spec._min, false)
+    if (spec._max) register('_max', (column) => maxExpr(column), spec._max, false)
+
+    let countAllAlias: string | undefined
+    if (spec._count === true) {
+      countAllAlias = '_count_all'
+      selectMap[countAllAlias] = countExpr()
+    } else if (spec._count) {
+      register('_count', (column) => countExpr(column), spec._count, true)
+    }
+
+    this.select(selectMap)
+    this.groupBy(spec.by as string[])
+
+    const rows = await this.getRows<Record<string, unknown>>()
+
+    return rows.map((row) => {
+      const result: Record<string, unknown> = {}
+      spec.by.forEach((column) => {
+        result[column] = row[column]
+      })
+
+      const grouped: Record<string, Record<string, unknown>> = {}
+      aggregates.forEach(({ group, column, alias, numeric }) => {
+        grouped[group] ??= {}
+        grouped[group][column] = numeric ? this.coerceNumeric(row[alias]) : row[alias]
+      })
+      Object.assign(result, grouped)
+
+      if (countAllAlias) result._count = this.coerceNumeric(row[countAllAlias])
+
+      return result
+    })
+  }
+
+  private coerceNumeric(value: unknown): number | null {
+    if (value === null || value === undefined) return null
+
+    return Number(value)
   }
 
   private appendHavingCondition(boolean: 'AND' | 'OR', condition: QueryCondition): void {
@@ -1731,6 +2010,55 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
+   * Resolves the three `having` call shapes into a condition: `having(column, …)`,
+   * `having(expression)` (a boolean expression predicate), and
+   * `having(expression, operator, value)` (compare an aggregate to a value).
+   */
+  private buildHavingCondition(
+    columnOrExpression: string | Expression,
+    operatorOrValue: QueryScalarComparisonOperator | DatabaseValue | undefined,
+    maybeValue: DatabaseValue | undefined,
+  ): QueryCondition {
+    if (columnOrExpression instanceof Expression) {
+      const expression =
+        operatorOrValue === undefined
+          ? columnOrExpression
+          : this.compareExpression(
+              columnOrExpression,
+              operatorOrValue as QueryScalarComparisonOperator,
+              maybeValue,
+            )
+
+      return { type: 'expression', expression: expression.toExpressionNode() }
+    }
+
+    return this.buildHavingComparison(operatorOrValue as never, maybeValue, columnOrExpression)
+  }
+
+  private compareExpression(
+    expression: Expression,
+    operator: QueryScalarComparisonOperator,
+    value: DatabaseValue | undefined,
+  ): Expression {
+    switch (operator) {
+      case '=':
+        return expression.eq(value)
+      case '!=':
+        return expression.ne(value)
+      case '>':
+        return expression.gt(value)
+      case '>=':
+        return expression.gte(value)
+      case '<':
+        return expression.lt(value)
+      case '<=':
+        return expression.lte(value)
+      default:
+        return expression.eq(value)
+    }
+  }
+
+  /**
    * Adds a HAVING clause to filter grouped rows. Accepts either
    * `having(column, value)` (defaulting to equality) or
    * `having(column, operator, value)`. Multiple calls combine with AND.
@@ -1742,14 +2070,20 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public having(column: string, value: DatabaseValue): this
   public having(column: string, operator: QueryScalarComparisonOperator, value: DatabaseValue): this
+  public having(expression: Expression): this
   public having(
-    column: string,
-    operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+    expression: Expression,
+    operator: QueryScalarComparisonOperator,
+    value: DatabaseValue,
+  ): this
+  public having(
+    columnOrExpression: string | Expression,
+    operatorOrValue?: QueryScalarComparisonOperator | DatabaseValue,
     maybeValue?: DatabaseValue,
   ): this {
     this.appendHavingCondition(
       'AND',
-      this.buildHavingComparison(operatorOrValue, maybeValue, column),
+      this.buildHavingCondition(columnOrExpression, operatorOrValue, maybeValue),
     )
 
     return this
@@ -1769,14 +2103,20 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     operator: QueryScalarComparisonOperator,
     value: DatabaseValue,
   ): this
+  public orHaving(expression: Expression): this
   public orHaving(
-    column: string,
-    operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+    expression: Expression,
+    operator: QueryScalarComparisonOperator,
+    value: DatabaseValue,
+  ): this
+  public orHaving(
+    columnOrExpression: string | Expression,
+    operatorOrValue?: QueryScalarComparisonOperator | DatabaseValue,
     maybeValue?: DatabaseValue,
   ): this {
     this.appendHavingCondition(
       'OR',
-      this.buildHavingComparison(operatorOrValue, maybeValue, column),
+      this.buildHavingCondition(columnOrExpression, operatorOrValue, maybeValue),
     )
 
     return this
@@ -3568,7 +3908,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return this.queryWhere != null || this.legacyWhere != null
   }
 
-  private normalizeQuerySelect(select: QuerySchemaSelect<TDelegate>): QuerySelectColumn[] | null {
+  private normalizeQuerySelect(
+    select: QuerySchemaSelect<TDelegate> | ExpressionSelectMap,
+  ): QuerySelectColumn[] | null {
     if (typeof select === 'string') return [{ column: select, raw: true }]
 
     if (Array.isArray(select)) {
@@ -3583,16 +3925,25 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     if (
       entries.some(
         ([, value]) =>
-          value !== true && value !== false && value !== undefined && typeof value !== 'string',
+          value !== true &&
+          value !== false &&
+          value !== undefined &&
+          typeof value !== 'string' &&
+          !(value instanceof Expression),
       )
     )
       return null
 
     const columns = entries
-      .filter(([, value]) => value === true || typeof value === 'string')
-      .map(([column, value]) =>
-        typeof value === 'string' ? { column, alias: value, raw: true } : { column },
+      .filter(
+        ([, value]) => value === true || typeof value === 'string' || value instanceof Expression,
       )
+      .map(([column, value]) => {
+        if (value instanceof Expression)
+          return { column, alias: column, expression: value.toExpressionNode() }
+
+        return typeof value === 'string' ? { column, alias: value, raw: true } : { column }
+      })
 
     return columns.length > 0 ? columns : []
   }
@@ -3834,7 +4185,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
           offset: normalizedQuery.offsetValue,
           columns: normalizedQuery.querySelect ? [...normalizedQuery.querySelect] : undefined,
           distinct: normalizedQuery.queryDistinct || undefined,
-          groupBy: normalizedQuery.queryGroupBy ? [...normalizedQuery.queryGroupBy] : undefined,
+          groupBy: normalizedQuery.queryGroupBy
+            ? normalizedQuery.queryGroupBy.filter(
+                (source): source is string => typeof source === 'string',
+              )
+            : undefined,
           relationLoads: this.mergeRelationLoadPlans(
             normalizedQuery.queryRelationLoads
               ? this.cloneRelationLoads(normalizedQuery.queryRelationLoads)
@@ -4258,11 +4613,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     )
       return null
 
-    return {
+    return this.expandComputedAttributes({
       target: this.buildQueryTarget(),
       columns,
       distinct: this.queryDistinct || undefined,
-      groupBy: this.queryGroupBy ? [...this.queryGroupBy] : undefined,
+      groupBy: this.buildGroupByItems(columns ?? undefined),
       having: this.queryHaving,
       joins: this.queryJoins ? [...this.queryJoins] : undefined,
       where: condition,
@@ -4276,6 +4631,133 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       relationAggregates: this.canExecuteRelationAggregatesInAdapter()
         ? (relationAggregates ?? undefined)
         : undefined,
+    })
+  }
+
+  /** Reads and caches the model's resolved `static computed` expression map. */
+  private computedAttributes(): Record<string, ExpressionNode> {
+    const model = this.model as unknown as {
+      getComputed?: () => Record<string, ExpressionNode>
+    }
+
+    return typeof model.getComputed === 'function' ? model.getComputed() : {}
+  }
+
+  /**
+   * Expands references to `static computed` attribute names into their backing
+   * expressions across a select spec's columns, group by, order by, where, and
+   * having clauses. A no-op when the model declares no computed attributes.
+   */
+  private expandComputedAttributes(spec: SelectSpec<TModel>): SelectSpec<TModel> {
+    const computed = this.computedAttributes()
+    if (Object.keys(computed).length === 0) return spec
+
+    const columns = spec.columns?.map((column) => {
+      if (column.expression || column.raw || column.wildcard) return column
+
+      const expression = computed[column.column]
+
+      return expression
+        ? { ...column, expression, alias: column.alias ?? column.column }
+        : column
+    })
+
+    const selectedComputedAliases = new Set(
+      columns?.filter((column) => column.expression && column.alias).map((column) => column.alias!),
+    )
+
+    return {
+      ...spec,
+      columns,
+      groupBy: spec.groupBy?.map((item) => {
+        if (typeof item !== 'string') return item
+
+        const expression = computed[item]
+        if (!expression) return item
+
+        // Reference the projected alias when selected; otherwise inline the
+        // expression (Postgres cannot match a re-bound duplicate against SELECT).
+        return selectedComputedAliases.has(item) ? { alias: item } : { expression }
+      }),
+      orderBy: spec.orderBy?.map((clause) => {
+        if (clause.expression) return clause
+
+        const expression = computed[clause.column]
+
+        return expression ? { ...clause, expression } : clause
+      }),
+      where: spec.where ? this.expandComputedCondition(spec.where, computed) : spec.where,
+      having: spec.having ? this.expandComputedCondition(spec.having, computed) : spec.having,
+    }
+  }
+
+  private expandComputedCondition(
+    condition: QueryCondition,
+    computed: Record<string, ExpressionNode>,
+  ): QueryCondition {
+    if (condition.type === 'comparison' && computed[condition.column]) {
+      return {
+        type: 'expression',
+        expression: this.computedComparison(
+          computed[condition.column],
+          condition.operator,
+          condition.value,
+        ),
+      }
+    }
+
+    if (condition.type === 'group') {
+      return {
+        ...condition,
+        conditions: condition.conditions.map((entry) =>
+          this.expandComputedCondition(entry, computed),
+        ),
+      }
+    }
+
+    if (condition.type === 'not') {
+      return { ...condition, condition: this.expandComputedCondition(condition.condition, computed) }
+    }
+
+    return condition
+  }
+
+  /** Converts a where comparison against a computed attribute into an expression. */
+  private computedComparison(
+    node: ExpressionNode,
+    operator: QueryComparisonOperator,
+    value: DatabaseValue | DatabaseValue[] | undefined,
+  ): ExpressionNode {
+    const expression = fromExpressionNode(node)
+    const list = Array.isArray(value) ? value : []
+
+    switch (operator) {
+      case '!=':
+        return expression.ne(value).toExpressionNode()
+      case '>':
+        return expression.gt(value).toExpressionNode()
+      case '>=':
+        return expression.gte(value).toExpressionNode()
+      case '<':
+        return expression.lt(value).toExpressionNode()
+      case '<=':
+        return expression.lte(value).toExpressionNode()
+      case 'in':
+        return expression.in(list).toExpressionNode()
+      case 'not-in':
+        return expression.notIn(list).toExpressionNode()
+      case 'is-null':
+        return expression.isNull().toExpressionNode()
+      case 'is-not-null':
+        return expression.isNotNull().toExpressionNode()
+      case 'contains':
+        return expression.like(`%${String(value)}%`).toExpressionNode()
+      case 'starts-with':
+        return expression.like(`${String(value)}%`).toExpressionNode()
+      case 'ends-with':
+        return expression.like(`%${String(value)}`).toExpressionNode()
+      default:
+        return expression.eq(value).toExpressionNode()
     }
   }
 

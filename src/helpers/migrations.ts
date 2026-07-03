@@ -228,6 +228,15 @@ export const buildFieldLine = (column: SchemaColumn): string => {
   const updatedAt = column.updatedAt ? ' @updatedAt' : ''
   const nativeType =
     column.type === 'decimal' ? ` @db.Decimal(${column.precision ?? 8}, ${column.scale ?? 2})` : ''
+
+  // Generated columns are database-computed: Prisma models them as a
+  // `dbgenerated` default so it never tries to write the value itself.
+  if (column.generatedExpression) {
+    const escaped = column.generatedExpression.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+
+    return `  ${column.name} ${scalar}${nullable}${unique} @default(dbgenerated("${escaped}"))${mapped}${nativeType}`
+  }
+
   const defaultValue =
     column.type === 'enum'
       ? formatEnumDefaultValue(column.default)
