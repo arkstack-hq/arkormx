@@ -48,6 +48,11 @@ import type {
 import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/query-builder'
 import { LengthAwarePaginator, Paginator } from './Paginator'
 import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
+import { Expression } from './Expression'
+import type { QueryExpressionCondition } from './types'
+
+/** Object select projection whose values may be expressions, columns, or booleans. */
+export type ExpressionSelectMap = Record<string, Expression | boolean | string>
 
 import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
@@ -142,9 +147,13 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public where(where: QuerySchemaWhere<TDelegate>): this
   public where(callback: WhereCallback<TModel, TDelegate>): this
+  public where(expression: Expression): this
   public where(
-    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate>,
+    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate> | Expression,
   ): this {
+    if (whereOrCallback instanceof Expression)
+      return this.appendExpressionCondition('AND', whereOrCallback)
+
     if (typeof whereOrCallback === 'function') return this.appendNestedWhere('AND', whereOrCallback)
 
     return this.addLogicalWhere('AND', whereOrCallback)
@@ -159,12 +168,38 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public orWhere(where: QuerySchemaWhere<TDelegate>): this
   public orWhere(callback: WhereCallback<TModel, TDelegate>): this
+  public orWhere(expression: Expression): this
   public orWhere(
-    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate>,
+    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate> | Expression,
   ): this {
+    if (whereOrCallback instanceof Expression)
+      return this.appendExpressionCondition('OR', whereOrCallback)
+
     if (typeof whereOrCallback === 'function') return this.appendNestedWhere('OR', whereOrCallback)
 
     return this.addLogicalWhere('OR', whereOrCallback)
+  }
+
+  /**
+   * Appends a boolean {@link Expression} as a where predicate. When the query is
+   * using the Prisma-like legacy where representation, the expression is merged in
+   * as a structured condition alongside it.
+   */
+  private appendExpressionCondition(boolean: 'AND' | 'OR', expression: Expression): this {
+    const condition: QueryExpressionCondition = {
+      type: 'expression',
+      expression: expression.toExpressionNode(),
+    }
+
+    if (this.legacyWhere) {
+      const existing = this.tryBuildQueryCondition(this.legacyWhere)
+      this.legacyWhere = undefined
+      if (existing) this.queryWhere = existing
+    }
+
+    this.appendQueryCondition(boolean, condition)
+
+    return this
   }
 
   /**
@@ -1154,9 +1189,24 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param orderBy
    * @returns
    */
-  public orderBy(orderBy: QuerySchemaOrderBy<TDelegate>): this {
+  public orderBy(orderBy: QuerySchemaOrderBy<TDelegate>): this
+  public orderBy(expression: Expression, direction?: 'asc' | 'desc'): this
+  public orderBy(
+    orderByOrExpression: QuerySchemaOrderBy<TDelegate> | Expression,
+    direction: 'asc' | 'desc' = 'asc',
+  ): this {
     this.randomOrderEnabled = false
-    const normalized = this.normalizeQueryOrderBy(orderBy)
+
+    if (orderByOrExpression instanceof Expression) {
+      this.queryOrderBy = [
+        ...(this.queryOrderBy ?? []),
+        { column: '', direction, expression: orderByOrExpression.toExpressionNode() },
+      ]
+
+      return this
+    }
+
+    const normalized = this.normalizeQueryOrderBy(orderByOrExpression)
     if (!normalized)
       throw new UnsupportedAdapterFeatureException(
         'Order clauses must use Arkorm-normalizable column directions.',
@@ -1167,6 +1217,29 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       )
 
     this.queryOrderBy = normalized
+
+    return this
+  }
+
+  /**
+   * Appends a raw SQL `order by` fragment (with positional `?` bindings), useful
+   * for ordering by a computed expression the builder does not model directly.
+   *
+   * @param sql
+   * @param bindings
+   * @param direction
+   * @returns
+   */
+  public orderByRaw(
+    sql: string,
+    bindings: DatabaseValue[] = [],
+    direction: 'asc' | 'desc' = 'asc',
+  ): this {
+    this.randomOrderEnabled = false
+    this.queryOrderBy = [
+      ...(this.queryOrderBy ?? []),
+      { column: '', direction, expression: { kind: 'raw', sql, bindings } },
+    ]
 
     return this
   }
@@ -1633,7 +1706,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param select
    * @returns
    */
-  public select(select: QuerySchemaSelect<TDelegate>): this {
+  public select(select: QuerySchemaSelect<TDelegate>): this
+  public select(select: Record<string, Expression | boolean | string>): this
+  public select(select: QuerySchemaSelect<TDelegate> | ExpressionSelectMap): this {
     const normalized = this.normalizeQuerySelect(select)
     if (normalized === null)
       throw new UnsupportedAdapterFeatureException(
@@ -1655,7 +1730,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param select
    * @returns
    */
-  public addSelect(select: QuerySchemaSelect<TDelegate>): this {
+  public addSelect(select: QuerySchemaSelect<TDelegate>): this
+  public addSelect(select: Record<string, Expression | boolean | string>): this
+  public addSelect(select: QuerySchemaSelect<TDelegate> | ExpressionSelectMap): this {
     const normalized = this.normalizeQuerySelect(select)
     if (normalized === null)
       throw new UnsupportedAdapterFeatureException(
@@ -1731,6 +1808,55 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
+   * Resolves the three `having` call shapes into a condition: `having(column, …)`,
+   * `having(expression)` (a boolean expression predicate), and
+   * `having(expression, operator, value)` (compare an aggregate to a value).
+   */
+  private buildHavingCondition(
+    columnOrExpression: string | Expression,
+    operatorOrValue: QueryScalarComparisonOperator | DatabaseValue | undefined,
+    maybeValue: DatabaseValue | undefined,
+  ): QueryCondition {
+    if (columnOrExpression instanceof Expression) {
+      const expression =
+        operatorOrValue === undefined
+          ? columnOrExpression
+          : this.compareExpression(
+              columnOrExpression,
+              operatorOrValue as QueryScalarComparisonOperator,
+              maybeValue,
+            )
+
+      return { type: 'expression', expression: expression.toExpressionNode() }
+    }
+
+    return this.buildHavingComparison(operatorOrValue as never, maybeValue, columnOrExpression)
+  }
+
+  private compareExpression(
+    expression: Expression,
+    operator: QueryScalarComparisonOperator,
+    value: DatabaseValue | undefined,
+  ): Expression {
+    switch (operator) {
+      case '=':
+        return expression.eq(value)
+      case '!=':
+        return expression.ne(value)
+      case '>':
+        return expression.gt(value)
+      case '>=':
+        return expression.gte(value)
+      case '<':
+        return expression.lt(value)
+      case '<=':
+        return expression.lte(value)
+      default:
+        return expression.eq(value)
+    }
+  }
+
+  /**
    * Adds a HAVING clause to filter grouped rows. Accepts either
    * `having(column, value)` (defaulting to equality) or
    * `having(column, operator, value)`. Multiple calls combine with AND.
@@ -1742,14 +1868,20 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    */
   public having(column: string, value: DatabaseValue): this
   public having(column: string, operator: QueryScalarComparisonOperator, value: DatabaseValue): this
+  public having(expression: Expression): this
   public having(
-    column: string,
-    operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+    expression: Expression,
+    operator: QueryScalarComparisonOperator,
+    value: DatabaseValue,
+  ): this
+  public having(
+    columnOrExpression: string | Expression,
+    operatorOrValue?: QueryScalarComparisonOperator | DatabaseValue,
     maybeValue?: DatabaseValue,
   ): this {
     this.appendHavingCondition(
       'AND',
-      this.buildHavingComparison(operatorOrValue, maybeValue, column),
+      this.buildHavingCondition(columnOrExpression, operatorOrValue, maybeValue),
     )
 
     return this
@@ -1769,14 +1901,20 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     operator: QueryScalarComparisonOperator,
     value: DatabaseValue,
   ): this
+  public orHaving(expression: Expression): this
   public orHaving(
-    column: string,
-    operatorOrValue: QueryScalarComparisonOperator | DatabaseValue,
+    expression: Expression,
+    operator: QueryScalarComparisonOperator,
+    value: DatabaseValue,
+  ): this
+  public orHaving(
+    columnOrExpression: string | Expression,
+    operatorOrValue?: QueryScalarComparisonOperator | DatabaseValue,
     maybeValue?: DatabaseValue,
   ): this {
     this.appendHavingCondition(
       'OR',
-      this.buildHavingComparison(operatorOrValue, maybeValue, column),
+      this.buildHavingCondition(columnOrExpression, operatorOrValue, maybeValue),
     )
 
     return this
@@ -3568,7 +3706,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return this.queryWhere != null || this.legacyWhere != null
   }
 
-  private normalizeQuerySelect(select: QuerySchemaSelect<TDelegate>): QuerySelectColumn[] | null {
+  private normalizeQuerySelect(
+    select: QuerySchemaSelect<TDelegate> | ExpressionSelectMap,
+  ): QuerySelectColumn[] | null {
     if (typeof select === 'string') return [{ column: select, raw: true }]
 
     if (Array.isArray(select)) {
@@ -3583,16 +3723,25 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     if (
       entries.some(
         ([, value]) =>
-          value !== true && value !== false && value !== undefined && typeof value !== 'string',
+          value !== true &&
+          value !== false &&
+          value !== undefined &&
+          typeof value !== 'string' &&
+          !(value instanceof Expression),
       )
     )
       return null
 
     const columns = entries
-      .filter(([, value]) => value === true || typeof value === 'string')
-      .map(([column, value]) =>
-        typeof value === 'string' ? { column, alias: value, raw: true } : { column },
+      .filter(
+        ([, value]) => value === true || typeof value === 'string' || value instanceof Expression,
       )
+      .map(([column, value]) => {
+        if (value instanceof Expression)
+          return { column, alias: column, expression: value.toExpressionNode() }
+
+        return typeof value === 'string' ? { column, alias: value, raw: true } : { column }
+      })
 
     return columns.length > 0 ? columns : []
   }

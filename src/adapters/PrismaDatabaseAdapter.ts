@@ -90,6 +90,7 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
       rawWhere: false,
       distinct: false,
       groupBy: false,
+      expressions: false,
       returning: false,
     }
   }
@@ -180,6 +181,20 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
   private toQuerySelect(columns?: QuerySelectColumn[]): PrismaLikeSelect | undefined {
     if (!columns || columns.length === 0) return undefined
 
+    const expressionColumn = columns.find((column) => column.expression)
+    if (expressionColumn) {
+      throw new UnsupportedAdapterFeatureException(
+        'Expression select columns are not supported by the Prisma compatibility adapter; use a SQL-backed adapter.',
+        {
+          operation: 'adapter.select',
+          meta: {
+            feature: 'expressions',
+            alias: expressionColumn.alias,
+          },
+        },
+      )
+    }
+
     const rawColumn = columns.find((column) => column.raw)
     if (rawColumn) {
       throw new UnsupportedAdapterFeatureException(
@@ -206,6 +221,13 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
 
   private toQueryOrderBy(orderBy?: QueryOrderBy[]): PrismaLikeOrderBy | undefined {
     if (!orderBy || orderBy.length === 0) return undefined
+
+    if (orderBy.some((entry) => entry.expression)) {
+      throw new UnsupportedAdapterFeatureException(
+        'Order-by expressions are not supported by the Prisma compatibility adapter; use a SQL-backed adapter.',
+        { operation: 'adapter.select', meta: { feature: 'expressions' } },
+      )
+    }
 
     return orderBy.map((entry) => ({ [entry.column]: entry.direction }))
   }
