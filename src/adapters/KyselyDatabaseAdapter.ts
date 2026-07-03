@@ -19,7 +19,9 @@ import type {
   QueryCondition,
   QueryDayCondition,
   QueryExistsCondition,
+  QueryExpressionCondition,
   QueryFullTextCondition,
+  QueryGroupByItem,
   QueryGroupCondition,
   QueryJoin,
   QueryJoinConstraint,
@@ -40,6 +42,7 @@ import type {
   UpdateSpec,
   UpsertSpec,
 } from '../types/adapter'
+import type { ExpressionNode, JsonExpressionNode } from '../types/expression'
 import type {
   AdapterQueryInspection,
   BelongsToManyRelationMetadata,
@@ -113,12 +116,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     distinct: true,
     groupBy: true,
     joins: true,
+    expressions: true,
   }
 
   public constructor(
     private readonly db: KyselyExecutor,
     private readonly mapping: KyselyTableMapping = {},
-  ) {}
+  ) { }
 
   private resolveConfiguredDatabaseName(connectionString: string): string {
     const parsed = new URL(connectionString)
@@ -561,13 +565,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     const localColumn = this.resolveSchemaColumnName(foreignKey.column, columns)
     const referencedTable = this.resolveMappedTable(foreignKey.referencesTable)
     const action = foreignKey.onDelete
-      ? ` on delete ${
-          foreignKey.onDelete === 'setNull'
-            ? 'set null'
-            : foreignKey.onDelete === 'setDefault'
-              ? 'set default'
-              : foreignKey.onDelete
-        }`
+      ? ` on delete ${foreignKey.onDelete === 'setNull'
+        ? 'set null'
+        : foreignKey.onDelete === 'setDefault'
+          ? 'set default'
+          : foreignKey.onDelete
+      }`
       : ''
 
     return `constraint ${this.quoteIdentifier(this.resolveSchemaForeignKeyName(table, foreignKey))} foreign key (${this.quoteIdentifier(localColumn)}) references ${this.quoteIdentifier(referencedTable)} (${this.quoteIdentifier(foreignKey.referencesColumn)})${action}`
@@ -1073,13 +1076,22 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (!columns || columns.length === 0) return sql.raw('*')
 
     return sql.join(
-      columns.map(({ column, alias, raw, wildcard }) => {
+      columns.map(({ column, alias, raw, wildcard, expression }) => {
         if (wildcard) return sql.raw('*')
 
-        if (raw) {
-          const expression = sql.raw(column)
+        if (expression) {
+          const compiled = this.buildExpression(target, expression)
+          const resultAlias = alias ?? column
 
-          return alias ? sql`${expression} as ${sql.id(alias)}` : expression
+          return resultAlias
+            ? sql`${compiled} as ${sql.id(resultAlias)}`
+            : compiled
+        }
+
+        if (raw) {
+          const rawExpression = sql.raw(column)
+
+          return alias ? sql`${rawExpression} as ${sql.id(alias)}` : rawExpression
         }
 
         const mappedColumn = this.mapColumn(target, column)
@@ -1096,18 +1108,31 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (!orderBy || orderBy.length === 0) return sql``
 
     return sql` order by ${sql.join(
-      orderBy.map(({ column, direction }) => {
-        return sql`${sql.ref(this.mapColumn(target, column))} ${sql.raw(direction === 'desc' ? 'desc' : 'asc')}`
+      orderBy.map(({ column, direction, expression }) => {
+        const reference = expression
+          ? this.buildExpression(target, expression)
+          : sql.ref(this.mapColumn(target, column))
+
+        return sql`${reference} ${sql.raw(direction === 'desc' ? 'desc' : 'asc')}`
       }),
       sql`, `,
     )}`
   }
 
-  private buildGroupBy(target: QueryTarget<any>, groupBy?: string[]): RawBuilder<unknown> {
+  private buildGroupBy(
+    target: QueryTarget<any>,
+    groupBy?: QueryGroupByItem[],
+  ): RawBuilder<unknown> {
     if (!groupBy || groupBy.length === 0) return sql``
 
     return sql` group by ${sql.join(
-      groupBy.map((column) => sql.ref(this.mapColumn(target, column))),
+      groupBy.map((item) => {
+        if (typeof item === 'string') return sql.ref(this.mapColumn(target, item))
+
+        if ('expression' in item) return this.buildExpression(target, item.expression)
+
+        return this.buildRawExpressionFragment(item.raw.sql, item.raw.bindings ?? [])
+      }),
       sql`, `,
     )}`
   }
@@ -1413,6 +1438,186 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     return condition.not ? sql<boolean>`not (${contains})` : contains
   }
 
+  /**
+   * Compiles a serialized {@link ExpressionNode} into a parameterized SQL fragment.
+   * Shared by expression-backed select columns, `group by`, `order by`, and any
+   * boolean expression used as a `where`/`having` predicate.
+   * 
+   * @param target 
+   * @param node 
+   * @returns 
+   */
+  private buildExpression(target: QueryTarget<any>, node: ExpressionNode): RawBuilder<unknown> {
+    switch (node.kind) {
+      case 'column':
+        return this.buildExpressionColumn(target, node.name)
+
+      case 'value':
+        return sql`${node.value}`
+
+      case 'raw':
+        return this.buildRawExpressionFragment(node.sql, node.bindings)
+
+      case 'json':
+        return this.buildJsonValueExpression(target, node)
+
+      case 'function': {
+        const args = node.args.map((arg) => this.buildExpression(target, arg))
+
+        return sql`${sql.raw(this.sanitizeFunctionName(node.name))}(${sql.join(args, sql`, `)})`
+      }
+
+      case 'case': {
+        const branches = node.cases.map(
+          (branch) =>
+            sql`when ${this.buildExpression(target, branch.when)} then ${this.buildExpression(target, branch.then)}`,
+        )
+        const elseClause = node.else
+          ? sql` else ${this.buildExpression(target, node.else)}`
+          : sql``
+
+        return sql`case ${sql.join(branches, sql` `)}${elseClause} end`
+      }
+
+      case 'binary':
+        return this.buildBinaryExpression(target, node)
+
+      case 'in': {
+        const operand = this.buildExpression(target, node.operand)
+        const values = node.values.map((value) => this.buildExpression(target, value))
+        const list = values.length > 0 ? sql.join(values, sql`, `) : sql`null`
+
+        return node.not ? sql`(${operand} not in (${list}))` : sql`(${operand} in (${list}))`
+      }
+
+      case 'null-check': {
+        const operand = this.buildExpression(target, node.operand)
+
+        return node.not ? sql`(${operand} is not null)` : sql`(${operand} is null)`
+      }
+
+      case 'aggregate':
+        return this.buildAggregateExpression(target, node)
+
+      default: {
+        const exhaustive: never = node
+
+        throw new ArkormException(
+          `Unsupported expression node [${(exhaustive as { kind?: string }).kind}].`,
+        )
+      }
+    }
+  }
+
+  private buildExpressionColumn(target: QueryTarget<any>, name: string): RawBuilder<unknown> {
+    // Joined `table.column` references are used verbatim; bare names map to the
+    // target model's physical column.
+    if (name.includes('.')) return sql.ref(name)
+
+    return sql.ref(this.mapColumn(target, name))
+  }
+
+  private buildBinaryExpression(
+    target: QueryTarget<any>,
+    node: Extract<ExpressionNode, { kind: 'binary' }>,
+  ): RawBuilder<unknown> {
+    const left = this.buildExpression(target, node.left)
+    const right = this.buildExpression(target, node.right)
+
+    switch (node.operator) {
+      case 'like':
+        return sql`(${left} like ${right})`
+      case 'ilike':
+        return sql`(${left} ilike ${right})`
+      case 'not-like':
+        return sql`(${left} not like ${right})`
+      case 'not-ilike':
+        return sql`(${left} not ilike ${right})`
+      case 'and':
+        return sql`(${left} and ${right})`
+      case 'or':
+        return sql`(${left} or ${right})`
+      default:
+        // Comparison (`=`, `!=`, `>`, …) and arithmetic (`+`, `-`, `*`, `/`).
+        return sql`(${left} ${sql.raw(node.operator)} ${right})`
+    }
+  }
+
+  private buildAggregateExpression(
+    target: QueryTarget<any>,
+    node: Extract<ExpressionNode, { kind: 'aggregate' }>,
+  ): RawBuilder<unknown> {
+    const argument = node.arg ? this.buildExpression(target, node.arg) : sql.raw('*')
+    const distinctKeyword = node.distinct ? sql`distinct ` : sql``
+
+    let call = sql`${sql.raw(node.fn)}(${distinctKeyword}${argument})`
+
+    if (node.filter) {
+      call = sql`${call} filter (where ${this.buildExpression(target, node.filter)})`
+    }
+
+    // Cast numeric aggregates so the driver returns JS numbers (matches withSum).
+    if (node.fn === 'sum' || node.fn === 'avg') return sql`(${call})::double precision`
+    if (node.fn === 'count') return sql`(${call})::bigint`
+
+    return call
+  }
+
+  private buildJsonValueExpression(
+    target: QueryTarget<any>,
+    node: JsonExpressionNode,
+  ): RawBuilder<unknown> {
+    const base = sql`${sql.ref(this.mapColumn(target, node.column))}::jsonb`
+
+    let accessor: RawBuilder<unknown>
+
+    if (node.path.length === 0) {
+      accessor = base
+    } else if (node.path.length === 1) {
+      accessor = sql`(${base} ->> ${node.path[0]})`
+    } else {
+      const pathLiteral = `{${node.path.join(',')}}`
+
+      accessor = sql`(${base} #>> ${pathLiteral}::text[])`
+    }
+
+    if (node.cast === 'number') return sql`(${accessor})::numeric`
+    if (node.cast === 'boolean') return sql`(${accessor})::boolean`
+
+    return accessor
+  }
+
+  private buildRawExpressionFragment(
+    rawSql: string,
+    bindings: DatabaseValue[],
+  ): RawBuilder<unknown> {
+    const segments = rawSql.split('?')
+
+    if (segments.length !== bindings.length + 1) {
+      throw new ArkormException('Raw expression bindings do not match the number of placeholders.')
+    }
+
+    const parts: RawBuilder<unknown>[] = []
+
+    segments.forEach((segment, index) => {
+      if (segment.length > 0) parts.push(sql.raw(this.quoteCamelCaseIdentifiers(segment)))
+
+      if (index < bindings.length) parts.push(sql`${bindings[index]}`)
+    })
+
+    if (parts.length === 0) return sql``
+
+    return sql`${sql.join(parts, sql``)}`
+  }
+
+  private sanitizeFunctionName(name: string): string {
+    if (!/^[a-zA-Z_][a-zA-Z0-9_.]*$/.test(name)) {
+      throw new ArkormException(`Unsupported SQL function name [${name}].`)
+    }
+
+    return name
+  }
+
   private buildWhereCondition(
     target: QueryTarget<any>,
     condition?: QueryCondition,
@@ -1433,6 +1638,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (condition.type === 'full-text') return this.buildFullTextCondition(target, condition)
 
     if (condition.type === 'json') return this.buildJsonCondition(target, condition)
+
+    if (condition.type === 'expression')
+      return sql<boolean>`${this.buildExpression(target, (condition as QueryExpressionCondition).expression)}`
 
     if (condition.type === 'group') {
       const group = condition as QueryGroupCondition
@@ -2067,13 +2275,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             `
         : sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-                  columns.map((column) => sql.id(column)),
-                  sql`, `,
-                )})
+          columns.map((column) => sql.id(column)),
+          sql`, `,
+        )})
                 values (${sql.join(
-                  columns.map((column) => values[column]),
-                  sql`, `,
-                )})
+          columns.map((column) => values[column]),
+          sql`, `,
+        )})
                 returning *
             `
 
@@ -2133,9 +2341,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-              columns.map((column) => sql.id(column)),
-              sql`, `,
-            )})
+      columns.map((column) => sql.id(column)),
+      sql`, `,
+    )})
             values ${values}
             ${spec.ignoreDuplicates ? sql` on conflict do nothing` : sql``}
             returning ${sql.id(this.resolvePrimaryKey(spec.target))}
@@ -2196,15 +2404,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       updateColumns.length === 0
         ? sql`do nothing`
         : sql`do update set ${sql.join(
-            updateColumns.map((column) => sql`${sql.id(column)} = excluded.${sql.id(column)}`),
-            sql`, `,
-          )}`
+          updateColumns.map((column) => sql`${sql.id(column)} = excluded.${sql.id(column)}`),
+          sql`, `,
+        )}`
 
     const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-              columns.map((column) => sql.id(column)),
-              sql`, `,
-            )})
+      columns.map((column) => sql.id(column)),
+      sql`, `,
+    )})
             values ${values}
             on conflict (${conflictTarget}) ${conflictAction}
         `
