@@ -52,6 +52,7 @@ import {
   Expression,
   avg as avgExpr,
   count as countExpr,
+  fromExpressionNode,
   max as maxExpr,
   min as minExpr,
   sum as sumExpr,
@@ -1864,19 +1865,27 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   ): QueryGroupByItem[] | undefined {
     if (!this.queryGroupBy || this.queryGroupBy.length === 0) return undefined
 
-    const aliasExpressions = new Map<string, ExpressionNode>()
+    const expressionAliases = new Map<string, string>()
     selectColumns?.forEach((column) => {
-      if (column.expression && column.alias) aliasExpressions.set(column.alias, column.expression)
+      if (column.expression && column.alias)
+        expressionAliases.set(JSON.stringify(column.expression), column.alias)
     })
+    const aliasNames = new Set(expressionAliases.values())
 
     return this.queryGroupBy.map((source): QueryGroupByItem => {
-      if (source instanceof Expression) return { expression: source.toExpressionNode() }
+      if (source instanceof Expression) {
+        const node = source.toExpressionNode()
+        const alias = expressionAliases.get(JSON.stringify(node))
+
+        // Group by the select alias when the same expression is projected, so the
+        // adapter references the output column instead of re-binding parameters.
+        return alias ? { alias } : { expression: node }
+      }
 
       if (typeof source === 'object') return { raw: source.raw }
 
-      const aliased = aliasExpressions.get(source)
-
-      return aliased ? { expression: aliased } : source
+      // A bare string that names an expression-backed select alias.
+      return aliasNames.has(source) ? { alias: source } : source
     })
   }
 
@@ -4604,7 +4613,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     )
       return null
 
-    return {
+    return this.expandComputedAttributes({
       target: this.buildQueryTarget(),
       columns,
       distinct: this.queryDistinct || undefined,
@@ -4622,6 +4631,133 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       relationAggregates: this.canExecuteRelationAggregatesInAdapter()
         ? (relationAggregates ?? undefined)
         : undefined,
+    })
+  }
+
+  /** Reads and caches the model's resolved `static computed` expression map. */
+  private computedAttributes(): Record<string, ExpressionNode> {
+    const model = this.model as unknown as {
+      getComputed?: () => Record<string, ExpressionNode>
+    }
+
+    return typeof model.getComputed === 'function' ? model.getComputed() : {}
+  }
+
+  /**
+   * Expands references to `static computed` attribute names into their backing
+   * expressions across a select spec's columns, group by, order by, where, and
+   * having clauses. A no-op when the model declares no computed attributes.
+   */
+  private expandComputedAttributes(spec: SelectSpec<TModel>): SelectSpec<TModel> {
+    const computed = this.computedAttributes()
+    if (Object.keys(computed).length === 0) return spec
+
+    const columns = spec.columns?.map((column) => {
+      if (column.expression || column.raw || column.wildcard) return column
+
+      const expression = computed[column.column]
+
+      return expression
+        ? { ...column, expression, alias: column.alias ?? column.column }
+        : column
+    })
+
+    const selectedComputedAliases = new Set(
+      columns?.filter((column) => column.expression && column.alias).map((column) => column.alias!),
+    )
+
+    return {
+      ...spec,
+      columns,
+      groupBy: spec.groupBy?.map((item) => {
+        if (typeof item !== 'string') return item
+
+        const expression = computed[item]
+        if (!expression) return item
+
+        // Reference the projected alias when selected; otherwise inline the
+        // expression (Postgres cannot match a re-bound duplicate against SELECT).
+        return selectedComputedAliases.has(item) ? { alias: item } : { expression }
+      }),
+      orderBy: spec.orderBy?.map((clause) => {
+        if (clause.expression) return clause
+
+        const expression = computed[clause.column]
+
+        return expression ? { ...clause, expression } : clause
+      }),
+      where: spec.where ? this.expandComputedCondition(spec.where, computed) : spec.where,
+      having: spec.having ? this.expandComputedCondition(spec.having, computed) : spec.having,
+    }
+  }
+
+  private expandComputedCondition(
+    condition: QueryCondition,
+    computed: Record<string, ExpressionNode>,
+  ): QueryCondition {
+    if (condition.type === 'comparison' && computed[condition.column]) {
+      return {
+        type: 'expression',
+        expression: this.computedComparison(
+          computed[condition.column],
+          condition.operator,
+          condition.value,
+        ),
+      }
+    }
+
+    if (condition.type === 'group') {
+      return {
+        ...condition,
+        conditions: condition.conditions.map((entry) =>
+          this.expandComputedCondition(entry, computed),
+        ),
+      }
+    }
+
+    if (condition.type === 'not') {
+      return { ...condition, condition: this.expandComputedCondition(condition.condition, computed) }
+    }
+
+    return condition
+  }
+
+  /** Converts a where comparison against a computed attribute into an expression. */
+  private computedComparison(
+    node: ExpressionNode,
+    operator: QueryComparisonOperator,
+    value: DatabaseValue | DatabaseValue[] | undefined,
+  ): ExpressionNode {
+    const expression = fromExpressionNode(node)
+    const list = Array.isArray(value) ? value : []
+
+    switch (operator) {
+      case '!=':
+        return expression.ne(value).toExpressionNode()
+      case '>':
+        return expression.gt(value).toExpressionNode()
+      case '>=':
+        return expression.gte(value).toExpressionNode()
+      case '<':
+        return expression.lt(value).toExpressionNode()
+      case '<=':
+        return expression.lte(value).toExpressionNode()
+      case 'in':
+        return expression.in(list).toExpressionNode()
+      case 'not-in':
+        return expression.notIn(list).toExpressionNode()
+      case 'is-null':
+        return expression.isNull().toExpressionNode()
+      case 'is-not-null':
+        return expression.isNotNull().toExpressionNode()
+      case 'contains':
+        return expression.like(`%${String(value)}%`).toExpressionNode()
+      case 'starts-with':
+        return expression.like(`${String(value)}%`).toExpressionNode()
+      case 'ends-with':
+        return expression.like(`%${String(value)}`).toExpressionNode()
+      default:
+        return expression.eq(value).toExpressionNode()
     }
   }
 

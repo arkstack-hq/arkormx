@@ -1129,6 +1129,10 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       groupBy.map((item) => {
         if (typeof item === 'string') return sql.ref(this.mapColumn(target, item))
 
+        // A select-output alias — Postgres resolves it to the projected expression,
+        // avoiding duplicate bind parameters from repeating the expression.
+        if ('alias' in item) return sql.ref(item.alias)
+
         if ('expression' in item) return this.buildExpression(target, item.expression)
 
         return this.buildRawExpressionFragment(item.raw.sql, item.raw.bindings ?? [])
