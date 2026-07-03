@@ -19,6 +19,7 @@ import {
   writeAppliedMigrationsStateToStore,
 } from '../../helpers/migration-history'
 import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
+import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
 import {
   resolvePersistedMetadataFeatures,
@@ -30,14 +31,13 @@ import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
-import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 
 export class MigrateFreshCommand extends Command<CliApp> {
   protected signature = `migrate:fresh
-        {--skip-generate : Skip prisma generate}
-        {--skip-migrate : Skip prisma database sync}
+        {--skip-generate : Skip prisma generate (Prisma compatibility driver only)}
+        {--skip-migrate : Skip prisma database sync (Prisma compatibility driver only)}
         {--state-file= : Path to applied migration state file}
-        {--schema= : Explicit prisma schema path}
+        {--schema= : Explicit prisma schema path (Prisma compatibility driver only)}
         {--create-database : Create the configured database without prompting}
     `
 
