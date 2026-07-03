@@ -62,6 +62,15 @@ import type { ExpressionNode, QueryExpressionCondition, QueryGroupByItem } from 
 /** Object select projection whose values may be expressions, columns, or booleans. */
 export type ExpressionSelectMap = Record<string, Expression | boolean | string>
 
+/** Callback invoked with each chunk of results; return `false` to stop early. */
+export type ChunkCallback<TModel> = (
+  models: ArkormCollection<TModel>,
+  page: number,
+) => unknown | Promise<unknown>
+
+/** Callback invoked with each record during `each`/`eachById`; return `false` to stop. */
+export type EachCallback<TModel> = (model: TModel, index: number) => unknown | Promise<unknown>
+
 /** A `group by` source: a column/select-alias name, an expression, or a raw fragment. */
 type GroupBySource = string | Expression | { raw: { sql: string; bindings: DatabaseValue[] } }
 
@@ -2669,6 +2678,245 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     await this.eagerLoadModels(filteredModels)
 
     return new ArkormCollection(filteredModels)
+  }
+
+  /**
+   * Processes the query results in chunks, invoking the callback with each chunk
+   * as a collection. Return `false` from the callback to stop early. Resolves to
+   * `false` when stopped early, otherwise `true`.
+   *
+   * Chunking pages with `offset`/`limit`, so add an `orderBy` for stable results
+   * and prefer {@link chunkById} when modifying the records being iterated.
+   *
+   * @param count     Rows per chunk.
+   * @param callback  Receives each chunk and its 1-based page number.
+   * @returns
+   */
+  public async chunk(
+    count: number,
+    callback: ChunkCallback<TModel>,
+  ): Promise<boolean> {
+    this.assertPositiveChunkSize(count, 'chunk')
+
+    let page = 1
+    for (;;) {
+      const results = await this.clone()
+        .skip((page - 1) * count)
+        .take(count)
+        .get()
+      const size = results.count()
+      if (size === 0) break
+
+      if ((await callback(results, page)) === false) return false
+      if (size < count) break
+
+      page++
+    }
+
+    return true
+  }
+
+  /**
+   * Chunks the results by comparing a monotonically increasing key column
+   * (`id > lastId`) rather than by offset — safe when the callback updates the
+   * records being iterated. Return `false` from the callback to stop early.
+   *
+   * @param count     Rows per chunk.
+   * @param callback  Receives each chunk and its 1-based page number.
+   * @param column    The key column to page by (defaults to the primary key).
+   * @param alias     The result attribute holding the key value (defaults to `column`).
+   * @returns
+   */
+  public async chunkById(
+    count: number,
+    callback: ChunkCallback<TModel>,
+    column?: string,
+    alias?: string,
+  ): Promise<boolean> {
+    this.assertPositiveChunkSize(count, 'chunkById')
+
+    const keyColumn = column ?? this.model.getPrimaryKey()
+    const keyAlias = alias ?? keyColumn
+    let lastId: unknown = null
+    let page = 1
+
+    for (;;) {
+      const builder = this.clone()
+        .take(count)
+        .orderBy({ [keyColumn]: 'asc' } as unknown as QuerySchemaOrderBy<TDelegate>)
+      if (lastId !== null)
+        builder.where({ [keyColumn]: { gt: lastId } } as unknown as QuerySchemaWhere<TDelegate>)
+
+      const results = await builder.get()
+      const size = results.count()
+      if (size === 0) break
+
+      if ((await callback(results, page)) === false) return false
+
+      lastId = this.readModelAttribute(results.last(), keyAlias)
+      if (lastId === null || lastId === undefined) break
+      if (size < count) break
+
+      page++
+    }
+
+    return true
+  }
+
+  /**
+   * Iterates the query results one record at a time (chunking under the hood).
+   * Return `false` from the callback to stop early.
+   *
+   * @param callback  Receives each record and its 0-based index.
+   * @param count     Rows fetched per chunk (default 1000).
+   * @returns
+   */
+  public async each(callback: EachCallback<TModel>, count = 1000): Promise<boolean> {
+    let index = 0
+
+    return this.chunk(count, async (models) => {
+      for (const model of models.all()) {
+        if ((await callback(model, index)) === false) return false
+        index++
+      }
+    })
+  }
+
+  /**
+   * Like {@link each}, but pages by key column ({@link chunkById}) — safe when the
+   * callback updates the records being iterated.
+   *
+   * @param callback  Receives each record and its 0-based index.
+   * @param count     Rows fetched per chunk (default 1000).
+   * @param column    The key column to page by (defaults to the primary key).
+   * @param alias     The result attribute holding the key value (defaults to `column`).
+   * @returns
+   */
+  public async eachById(
+    callback: EachCallback<TModel>,
+    count = 1000,
+    column?: string,
+    alias?: string,
+  ): Promise<boolean> {
+    let index = 0
+
+    return this.chunkById(
+      count,
+      async (models) => {
+        for (const model of models.all()) {
+          if ((await callback(model, index)) === false) return false
+          index++
+        }
+      },
+      column,
+      alias,
+    )
+  }
+
+  /**
+   * Streams the query results lazily as an async iterator, fetching one chunk at
+   * a time so only a small window is held in memory. Iterate with `for await`.
+   *
+   * ```ts
+   * for await (const user of User.query().orderBy({ id: 'asc' }).lazy()) {
+   *   // …
+   * }
+   * ```
+   *
+   * @param chunkSize  Rows fetched per underlying query (default 1000).
+   * @returns
+   */
+  public async *lazy(chunkSize = 1000): AsyncGenerator<TModel> {
+    this.assertPositiveChunkSize(chunkSize, 'lazy')
+
+    let page = 1
+    for (;;) {
+      const items = (
+        await this.clone()
+          .skip((page - 1) * chunkSize)
+          .take(chunkSize)
+          .get()
+      ).all()
+      if (items.length === 0) break
+
+      yield* items
+      if (items.length < chunkSize) break
+
+      page++
+    }
+  }
+
+  /**
+   * Streams the results lazily, paging by an ascending key column — safe when the
+   * consumer updates records mid-iteration. Iterate with `for await`.
+   *
+   * @param chunkSize  Rows fetched per underlying query (default 1000).
+   * @param column     The key column to page by (defaults to the primary key).
+   * @param alias      The result attribute holding the key value (defaults to `column`).
+   * @returns
+   */
+  public lazyById(chunkSize = 1000, column?: string, alias?: string): AsyncGenerator<TModel> {
+    return this.lazyByKey(chunkSize, 'asc', column, alias)
+  }
+
+  /**
+   * Streams the results lazily, paging by a descending key column. Iterate with
+   * `for await`.
+   *
+   * @param chunkSize  Rows fetched per underlying query (default 1000).
+   * @param column     The key column to page by (defaults to the primary key).
+   * @param alias      The result attribute holding the key value (defaults to `column`).
+   * @returns
+   */
+  public lazyByIdDesc(chunkSize = 1000, column?: string, alias?: string): AsyncGenerator<TModel> {
+    return this.lazyByKey(chunkSize, 'desc', column, alias)
+  }
+
+  private async *lazyByKey(
+    chunkSize: number,
+    direction: 'asc' | 'desc',
+    column?: string,
+    alias?: string,
+  ): AsyncGenerator<TModel> {
+    this.assertPositiveChunkSize(chunkSize, 'lazyById')
+
+    const keyColumn = column ?? this.model.getPrimaryKey()
+    const keyAlias = alias ?? keyColumn
+    const operator = direction === 'asc' ? 'gt' : 'lt'
+    let lastId: unknown = null
+
+    for (;;) {
+      const builder = this.clone()
+        .take(chunkSize)
+        .orderBy({ [keyColumn]: direction } as unknown as QuerySchemaOrderBy<TDelegate>)
+      if (lastId !== null)
+        builder.where({
+          [keyColumn]: { [operator]: lastId },
+        } as unknown as QuerySchemaWhere<TDelegate>)
+
+      const items = (await builder.get()).all()
+      if (items.length === 0) break
+
+      yield* items
+
+      lastId = this.readModelAttribute(items[items.length - 1], keyAlias)
+      if (lastId === null || lastId === undefined) break
+      if (items.length < chunkSize) break
+    }
+  }
+
+  private assertPositiveChunkSize(count: number, operation: string): void {
+    if (!Number.isInteger(count) || count < 1)
+      throw new QueryConstraintException('Chunk size must be a positive integer.', {
+        operation,
+        model: this.model.name,
+      })
+  }
+
+  private readModelAttribute(model: TModel | undefined, attribute: string): unknown {
+    if (!model) return null
+
+    return (model as unknown as { getAttribute(key: string): unknown }).getAttribute(attribute)
   }
 
   /**
