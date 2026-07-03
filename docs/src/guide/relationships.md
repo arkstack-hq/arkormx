@@ -557,11 +557,64 @@ records:
 ```ts
 await user.posts().count()
 await user.posts().exists()
+await user.posts().doesntExist()
 await user.posts().firstOrFail()
 await user.posts().find(100)
 await user.posts().findMany([100, 101])
+await user.posts().findOr(100, () => null)
+await user.posts().findOrFail(100)
+await user.posts().firstWhere('title', 'Welcome')
 await user.posts().paginate(15)
+await user.posts().simplePaginate(15)
 ```
+
+### Constraining a relationship query
+
+A relation query proxies the [Query Builder](/guide/query-builder): almost every
+builder method is available on a relationship and returns the relation for
+chaining, so you can constrain related records before fetching them. Terminate
+the chain with a read (`get()`/`getResults()`, `first()`, `count()`,
+`paginate()`, …).
+
+```ts
+const recent = await user
+  .posts()
+  .where({ published: true })
+  .whereNotNull('publishedAt')
+  .whereJsonContains('meta', { featured: true })
+  .orderBy({ publishedAt: 'desc' })
+  .limit(5)
+  .get()
+```
+
+The families carried over from the query builder include:
+
+- **Where clauses** — `where`, `orWhere`, `whereNot`, `orWhereNot`, `whereNull`,
+  `whereNotNull`, `whereIn`/`orWhereIn`/`whereNotIn`/`orWhereNotIn`, `whereBetween`,
+  `whereColumn`, `whereKey`/`whereKeyNot`, `whereExists`, `whereRaw`/`orWhereRaw`.
+- **String matching** — `whereLike`/`orWhereLike`/`whereNotLike`/`orWhereNotLike`,
+  `whereStartsWith`/`whereEndsWith`.
+- **Dates** — `whereDate`, `whereMonth`, `whereYear`, `whereTime`, `whereDay`, and
+  the relative-date helpers (`wherePast`, `whereFuture`, `whereToday`, …).
+- **JSON** — `whereJsonContains`/`whereJsonDoesntContain`,
+  `whereJsonContainsKey`/`whereJsonDoesntContainKey`, `whereJsonLength`,
+  `whereJsonOverlaps`, and their `orWhere` variants.
+- **Full-text** — `whereFullText`/`orWhereFullText`.
+- **Ordering & limits** — `orderBy`, `latest`, `oldest`, `inRandomOrder`,
+  `reorder`, `skip`/`offset`, `take`/`limit`, `forPage`.
+- **Selection, grouping & loading** — `select`/`addSelect`, `distinct`, `groupBy`,
+  `having`/`orHaving`/`havingRaw`/`orHavingRaw`, `include`, `with` (nested eager
+  loads), `scope` (named model scopes).
+- **Soft deletes** — `withTrashed`, `onlyTrashed`, `withoutTrashed`.
+
+For an escape hatch, `constrain(query => …)` injects a raw query-builder callback:
+
+```ts
+await user.posts().constrain((query) => query.whereRaw('char_length(title) > ?', [10])).get()
+```
+
+See the [Query Builder](/guide/query-builder) guide for the full semantics of
+each method.
 
 ## Creating related records
 
@@ -626,3 +679,27 @@ await user.roles().sync([role, anotherRole])
 `attach()` accepts a related model or key plus optional pivot attributes.
 `detach()` removes selected related keys, or all pivot rows when called without
 an argument. `sync()` makes the pivot rows match the supplied models or keys.
+
+`sync()` returns a summary of what changed:
+
+```ts
+const changes = await user.roles().sync([role, anotherRole])
+// { attached: number, detached: number, updated: number }
+```
+
+To set pivot columns per row, pass an object keyed by the related id:
+
+```ts
+await user.roles().sync({
+  [role.id]: { approved: true },
+  [anotherRole.id]: { approved: false },
+})
+```
+
+`create()` and `save()` on a many-to-many relation also take pivot attributes as
+a second argument, written alongside the new pivot row:
+
+```ts
+await user.roles().create({ name: 'editor' }, { approved: true })
+await user.roles().save(existingRole, { approved: false })
+```

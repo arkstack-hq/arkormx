@@ -21,6 +21,7 @@ const sidebar: SidebarType = [
       { text: 'Mutators & Accessors', link: '/guide/mutators' },
       { text: 'Casting', link: '/guide/casting' },
       { text: 'Query Builder', link: '/guide/query-builder' },
+      { text: 'Collections', link: '/guide/collections' },
       { text: 'Transactions', link: '/guide/transactions' },
       { text: 'Pagination', link: '/guide/pagination' },
       { text: 'Observability & Errors', link: '/guide/observability-errors' },

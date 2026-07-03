@@ -38,6 +38,9 @@ Available metadata helpers:
 - `Model.getColumnName(attribute)`
 - `Model.getModelMetadata()`
 - `Model.getRelationMetadata(name)`
+- `Model.getCasts()` — the resolved cast map (see [Casting](/guide/casting))
+- `Model.getSoftDeleteConfig()` — `{ enabled, column }` for soft deletes
+- `Model.getAdapter()` — the effective bound or runtime [adapter](/guide/adapters)
 
 Fallback rules:
 
@@ -125,6 +128,27 @@ await user.deleteOrFail()
 - `saveOrFail()`: like `save()`, but wrapped in a transaction that rolls back and rethrows on error.
 - `updateOrFail(attributes)`: fill-and-save like `update()`, but throws (instead of returning `false`) when the model has no identifier or the operation fails.
 - `deleteOrFail()`: like `delete()`, wrapped in a transaction that rolls back and rethrows on error.
+
+## Building models from raw data
+
+When you already hold a plain row (from a raw query, a cache, an external API, or
+a test fixture), turn it into a model instance with `hydrate()`. A hydrated model
+is marked as **existing** (`exists === true`) and starts clean, so a later
+`save()` performs an update rather than an insert:
+
+```ts
+const user = User.hydrate({ id: 1, name: 'Jane', email: 'jane@example.com' })
+const users = User.hydrateMany(rows)
+```
+
+`hydrate()` stores the values as-is (the database representation) — it does not
+re-run set-casts, unlike `new User(row)` / `fill()`, which apply casts and leave
+the model dirty. Use `new User(...)` to build a **new** record, and `hydrate()`
+to represent one that already exists.
+
+The async `hydrateRetrieved()` / `hydrateManyRetrieved()` variants do the same
+but also dispatch the `retrieved` [model event](#model-events); Arkorm uses them
+internally when reads come back from the adapter.
 
 ## Static query helpers
 
@@ -373,6 +397,15 @@ const allUsers = await User.withoutGlobalScopes(async () => {
 })
 ```
 
+To remove scopes permanently (rather than for one call), use
+`removeGlobalScope(name)` for a single scope or `clearGlobalScopes()` for all of
+them:
+
+```ts
+User.removeGlobalScope('active')
+User.clearGlobalScopes()
+```
+
 Use global scopes carefully. They improve consistency, but they also change the
 default shape of every query for the model, so they should represent rules that
 are broadly true rather than ad hoc controller filters.
@@ -400,6 +433,19 @@ User.on('creating', async (model) => {
 User.on('created', async (model) => {
   // react after insert
 })
+```
+
+`event(name, listener)` is the generic form that `on()` and the fluent helpers
+below delegate to. To remove listeners, use `off()`, for one listener or for
+every listener of an event, or `clearEventListeners()` to remove all of them:
+
+```ts
+const handler = (model) => { /* ... */ }
+User.on('created', handler)
+
+User.off('created', handler) // remove one listener
+User.off('created') // remove all 'created' listeners
+User.clearEventListeners() // remove every listener on the model
 ```
 
 ### Fluent event registration helpers

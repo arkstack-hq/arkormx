@@ -172,6 +172,7 @@ const first = await User.query().first() // User | null
 const required = await User.query().firstOrFail() // User or throws
 const user = await User.query().find(1) // primary key lookup
 const byEmail = await User.query().find('jane@example.com', 'email')
+const requiredById = await User.query().findOrFail(1) // User or throws
 ```
 
 `firstWhere()` combines a comparison with `first()`:
@@ -181,13 +182,57 @@ await User.query().firstWhere('email', 'jane@example.com')
 await User.query().firstWhere('score', '>=', 100)
 ```
 
-Use `findOr()` when a missing record should produce a fallback value:
+Use `findOr()` / `firstOr()` when a missing record should produce a fallback
+value. `firstOr()` optionally narrows the selected columns first:
 
 ```ts
 const result = await User.query().findOr(999, async () => {
   return { missing: true }
 })
+
+const outcome = await User.query()
+  .where({ email: 'ghost@example.com' })
+  .firstOr(() => 'not-found')
+
+const partial = await User.query()
+  .where({ id: 1 })
+  .firstOr(['id', 'email'], () => 'not-found')
 ```
+
+### First-or-create helpers
+
+Look a record up by a set of attributes and, when it does not exist, build or
+persist one. `firstOrNew` returns an **unpersisted** instance, `firstOrCreate`
+inserts and returns a hydrated model, and `updateOrCreate` updates the match (or
+creates it). In each case the second argument holds extra values merged in only
+when a new record is built:
+
+```ts
+// Returns the match, or a new unsaved User (call .save() yourself).
+const draft = await User.query().firstOrNew(
+  { email: 'jane@example.com' },
+  { name: 'Jane' },
+)
+
+// Returns the match, or inserts { email, name } and returns the saved model.
+const user = await User.query().firstOrCreate(
+  { email: 'jane@example.com' },
+  { name: 'Jane' },
+)
+
+// Updates the matching row's name, or inserts { email, name }.
+const settled = await User.query().updateOrCreate(
+  { email: 'jane@example.com' },
+  { name: 'Jane Updated' },
+)
+```
+
+These return hydrated models. The lower-level `updateOrInsert()` (see
+[Updating records](#updating-records)) returns a `boolean` instead.
+
+The same helpers are available as static shortcuts and on relationship queries,
+see [Static query helpers](/guide/models#static-query-helpers) and
+[Relationships](/guide/relationships).
 
 ## Filtering
 
@@ -630,6 +675,12 @@ await User.query().updateOrInsert(
   { name: 'New User', isActive: true },
 )
 
+// The values argument may also be a callback that receives whether a match
+// already exists, so you can compute different values for insert vs. update.
+await User.query().updateOrInsert({ email: 'new-user@example.com' }, (exists) => ({
+  name: exists ? 'Returning User' : 'New User',
+}))
+
 await User.query().upsert(
   [
     {
@@ -649,11 +700,12 @@ and uses an optimized adapter path when the adapter advertises `upsert`.
 ## Deleting records
 
 ```ts
-const deleted = await User.query().whereKey('id', 1).delete() // User | null
+const deletedCount = await User.query().whereKey('id', 1).delete() // number
 
-const required = await User.query().whereKey('id', 2).deleteOrFail() // User or throws
+const required = await User.query().whereKey('id', 2).deleteOrFail() // number, or throws
 ```
 
-Deletes require a `where` clause. `deleteOrFail()` throws
-`ModelNotFoundException` when no record matches. Model soft-delete behavior is
-covered in [Models](./models.md).
+Both query-builder deletes return the number of affected rows. Deletes require a
+`where` clause. `deleteOrFail()` throws `ModelNotFoundException` when no record
+matches. (Deleting a hydrated model *instance* with `model.delete()` returns the
+model — see [Models](./models.md), which also covers soft deletes.)
