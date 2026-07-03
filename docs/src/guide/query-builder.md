@@ -228,6 +228,75 @@ The same helpers are available as static shortcuts and on relationship queries,
 see [Static query helpers](/guide/models#static-query-helpers) and
 [Relationships](/guide/relationships).
 
+## Chunking & streaming results
+
+When a result set is too large to hold in memory at once, process it in chunks or
+stream it lazily instead of calling `get()`.
+
+### Chunking
+
+`chunk(count, callback)` fetches the results a page at a time and invokes the
+callback with each chunk as a collection. Return `false` from the callback to stop
+early; the method resolves to `false` when stopped early, otherwise `true`.
+
+```ts
+await User.query()
+  .orderBy({ id: 'asc' })
+  .chunk(200, async (users, page) => {
+    for (const user of users.all()) {
+      // …
+    }
+  })
+```
+
+`chunk()` pages with `offset`/`limit`, so add an `orderBy` for stable results. If
+the callback **updates** the records being iterated, offsets shift underneath you
+— use `chunkById()` instead, which pages by a monotonically increasing key
+(`id > lastId`):
+
+```ts
+await User.query().chunkById(200, async (users) => {
+  await Promise.all(users.all().map((user) => user.update({ verified: true })))
+})
+```
+
+`chunkById(count, callback, column?, alias?)` defaults `column` to the model's
+primary key; pass `alias` when the key is projected under a different name.
+
+### Iterating record by record
+
+`each(callback, count?)` runs the callback once per record (chunking under the
+hood, default chunk size 1000). `eachById()` is the key-paged variant. Return
+`false` to stop early.
+
+```ts
+await User.query().orderBy({ id: 'asc' }).each((user, index) => {
+  // index is 0-based across all records
+})
+```
+
+### Lazy streaming
+
+`lazy(chunkSize?)` returns an async iterator that fetches one chunk at a time, so
+only a small window is ever in memory. Iterate it with `for await`:
+
+```ts
+for await (const user of User.query().orderBy({ id: 'asc' }).lazy()) {
+  // …
+}
+```
+
+`lazyById(chunkSize?, column?, alias?)` and `lazyByIdDesc(…)` stream by ascending
+or descending key — safe when records are updated mid-iteration. The default
+chunk size is 1000.
+
+::: tip Async vs. in-memory lazy collections
+Streaming from the database is asynchronous, so `lazy*()` returns an **async
+iterator** (`for await`). This is distinct from collect.js's synchronous
+`LazyCollection` — call `.lazy()` on an already-materialized `ArkormCollection`
+(e.g. `(await query.get()).lazy()`) for lazy in-memory transforms.
+:::
+
 ## Filtering
 
 Object filters can be combined with `AND`, `OR`, and negation:
