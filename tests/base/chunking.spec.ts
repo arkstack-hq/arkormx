@@ -67,7 +67,10 @@ describe('chunking & lazy streaming', () => {
       await Post.query()
         .orderBy({ id: 'asc' })
         .each((model, index) => {
-          visited.push([index, Number((model as never as { getAttribute(k: string): unknown }).getAttribute('id'))])
+          visited.push([
+            index,
+            Number((model as never as { getAttribute(k: string): unknown }).getAttribute('id')),
+          ])
         }, 2)
 
       expect(visited).toEqual([
@@ -98,7 +101,9 @@ describe('chunking & lazy streaming', () => {
       const visited: number[] = []
 
       await Post.query().eachById((model) => {
-        visited.push(Number((model as never as { getAttribute(k: string): unknown }).getAttribute('id')))
+        visited.push(
+          Number((model as never as { getAttribute(k: string): unknown }).getAttribute('id')),
+        )
       }, 2)
 
       expect(visited).toEqual([100, 101, 102])

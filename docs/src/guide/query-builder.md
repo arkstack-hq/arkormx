@@ -270,9 +270,11 @@ hood, default chunk size 1000). `eachById()` is the key-paged variant. Return
 `false` to stop early.
 
 ```ts
-await User.query().orderBy({ id: 'asc' }).each((user, index) => {
-  // index is 0-based across all records
-})
+await User.query()
+  .orderBy({ id: 'asc' })
+  .each((user, index) => {
+    // index is 0-based across all records
+  })
 ```
 
 ### Lazy streaming
