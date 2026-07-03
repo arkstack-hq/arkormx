@@ -32,8 +32,8 @@ describe('computed attributes (#15)', () => {
   })
 
   it('expands to an expression the compatibility adapter rejects', async () => {
-    await expect(
-      ComputedUser.query().select({ tier: true }).get(),
-    ).rejects.toBeInstanceOf(UnsupportedAdapterFeatureException)
+    await expect(ComputedUser.query().select({ tier: true }).get()).rejects.toBeInstanceOf(
+      UnsupportedAdapterFeatureException,
+    )
   })
 })

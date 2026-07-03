@@ -15,26 +15,26 @@ Import the primitives from `arkormx`:
 import { col, val, raw, caseWhen, coalesce, json, sum, count, avg, min, max, where } from 'arkormx'
 ```
 
-| Builder                       | SQL                                             |
-| ----------------------------- | ----------------------------------------------- |
-| `col('type')`                 | column reference (`"type"`, or `table.column`)  |
-| `val('airtime')`              | a **bound** literal (never interpolated)        |
-| `raw('sum(amount)', [])`      | escape hatch with positional `?` bindings       |
-| `caseWhen(cond, a).else(b)`   | `CASE WHEN … THEN … ELSE … END`                 |
-| `coalesce(a, b, …)`           | `COALESCE(a, b, …)` (bare strings are columns)  |
-| `json('meta', 'billType')`    | JSON extraction — see below                     |
-| `sum` / `count` / `avg` / `min` / `max` | aggregates — see below                |
+| Builder                                 | SQL                                            |
+| --------------------------------------- | ---------------------------------------------- |
+| `col('type')`                           | column reference (`"type"`, or `table.column`) |
+| `val('airtime')`                        | a **bound** literal (never interpolated)       |
+| `raw('sum(amount)', [])`                | escape hatch with positional `?` bindings      |
+| `caseWhen(cond, a).else(b)`             | `CASE WHEN … THEN … ELSE … END`                |
+| `coalesce(a, b, …)`                     | `COALESCE(a, b, …)` (bare strings are columns) |
+| `json('meta', 'billType')`              | JSON extraction — see below                    |
+| `sum` / `count` / `avg` / `min` / `max` | aggregates — see below                         |
 
 Expressions are **immutable** — every operator returns a new expression — and
 expose a fluent operator surface:
 
 ```ts
-col('name').like('card%')                 // "name" like 'card%'
-col('status').eq('failed')                // "status" = 'failed'
-col('id').in([1, 2, 3])                   // "id" in (1, 2, 3)
-col('deletedAt').isNull()                 // "deletedAt" is null
-col('price').times(col('quantity'))       // ("price" * "quantity")
-a.and(b) / a.or(b)                         // logical composition
+col('name').like('card%') // "name" like 'card%'
+col('status').eq('failed') // "status" = 'failed'
+col('id').in([1, 2, 3]) // "id" in (1, 2, 3)
+col('deletedAt').isNull() // "deletedAt" is null
+col('price').times(col('quantity')) // ("price" * "quantity")
+a.and(b) / a.or(b) // logical composition
 ```
 
 They can be used anywhere the query builder accepts a projection or predicate:
@@ -59,10 +59,10 @@ single key, `#>>` for a nested path), with optional casts. Unlike the
 projections, grouping, ordering, and aggregates.
 
 ```ts
-json('metadata', 'billType')              // ("metadata"::jsonb ->> 'billType')
-json('metadata', 'address', 'city')       // nested path via #>>
-json('metadata', 'score').asNumber()      // ::numeric
-json('metadata', 'vip').asBoolean()       // ::boolean
+json('metadata', 'billType') // ("metadata"::jsonb ->> 'billType')
+json('metadata', 'address', 'city') // nested path via #>>
+json('metadata', 'score').asNumber() // ::numeric
+json('metadata', 'vip').asBoolean() // ::boolean
 
 await Ledger.query()
   .select({ billType: json('metadata', 'billType') })
@@ -101,10 +101,10 @@ On adapters without `FILTER` support, the same result is expressible with a
 is the raw escape hatch (mirrors `whereRaw` / `havingRaw`).
 
 ```ts
-query.groupBy('status')                        // a column
-query.groupBy(tier)                            // an expression
-query.groupBy('tier')                          // a select alias
-query.groupByRaw('date("createdAt")')          // raw fragment
+query.groupBy('status') // a column
+query.groupBy(tier) // an expression
+query.groupBy('tier') // a select alias
+query.groupByRaw('date("createdAt")') // raw fragment
 ```
 
 When the grouped expression is also projected, Arkorm groups by the **output
@@ -153,7 +153,8 @@ class Transaction extends Model {
     category: (e) =>
       e.coalesce(
         e.col('override.category'),
-        e.caseWhen(e.json('metadata', 'billType').in(['airtime', 'data']), 'airtime_data')
+        e
+          .caseWhen(e.json('metadata', 'billType').in(['airtime', 'data']), 'airtime_data')
           .when(e.json('metadata', 'billType').in(['electricity']), 'utilities')
           .else('other'),
       ),

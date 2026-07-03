@@ -96,7 +96,10 @@ const expressionNodeToSql = (node: ExpressionNode): string => {
 
     case 'case': {
       const branches = node.cases
-        .map((branch) => `when ${expressionNodeToSql(branch.when)} then ${expressionNodeToSql(branch.then)}`)
+        .map(
+          (branch) =>
+            `when ${expressionNodeToSql(branch.when)} then ${expressionNodeToSql(branch.then)}`,
+        )
         .join(' ')
       const elseClause = node.else ? ` else ${expressionNodeToSql(node.else)}` : ''
 

@@ -36,7 +36,7 @@ import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 import { loadArkormConfig } from '../../helpers/runtime-config'
 
 /**
- * The MigrateCommand class implements the CLI command for applying migration 
+ * The MigrateCommand class implements the CLI command for applying migration
  * classes to the database or Prisma schema and running the Prisma workflow when
  * using the Prisma compatibility driver.
  *
@@ -56,7 +56,8 @@ export class MigrateCommand extends Command<CliApp> {
         {--create-database : Create the configured database without prompting}
     `
 
-  protected description = 'Apply migration classes to the database or schema.prisma and run Prisma workflow when using the Prisma compatibility driver'
+  protected description =
+    'Apply migration classes to the database or schema.prisma and run Prisma workflow when using the Prisma compatibility driver'
 
   /**
    * Command handler for the migrate command.
@@ -92,8 +93,8 @@ export class MigrateCommand extends Command<CliApp> {
       this.option('all') || !this.argument('name')
         ? await this.loadAllMigrations(migrationDirs)
         : ((await this.loadNamedMigration(migrationDirs, this.argument('name'))).filter(
-          ([cls]) => cls !== undefined,
-        ) as [MigrationClass, string][])
+            ([cls]) => cls !== undefined,
+          ) as [MigrationClass, string][])
 
     if (classes.length === 0) return void this.error('Error: No migration classes found to run.')
 
@@ -108,8 +109,8 @@ export class MigrateCommand extends Command<CliApp> {
 
     const appliedState = shouldTrackApplied
       ? await this.runWithDatabaseCreationRetry(adapter, () =>
-        readAppliedMigrationsStateFromStore(adapter, stateFilePath),
-      )
+          readAppliedMigrationsStateFromStore(adapter, stateFilePath),
+        )
       : { ok: true, value: undefined }
 
     if (!appliedState.ok) return

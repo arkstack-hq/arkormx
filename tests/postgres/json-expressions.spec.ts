@@ -31,7 +31,9 @@ describe('JSON value extraction in expressions (#11)', () => {
   })
 
   it('applies a numeric cast', () => {
-    const sql = compile(() => DbUser.query().select({ score: json('metadata', 'score').asNumber() }))
+    const sql = compile(() =>
+      DbUser.query().select({ score: json('metadata', 'score').asNumber() }),
+    )
 
     expect(sql).toContain('::numeric as "score"')
   })
@@ -66,7 +68,9 @@ describe('JSON value extraction in expressions (#11)', () => {
   })
 
   it('composes inside CASE and aggregates', () => {
-    const category = caseWhen(json('metadata', 'billType').eq('airtime'), 'airtime_data').else('other')
+    const category = caseWhen(json('metadata', 'billType').eq('airtime'), 'airtime_data').else(
+      'other',
+    )
     const sql = compile(() =>
       DbUser.query()
         .select({ category, revenue: sum(json('metadata', 'amount').asNumber()) })

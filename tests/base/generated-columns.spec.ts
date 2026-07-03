@@ -1,8 +1,4 @@
-import {
-  SchemaBuilder,
-  applyOperationsToPrismaSchema,
-  resolveGeneratedExpression,
-} from '../../src'
+import { SchemaBuilder, applyOperationsToPrismaSchema, resolveGeneratedExpression } from '../../src'
 import type { SchemaTableCreateOperation } from '../../src'
 import { describe, expect, it } from 'vitest'
 
@@ -38,9 +34,7 @@ describe('generated columns (#16)', () => {
 
   it('inlines literals and JSON extraction with no bind parameters', () => {
     const sql = resolveGeneratedExpression((e) =>
-      e
-        .caseWhen(e.json('metadata', 'kind').in(['airtime', 'data']), 'airtime_data')
-        .else('other'),
+      e.caseWhen(e.json('metadata', 'kind').in(['airtime', 'data']), 'airtime_data').else('other'),
     )
 
     expect(sql).toBe(

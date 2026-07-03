@@ -2,15 +2,7 @@ import { DbUser, setPostgresModelAdapter } from './helpers/fixtures'
 import { Kysely, PostgresDialect } from 'kysely'
 import { afterAll, afterEach, beforeAll, describe, expect, it } from 'vitest'
 import { Pool } from 'pg'
-import {
-  caseWhen,
-  coalesce,
-  col,
-  createKyselyAdapter,
-  raw,
-  val,
-  where,
-} from '../../src'
+import { caseWhen, coalesce, col, createKyselyAdapter, raw, val, where } from '../../src'
 
 describe('Query expression builder (#10)', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
@@ -32,7 +24,9 @@ describe('Query expression builder (#10)', () => {
     await db.destroy()
   })
 
-  const compile = (build: () => { inspect(): { sql?: string; parameters?: readonly unknown[] } | null }) => {
+  const compile = (
+    build: () => { inspect(): { sql?: string; parameters?: readonly unknown[] } | null },
+  ) => {
     const inspection = build().inspect()
 
     return {
@@ -52,9 +46,7 @@ describe('Query expression builder (#10)', () => {
   })
 
   it('binds literal values as parameters (never interpolated)', () => {
-    const { sql, parameters } = compile(() =>
-      DbUser.query().select({ label: val('vip') }),
-    )
+    const { sql, parameters } = compile(() => DbUser.query().select({ label: val('vip') }))
 
     expect(sql).toContain('$1 as "label"')
     expect(parameters).toContain('vip')
@@ -86,9 +78,7 @@ describe('Query expression builder (#10)', () => {
   })
 
   it('accepts an expression in orderBy', () => {
-    const { sql } = compile(() =>
-      DbUser.query().orderBy(coalesce(col('name'), val('')), 'desc'),
-    )
+    const { sql } = compile(() => DbUser.query().orderBy(coalesce(col('name'), val('')), 'desc'))
 
     expect(sql).toContain('order by coalesce("name", $1) desc')
   })
@@ -100,9 +90,7 @@ describe('Query expression builder (#10)', () => {
   })
 
   it('compiles arithmetic and IN expressions', () => {
-    const { sql } = compile(() =>
-      DbUser.query().where(col('id').plus(1).in([2, 3, 4])),
-    )
+    const { sql } = compile(() => DbUser.query().where(col('id').plus(1).in([2, 3, 4])))
 
     expect(sql).toContain('("id" + $1) in ($2, $3, $4)')
   })

@@ -122,7 +122,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
   public constructor(
     private readonly db: KyselyExecutor,
     private readonly mapping: KyselyTableMapping = {},
-  ) { }
+  ) {}
 
   private resolveConfiguredDatabaseName(connectionString: string): string {
     const parsed = new URL(connectionString)
@@ -576,12 +576,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     const localColumn = this.resolveSchemaColumnName(foreignKey.column, columns)
     const referencedTable = this.resolveMappedTable(foreignKey.referencesTable)
     const action = foreignKey.onDelete
-      ? ` on delete ${foreignKey.onDelete === 'setNull'
-        ? 'set null'
-        : foreignKey.onDelete === 'setDefault'
-          ? 'set default'
-          : foreignKey.onDelete
-      }`
+      ? ` on delete ${
+          foreignKey.onDelete === 'setNull'
+            ? 'set null'
+            : foreignKey.onDelete === 'setDefault'
+              ? 'set default'
+              : foreignKey.onDelete
+        }`
       : ''
 
     return `constraint ${this.quoteIdentifier(this.resolveSchemaForeignKeyName(table, foreignKey))} foreign key (${this.quoteIdentifier(localColumn)}) references ${this.quoteIdentifier(referencedTable)} (${this.quoteIdentifier(foreignKey.referencesColumn)})${action}`
@@ -1094,9 +1095,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
           const compiled = this.buildExpression(target, expression)
           const resultAlias = alias ?? column
 
-          return resultAlias
-            ? sql`${compiled} as ${sql.id(resultAlias)}`
-            : compiled
+          return resultAlias ? sql`${compiled} as ${sql.id(resultAlias)}` : compiled
         }
 
         if (raw) {
@@ -1457,10 +1456,10 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
    * Compiles a serialized {@link ExpressionNode} into a parameterized SQL fragment.
    * Shared by expression-backed select columns, `group by`, `order by`, and any
    * boolean expression used as a `where`/`having` predicate.
-   * 
-   * @param target 
-   * @param node 
-   * @returns 
+   *
+   * @param target
+   * @param node
+   * @returns
    */
   private buildExpression(target: QueryTarget<any>, node: ExpressionNode): RawBuilder<unknown> {
     switch (node.kind) {
@@ -1487,9 +1486,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
           (branch) =>
             sql`when ${this.buildExpression(target, branch.when)} then ${this.buildExpression(target, branch.then)}`,
         )
-        const elseClause = node.else
-          ? sql` else ${this.buildExpression(target, node.else)}`
-          : sql``
+        const elseClause = node.else ? sql` else ${this.buildExpression(target, node.else)}` : sql``
 
         return sql`case ${sql.join(branches, sql` `)}${elseClause} end`
       }
@@ -2290,13 +2287,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             `
         : sql<Record<string, unknown>>`
                 insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-          columns.map((column) => sql.id(column)),
-          sql`, `,
-        )})
+                  columns.map((column) => sql.id(column)),
+                  sql`, `,
+                )})
                 values (${sql.join(
-          columns.map((column) => values[column]),
-          sql`, `,
-        )})
+                  columns.map((column) => values[column]),
+                  sql`, `,
+                )})
                 returning *
             `
 
@@ -2356,9 +2353,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-      columns.map((column) => sql.id(column)),
-      sql`, `,
-    )})
+              columns.map((column) => sql.id(column)),
+              sql`, `,
+            )})
             values ${values}
             ${spec.ignoreDuplicates ? sql` on conflict do nothing` : sql``}
             returning ${sql.id(this.resolvePrimaryKey(spec.target))}
@@ -2419,15 +2416,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       updateColumns.length === 0
         ? sql`do nothing`
         : sql`do update set ${sql.join(
-          updateColumns.map((column) => sql`${sql.id(column)} = excluded.${sql.id(column)}`),
-          sql`, `,
-        )}`
+            updateColumns.map((column) => sql`${sql.id(column)} = excluded.${sql.id(column)}`),
+            sql`, `,
+          )}`
 
     const statement = sql<Record<string, unknown>>`
             insert into ${sql.table(this.resolveTable(spec.target))} (${sql.join(
-      columns.map((column) => sql.id(column)),
-      sql`, `,
-    )})
+              columns.map((column) => sql.id(column)),
+              sql`, `,
+            )})
             values ${values}
             on conflict (${conflictTarget}) ${conflictAction}
         `

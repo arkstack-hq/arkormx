@@ -440,7 +440,9 @@ below delegate to. To remove listeners, use `off()`, for one listener or for
 every listener of an event, or `clearEventListeners()` to remove all of them:
 
 ```ts
-const handler = (model) => { /* ... */ }
+const handler = (model) => {
+  /* ... */
+}
 User.on('created', handler)
 
 User.off('created', handler) // remove one listener
