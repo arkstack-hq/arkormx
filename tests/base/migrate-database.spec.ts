@@ -503,6 +503,56 @@ describe('database-backed migration command fallback', () => {
     expect(adapter.state.migrations[0]?.id).toContain('CreateUsersMigration')
   })
 
+  it('migrate:fresh loads the project config to reach the adapter reset path (regression)', async () => {
+    const workspace = makeTempDir('arkormx-db-fresh-loadconfig-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    writeFileSync(
+      join(migrationsDir, 'CreateThings.ts'),
+      [
+        `import { Migration } from '${migrationBaseImport}'`,
+        'export class CreateThings extends Migration {',
+        "  async up (schema) { schema.createTable('things', (table) => { table.id() }) }",
+        "  async down (schema) { schema.dropTable('things') }",
+        '}',
+        '',
+      ].join('\n'),
+    )
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      resetCount: number
+      executed: SchemaOperation[][]
+    }
+    ;(globalThis as Record<string, unknown>).__ARKORM_FRESH_TEST_ADAPTER__ = adapter
+
+    // The adapter is reachable ONLY through the project config — the command must
+    // load it itself. Without loadArkormConfig() the adapter is undefined and
+    // fresh wrongly takes the Prisma path (no schema.prisma => error, no reset).
+    writeFileSync(
+      join(workspace, 'arkormx.config.cjs'),
+      `module.exports = { adapter: globalThis.__ARKORM_FRESH_TEST_ADAPTER__, paths: { migrations: ${JSON.stringify(migrationsDir)} } }\n`,
+    )
+
+    const app = new CliApp()
+    const fresh = new MigrateFreshCommand(app, new Kernel(app))
+    ;(fresh as unknown as { app: CliApp }).app = app
+    const io = attachCommandIo(fresh as unknown as any, {
+      'skip-generate': true,
+      'skip-migrate': true,
+    })
+
+    await fresh.handle()
+    delete (globalThis as Record<string, unknown>).__ARKORM_FRESH_TEST_ADAPTER__
+
+    expect(io.errorLines).toHaveLength(0)
+    expect(adapter.resetCount).toBe(1)
+    expect(adapter.executed[0]?.[0]).toMatchObject({ type: 'createTable', table: 'things' })
+  })
+
   it('offers to create the configured database before adapter-backed fresh runs', async () => {
     const workspace = makeTempDir('arkormx-db-fresh-create-database-')
     process.chdir(workspace)

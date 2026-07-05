@@ -1,5 +1,6 @@
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 import { resolve } from 'node:path'
 
 export class ModelsSyncCommand extends Command<CliApp> {
@@ -12,6 +13,9 @@ export class ModelsSyncCommand extends Command<CliApp> {
 
   async handle() {
     this.app.command = this
+    // Load the project config (and its adapter) before resolving it; harnesses
+    // may hand us a CliApp that hasn't applied the config yet.
+    await loadArkormConfig()
 
     let result
 
