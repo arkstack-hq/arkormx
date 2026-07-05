@@ -31,6 +31,7 @@ import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 
 export class MigrateFreshCommand extends Command<CliApp> {
   protected signature = `migrate:fresh
@@ -45,6 +46,11 @@ export class MigrateFreshCommand extends Command<CliApp> {
 
   async handle() {
     this.app.command = this
+    // Apply the project's arkormx.config (and its adapter) before resolving it:
+    // harnesses like the Arkstack CLI hand us a fresh CliApp that hasn't loaded
+    // the config, so without this the adapter is undefined and `migrate:fresh`
+    // silently falls back to the Prisma path instead of resetting the database.
+    await loadArkormConfig()
 
     const configuredMigrationsDir =
       this.app.getConfig('paths')?.migrations ?? join(process.cwd(), 'database', 'migrations')

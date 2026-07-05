@@ -23,6 +23,7 @@ import {
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 import { MIGRATION_BRAND } from '../../database/Migration'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 
@@ -49,6 +50,9 @@ export class MigrateRollbackCommand extends Command<CliApp> {
 
   async handle() {
     this.app.command = this
+    // Load the project config (and its adapter) before resolving it; harnesses
+    // may hand us a CliApp that hasn't applied the config yet.
+    await loadArkormConfig()
 
     const configuredMigrationsDir =
       this.app.getConfig('paths')?.migrations ?? join(process.cwd(), 'database', 'migrations')
