@@ -568,6 +568,50 @@ export const getRuntimeAdapter = (): DatabaseAdapter | undefined => {
   return runtimeAdapter
 }
 
+/**
+ * Releases the database resources held by the configured runtime — the adapter's
+ * connection pool and/or the configured client. Intended for short-lived
+ * processes (the CLI) so the Node event loop drains and the process exits
+ * promptly instead of hanging on pool idle timeouts. Teardown failures are
+ * swallowed because the process is shutting down anyway.
+ */
+export const disposeArkormRuntime = async (): Promise<void> => {
+  let adapterDisposed = false
+
+  try {
+    if (runtimeAdapter && typeof runtimeAdapter.dispose === 'function') {
+      await runtimeAdapter.dispose()
+      adapterDisposed = true
+    }
+  } catch {
+    // Ignore adapter teardown failures.
+  }
+
+  const client = getRuntimeClient() as
+    | {
+        $disconnect?: () => Promise<void>
+        destroy?: () => Promise<void>
+        end?: () => Promise<void>
+      }
+    | undefined
+  if (!client) return
+
+  try {
+    if (typeof client.$disconnect === 'function') {
+      // Prisma clients disconnect independently of any adapter.
+      await client.$disconnect()
+    } else if (!adapterDisposed && typeof client.destroy === 'function') {
+      // Kysely-style client — skip when an adapter already destroyed it.
+      await client.destroy()
+    } else if (!adapterDisposed && typeof client.end === 'function') {
+      // Bare connection pool (e.g. pg Pool).
+      await client.end()
+    }
+  } catch {
+    // Ignore client teardown failures.
+  }
+}
+
 export const getActiveTransactionClient = (): RuntimeClientLike | undefined => {
   return transactionClientStorage.getStore()
 }

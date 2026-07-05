@@ -14,7 +14,7 @@ export const createEmptyAppliedMigrationsState = (): AppliedMigrationsState => (
 export const supportsDatabaseMigrationState = (
   adapter?: DatabaseAdapter,
 ): adapter is DatabaseAdapter &
-Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
+  Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
   return (
     typeof adapter?.readAppliedMigrationsState === 'function' &&
     typeof adapter?.writeAppliedMigrationsState === 'function'
@@ -64,13 +64,13 @@ export const readAppliedMigrationsState = (stateFilePath: string): AppliedMigrat
       }),
       runs: Array.isArray(parsed.runs)
         ? parsed.runs.filter((run): run is AppliedMigrationRun => {
-          return (
-            typeof run?.id === 'string' &&
-            typeof run?.appliedAt === 'string' &&
-            Array.isArray(run?.migrationIds) &&
-            run.migrationIds.every((item) => typeof item === 'string')
-          )
-        })
+            return (
+              typeof run?.id === 'string' &&
+              typeof run?.appliedAt === 'string' &&
+              Array.isArray(run?.migrationIds) &&
+              run.migrationIds.every((item) => typeof item === 'string')
+            )
+          })
         : [],
     }
   } catch {
@@ -240,9 +240,9 @@ export const getLatestAppliedMigrations = (
  * A "batch" is one `migrate` run. When no runs were recorded (e.g. legacy state
  * written before run tracking), each applied migration is treated as its own
  * batch so `--step` still behaves predictably.
- * 
- * @param state 
- * @returns 
+ *
+ * @param state
+ * @returns
  */
 const resolveAppliedBatches = (state: AppliedMigrationsState): string[][] => {
   const runs = state.runs ?? []
@@ -270,10 +270,10 @@ const resolveAppliedBatches = (state: AppliedMigrationsState): string[][] => {
  *
  * Defaults to a single batch (`migrate:rollback` with no `--step`); `--step=N`
  * rolls back the last N batches.
- * 
- * @param state 
- * @param batches 
- * @returns 
+ *
+ * @param state
+ * @param batches
+ * @returns
  */
 export const getLastBatchMigrations = (
   state: AppliedMigrationsState,
