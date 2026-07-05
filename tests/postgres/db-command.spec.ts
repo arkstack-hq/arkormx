@@ -1,21 +1,37 @@
 import { Kysely, PostgresDialect } from 'kysely'
-import { afterAll, describe, expect, it } from 'vitest'
-import { CliApp } from '../../src'
+import { afterAll, afterEach, describe, expect, it } from 'vitest'
+import { CliApp, resetArkormRuntimeForTests } from '../../src'
+import { mkdtempSync, rmSync } from 'node:fs'
 import { DbCommand } from '../../src/cli/commands/DbCommand'
 import { Kernel } from '@h3ravel/musket'
 import { Pool } from 'pg'
 import { createKyselyAdapter } from '../../src'
+import { join } from 'node:path'
+import { tmpdir } from 'node:os'
 
 describe('DbCommand against the Kysely adapter', () => {
   const pool = new Pool({ connectionString: process.env.DATABASE_URL })
   const db = new Kysely<Record<string, never>>({ dialect: new PostgresDialect({ pool }) })
   const adapter = createKyselyAdapter(db)
+  const originalCwd = process.cwd()
+  const tempDirs: string[] = []
+
+  afterEach(() => {
+    process.chdir(originalCwd)
+    resetArkormRuntimeForTests()
+    tempDirs.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true }))
+  })
 
   afterAll(async () => {
     await db.destroy()
   })
 
   const runDb = async (options: Record<string, unknown>, args: Record<string, unknown> = {}) => {
+    // Run from an empty directory so loadArkormConfig() finds no project config.
+    const directory = mkdtempSync(join(tmpdir(), 'arkormx-db-cmd-pg-'))
+    tempDirs.push(directory)
+    process.chdir(directory)
+
     const app = new CliApp()
     ;(app as unknown as { getConfig: (key: string) => unknown }).getConfig = (key: string) =>
       key === 'adapter' ? adapter : undefined
@@ -32,6 +48,7 @@ describe('DbCommand against the Kysely adapter', () => {
       line: (line: string) => lines.push(line),
       success: (line: string) => successLines.push(line),
       error: (line: string) => errorLines.push(line),
+      multiline: async () => '',
     })
 
     await command.handle()

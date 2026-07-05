@@ -1,8 +1,9 @@
+import type { DatabaseRow, DatabaseValue } from '../../types/adapter'
 import { existsSync, readFileSync } from 'node:fs'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
-import type { DatabaseRow, DatabaseValue } from '../../types/adapter'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 import { resolve } from 'node:path'
 
 /**
@@ -13,7 +14,7 @@ import { resolve } from 'node:path'
  */
 export class DbCommand extends Command<CliApp> {
   protected signature = `db
-        {sql? : Raw SQL statement to execute (opens an editor when omitted)}
+        {sql? : Raw SQL statement to execute (prompts for it when omitted)}
         {--file= : Read the SQL statement from a file instead of the argument}
         {--bindings= : JSON array of positional bindings for ? placeholders}
         {--json : Print result rows as JSON instead of a table}
@@ -23,6 +24,8 @@ export class DbCommand extends Command<CliApp> {
 
   async handle() {
     this.app.command = this
+    await loadArkormConfig()
+    console.log(this.app.getConfig())
 
     const sql = await this.resolveSql()
     if (sql === null) return
@@ -77,7 +80,7 @@ export class DbCommand extends Command<CliApp> {
     }
 
     // No SQL passed — open the user's editor to compose a statement.
-    return await this.editor('Enter the SQL to execute', '.sql', '')
+    return await this.multiline('Query', 'Enter the SQL to execute')
   }
 
   /**

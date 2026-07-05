@@ -12,8 +12,8 @@ importers:
         specifier: ^5.4.0
         version: 5.4.0
       '@h3ravel/musket':
-        specifier: ^2.2.1
-        version: 2.2.1(@types/node@25.6.2)
+        specifier: ^2.2.2
+        version: 2.2.2(@types/node@25.6.2)
       '@h3ravel/shared':
         specifier: ^2.2.1
         version: 2.2.1(@types/node@25.6.2)
@@ -170,6 +170,10 @@ packages:
 
   '@bcoe/v8-coverage@1.0.2':
     resolution: {integrity: sha512-6zABk/ECA/QYSCQ1NGiVwwbQerUCZ+TQbp64Q3AgmfNvurHH0j8TtXa1qbShXA6qqkpAj4V5W8pP6mLe1mcMqA==}
+    engines: {node: '>=18'}
+
+  '@cli-prompts/multiline@1.0.0':
+    resolution: {integrity: sha512-Jl9c1dra6M1I+yRDHC5FB2LtF/gWN9FmYX9/IKKtA6nQI2cuRde52/0E6f0D6CZffLExLvhvuKbfYrPbnBPBug==}
     engines: {node: '>=18'}
 
   '@docsearch/css@4.6.0':
@@ -413,12 +417,15 @@ packages:
   '@h3ravel/contracts@2.2.1':
     resolution: {integrity: sha512-l1v++lRkxq1L10TEfLEDrECPDUcTZAb4J5d0ZAncgprKDssmXw+1D9GUQVg9NbS+6gNWaUtGVVkjrCo87wFNjw==}
 
-  '@h3ravel/musket@2.2.1':
-    resolution: {integrity: sha512-zLw+ATzc2gEc9BwIpsGdrSD9qTsZE0HdqrRVVNzBPPnrFdlGOI6mkmDBitdt+nJITVrMyxhl+FtPIzxoa2n1XA==}
+  '@h3ravel/musket@2.2.2':
+    resolution: {integrity: sha512-waXWZeJduuZcDvIsLaTMTEDnpuQKFpb8l8CYCh8HVJ5IctaW6UMlkUFXt8UgkyjHzjWzwqiLjvCtOmAnMCfx5A==}
     engines: {node: ^20.19.0 || >=22.12.0}
 
   '@h3ravel/shared@2.2.1':
     resolution: {integrity: sha512-0hTbVo4LoIUtxEWULGmpfiVaCNNn9XChXhIs8zrTSDYl5RTbpHyyL4MBlX2W9tdRPSSiBfN3GvEQ9ts7pM1bkg==}
+
+  '@h3ravel/shared@2.2.4':
+    resolution: {integrity: sha512-h8DrvKK54ar69DH2Np7J5y1mLVBPHktFgwqLH8VMv6OIlSfRYjApCd5YUkmfNdm55aEqdZ03Q4UItMRw/QS6iQ==}
 
   '@h3ravel/support@2.2.1':
     resolution: {integrity: sha512-+7TCcas+cESqslX4hljjoR/+1BdTjQXaqNXwDQ0U6fER4XdEaxfUA0wRehRnyAns2uk2aSO7MYe+InKYz+++BA==}
@@ -1480,6 +1487,10 @@ packages:
     resolution: {integrity: sha512-gKXj5ALrKWQLsYG9jlTRmR/xKluxHV+Z9QEwNIgCfM1/uwPMCuzVVnh5mwTd+OuBZcwSIMbqssNWRm1lE51QaQ==}
     engines: {node: '>=8'}
 
+  ansi-escapes@7.3.0:
+    resolution: {integrity: sha512-BvU8nYgGQBxcmMuEeUEmNTvrMVjJNSH7RgW24vXexN4Ven6qCvy4TntnvlnwnMLTVlcRQQdbRY8NKnaIoeWDNg==}
+    engines: {node: '>=18'}
+
   ansi-regex@5.0.1:
     resolution: {integrity: sha512-quJQXlTSUGL2LH9SUXo8VwsY4soanhgo6LNSm84E1LBcE8s3O0wpdiRzyR9z/ZZJMlMWv37qOOb9pdJlMUEKFQ==}
     engines: {node: '>=8'}
@@ -1700,6 +1711,9 @@ packages:
     resolution: {integrity: sha512-5IKcdX0nnYavi6G7TtOhwkYzyjfJlatbjMjuLSfE2kYT5pMDOilZ4OvMhi637CcDICTmz3wARPoyhqyX1Y+XvA==}
     engines: {node: ^14.18.0 || >=16.10.0}
 
+  console-table-printer@2.16.1:
+    resolution: {integrity: sha512-Sc9FRJ4O9xKGNrvulNdPfK5SyBcZ6lcaRnDE4AQ/uw6IDtjHhsqyzzqcnMikjyGaiOOF2tNOKoBhbVjRvFy9Lw==}
+
   content-disposition@1.1.0:
     resolution: {integrity: sha512-5jRCH9Z/+DRP7rkvY83B+yGIGX96OYdJmzngqnw2SBSxqCFPd0w2km3s5iawpGX8krnwSGmF0FW5Nhr0Hfai3g==}
     engines: {node: '>=18'}
@@ -1847,6 +1861,10 @@ packages:
   env-paths@3.0.0:
     resolution: {integrity: sha512-dtJUTepzMW3Lm/NPxRf3wP4642UWhjL2sQxc+ym2YMj1m/H2zDNQOlezafzkHwn6sMstjHTwG6iQQsctDW/b1A==}
     engines: {node: ^12.20.0 || ^14.13.1 || >=16.0.0}
+
+  environment@1.1.0:
+    resolution: {integrity: sha512-xUtoPkMggbz0MPyPiIWr1Kp4aeWJjDZ6SMvURhimjdZgsRuDplF5/s9hcgGhyXMhs+6vpnuoiZ2kFiu3FMnS8Q==}
+    engines: {node: '>=18'}
 
   es-define-property@1.0.1:
     resolution: {integrity: sha512-e3nRfgfUZ4rNGL232gUgX06QNyyez04KdjFrF+LTRoOXmrOgFKDg4BCdsjW8EnT69eqdYGmRpJwiPVYNrCaW3g==}
@@ -3098,6 +3116,9 @@ packages:
     resolution: {integrity: sha512-bzyZ1e88w9O1iNJbKnOlvYTrWPDl46O1bG0D3XInv+9tkPrxrN8jUUTiFlDkkmKWgn1M6CfIA13SuGqOa9Korw==}
     engines: {node: '>=14'}
 
+  simple-wcswidth@1.1.2:
+    resolution: {integrity: sha512-j7piyCjAeTDSjzTSQ7DokZtMNwNlEAyxqSZeCS+CXH7fJ4jx3FuJ/mTW3mE+6JLs4VJBbcll0Kjn+KXI5t21Iw==}
+
   slugify@1.6.6:
     resolution: {integrity: sha512-h+z7HKHYXj6wJU+AnS/+IH8Uh9fdcX1Lrhg1/VMdf9PwoBQXFcXiAdsy2tSK0P6gKwJLXp02r90ahUCqHk9rrw==}
     engines: {node: '>=8.0.0'}
@@ -3564,6 +3585,10 @@ snapshots:
 
   '@bcoe/v8-coverage@1.0.2': {}
 
+  '@cli-prompts/multiline@1.0.0':
+    dependencies:
+      ansi-escapes: 7.3.0
+
   '@docsearch/css@4.6.0': {}
 
   '@docsearch/js@4.6.0': {}
@@ -3737,9 +3762,9 @@ snapshots:
     transitivePeerDependencies:
       - crossws
 
-  '@h3ravel/musket@2.2.1(@types/node@25.6.2)':
+  '@h3ravel/musket@2.2.2(@types/node@25.6.2)':
     dependencies:
-      '@h3ravel/shared': 2.2.1(@types/node@25.6.2)
+      '@h3ravel/shared': 2.2.4(@types/node@25.6.2)
       chalk: 5.6.2
       commander: 14.0.3
       dayjs: 1.11.19
@@ -3757,6 +3782,23 @@ snapshots:
     dependencies:
       '@inquirer/prompts': 7.10.1(@types/node@25.6.2)
       chalk: 5.6.2
+      edge.js: 6.5.0
+      escalade: 3.2.0
+      h3: 2.0.1-rc.22
+      inquirer-autocomplete-standalone: 0.8.1
+      jiti: 2.7.0
+      ora: 9.3.0
+      preferred-pm: 4.1.1
+    transitivePeerDependencies:
+      - '@types/node'
+      - crossws
+
+  '@h3ravel/shared@2.2.4(@types/node@25.6.2)':
+    dependencies:
+      '@cli-prompts/multiline': 1.0.0
+      '@inquirer/prompts': 7.10.1(@types/node@25.6.2)
+      chalk: 5.6.2
+      console-table-printer: 2.16.1
       edge.js: 6.5.0
       escalade: 3.2.0
       h3: 2.0.1-rc.22
@@ -4799,6 +4841,10 @@ snapshots:
     dependencies:
       type-fest: 0.21.3
 
+  ansi-escapes@7.3.0:
+    dependencies:
+      environment: 1.1.0
+
   ansi-regex@5.0.1: {}
 
   ansi-regex@6.2.2: {}
@@ -4973,6 +5019,10 @@ snapshots:
 
   consola@3.4.2: {}
 
+  console-table-printer@2.16.1:
+    dependencies:
+      simple-wcswidth: 1.1.2
+
   content-disposition@1.1.0: {}
 
   content-type@1.0.5: {}
@@ -5087,6 +5137,8 @@ snapshots:
   entities@7.0.1: {}
 
   env-paths@3.0.0: {}
+
+  environment@1.1.0: {}
 
   es-define-property@1.0.1: {}
 
@@ -6581,6 +6633,8 @@ snapshots:
   signal-exit@3.0.7: {}
 
   signal-exit@4.1.0: {}
+
+  simple-wcswidth@1.1.2: {}
 
   slugify@1.6.6: {}
 
