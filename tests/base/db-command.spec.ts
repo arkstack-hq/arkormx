@@ -1,4 +1,4 @@
-import { CliApp } from '../../src'
+import { CliApp, resetArkormRuntimeForTests } from '../../src'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 
@@ -7,7 +7,15 @@ import { Kernel } from '@h3ravel/musket'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 
+const originalCwd = process.cwd()
 const tempDirs: string[] = []
+
+const makeTempDir = (): string => {
+  const directory = mkdtempSync(join(tmpdir(), 'arkormx-db-cmd-'))
+  tempDirs.push(directory)
+
+  return directory
+}
 
 const attachIo = (
   command: any,
@@ -26,7 +34,7 @@ const attachIo = (
   command.success = (line: string) => successLines.push(line)
   command.error = (line: string) => errorLines.push(line)
   command.line = (line: string) => lines.push(line)
-  command.editor = async () => {
+  command.multiline = async () => {
     editorOpened = true
 
     return editorReturn
@@ -59,6 +67,9 @@ const runDb = async (
   args: Record<string, unknown> = {},
   editorReturn = '',
 ) => {
+  // Run from an empty directory so loadArkormConfig() finds no project config.
+  process.chdir(makeTempDir())
+
   const app = new CliApp()
   // Stub config resolution so the command sees exactly the adapter under test.
   ;(app as unknown as { getConfig: (key: string) => unknown }).getConfig = (key: string) =>
@@ -73,6 +84,8 @@ const runDb = async (
 }
 
 afterEach(() => {
+  process.chdir(originalCwd)
+  resetArkormRuntimeForTests()
   tempDirs.splice(0).forEach((directory) => rmSync(directory, { recursive: true, force: true }))
 })
 
@@ -203,5 +216,27 @@ describe('DbCommand (raw SQL)', () => {
     const io = await runDb(adapter, {}, { sql: 'slect 1' })
 
     expect(io.errorLines.some((line) => line.includes('syntax error'))).toBe(true)
+  })
+
+  it('loads the adapter from arkormx.config when none is pre-set (regression)', async () => {
+    // No getConfig stub: the command must load the project config itself and
+    // resolve the adapter from it — the original bug returned "no adapter".
+    const dir = makeTempDir()
+    writeFileSync(
+      join(dir, 'arkormx.config.cjs'),
+      'module.exports = { adapter: { rawQuery: async () => [{ loaded_from: "config" }] } }\n',
+    )
+    process.chdir(dir)
+
+    const app = new CliApp()
+    const command = new DbCommand(app, new Kernel(app))
+    ;(command as unknown as { app: CliApp }).app = app
+    const io = attachIo(command as unknown as any, {}, { sql: 'select 1' })
+
+    await command.handle()
+
+    expect(io.errorLines).toHaveLength(0)
+    expect(io.lines.join('\n')).toContain('loaded_from')
+    expect(io.lines.join('\n')).toContain('config')
   })
 })
