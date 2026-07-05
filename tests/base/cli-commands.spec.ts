@@ -53,7 +53,7 @@ const makeTempDir = (prefix: string): string => {
 
 const attachCommandIo = (
   command: {
-    option: (name: string) => unknown
+    option: (name: string, fallback?: unknown) => unknown
     options: () => Record<string, unknown>
     argument: (name: string) => unknown
     success: (line: string) => void
@@ -65,7 +65,8 @@ const attachCommandIo = (
   const successLines: string[] = []
   const errorLines: string[] = []
 
-  command.option = (name: string) => options[name]
+  // Mirror musket's `option(key, default)`: fall back to the default when unset.
+  command.option = (name: string, fallback?: unknown) => options[name] ?? fallback
   command.options = () => options
   command.argument = (name: string) => argumentsMap[name]
   command.success = (line: string) => {

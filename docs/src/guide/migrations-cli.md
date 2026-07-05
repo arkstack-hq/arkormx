@@ -477,16 +477,23 @@ migrations without relying on a physical migrations directory.
 
 When you use adapter-backed migrations, rollback also refreshes `.arkormx/column-mappings.json` so removed mapped columns and enums disappear from persisted metadata.
 
-- Default behavior: rolls back all migration classes applied by the **last** `migrate` run.
-- `--step=<n>`: rolls back only the latest `n` applied migration classes.
+Rollback works in **batches**. Each `migrate` run records the migrations it applied
+together as one batch, and a rollback reverses migrations **in the exact opposite
+order they were applied** — the migration whose `up()` ran last is the first to
+run `down()`.
+
+- Default behavior (no `--step`): rolls back the **last batch** — every migration
+  applied by the most recent `migrate` run.
+- `--step=<n>`: rolls back the last `n` **batches** (not `n` individual
+  migrations). `--step` is optional; omit it to roll back a single batch.
 - `--dry-run`: previews rollback targets without changing schema/history or running Prisma commands.
 - `--skip-generate`: skip `prisma generate`.
 - `--skip-migrate`: skip `prisma migrate dev/deploy`.
 - `--deploy`: run with deploy mode when Prisma migrate execution is enabled.
 
 ```sh
-npx arkorm migrate:rollback
-npx arkorm migrate:rollback --step=1
+npx arkorm migrate:rollback           # roll back the last batch
+npx arkorm migrate:rollback --step=3  # roll back the last 3 batches
 npx arkorm migrate:rollback --dry-run
 npx arkorm migrate:rollback --skip-generate --skip-migrate
 ```
