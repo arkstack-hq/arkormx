@@ -516,6 +516,35 @@ npx arkorm migrate:history --reset
 npx arkorm migrate:history --delete
 ```
 
+## Run raw SQL
+
+`db` executes a raw SQL statement against the configured adapter and prints the
+result — handy for quick inspections and one-off fixes.
+
+Run `db` with no argument to type a statement at an interactive multi-line
+prompt, or pass the SQL directly:
+
+```sh
+npx arkorm db                                   # prompts for the SQL
+npx arkorm db "select id, email from users limit 5"
+npx arkorm db --file=./scripts/report.sql
+npx arkorm db "select * from users where id = ?" --bindings="[1]"
+npx arkorm db "select count(*) as total from users" --json
+```
+
+The command loads your `arkormx.config` (and its configured adapter) before
+running, so it connects using the same driver as the rest of your app.
+
+- SQL source resolves in this order: the positional argument, then `--file=<path>`,
+  then the interactive prompt.
+- `--bindings`: a JSON array of positional values for `?` placeholders.
+- `--json`: print rows as JSON instead of a table.
+
+Rows are rendered as a table (with a trailing row count); statements that return
+no rows report `0 rows returned`. The command requires an adapter that supports
+raw queries (the Kysely/PostgreSQL adapter does; the Prisma compatibility adapter
+does not).
+
 ## Foreign keys and relation aliases
 
 Use `foreignKey` in table migrations to generate Prisma relation fields automatically:
