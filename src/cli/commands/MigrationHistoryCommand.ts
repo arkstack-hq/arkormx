@@ -13,6 +13,7 @@ import {
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 
 /**
  * The MigrationHistoryCommand class manages tracked migration run history.
@@ -32,6 +33,9 @@ export class MigrationHistoryCommand extends Command<CliApp> {
 
   async handle() {
     this.app.command = this
+    // Load the project config (and its adapter) before resolving it; harnesses
+    // may hand us a CliApp that hasn't applied the config yet.
+    await loadArkormConfig()
 
     const stateFilePath = resolveMigrationStateFilePath(
       process.cwd(),
