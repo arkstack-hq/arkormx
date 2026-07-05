@@ -1,4 +1,4 @@
-import { CliApp, resetArkormRuntimeForTests } from '../../src'
+import { CliApp, configureArkormRuntime, resetArkormRuntimeForTests } from '../../src'
 import { afterEach, describe, expect, it } from 'vitest'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 
@@ -43,10 +43,7 @@ const attachIo = (
   return { successLines, errorLines, lines, editorOpened: () => editorOpened }
 }
 
-const makeAdapter = (
-  rows: Array<Record<string, unknown>>,
-  behavior: { throw?: string } = {},
-) => {
+const makeAdapter = (rows: Array<Record<string, unknown>>, behavior: { throw?: string } = {}) => {
   const calls: Array<{ sql: string; bindings?: unknown[] }> = []
 
   const adapter = {
@@ -69,11 +66,10 @@ const runDb = async (
 ) => {
   // Run from an empty directory so loadArkormConfig() finds no project config.
   process.chdir(makeTempDir())
+  // Configure the runtime adapter so the command resolves it the real way.
+  if (adapter !== undefined) configureArkormRuntime(undefined, { adapter: adapter as never })
 
   const app = new CliApp()
-  // Stub config resolution so the command sees exactly the adapter under test.
-  ;(app as unknown as { getConfig: (key: string) => unknown }).getConfig = (key: string) =>
-    key === 'adapter' ? adapter : undefined
   const command = new DbCommand(app, new Kernel(app))
   ;(command as unknown as { app: CliApp }).app = app
   const io = attachIo(command as unknown as any, options, args, editorReturn)
@@ -198,10 +194,10 @@ describe('DbCommand (raw SQL)', () => {
     expect(io.errorLines.some((line) => line.includes('--bindings must be valid JSON'))).toBe(true)
   })
 
-  it('errors when no adapter is configured', async () => {
+  it('errors when no database driver is configured', async () => {
     const io = await runDb(undefined, {}, { sql: 'select 1' })
 
-    expect(io.errorLines.some((line) => line.includes('configured database adapter'))).toBe(true)
+    expect(io.errorLines.some((line) => line.includes('No database driver configured'))).toBe(true)
   })
 
   it('errors when the adapter does not support rawQuery', async () => {
