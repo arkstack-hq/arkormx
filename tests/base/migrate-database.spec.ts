@@ -309,7 +309,9 @@ describe('database-backed migration command fallback', () => {
     await rollback.handle()
 
     expect(rollbackIo.errorLines).toHaveLength(0)
-    const droppedTables = adapter.executed.map((operations) => (operations[0] as { table: string }).table)
+    const droppedTables = adapter.executed.map(
+      (operations) => (operations[0] as { table: string }).table,
+    )
 
     // down() runs in reverse application order: charlie, then bravo, then alpha.
     expect(droppedTables).toEqual(['charlie', 'bravo', 'alpha'])
