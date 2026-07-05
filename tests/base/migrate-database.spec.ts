@@ -318,6 +318,53 @@ describe('database-backed migration command fallback', () => {
     expect(adapter.state.migrations).toHaveLength(0)
   })
 
+  it('treats an empty --step string as the default last batch (regression)', async () => {
+    // musket yields '' for a declared-but-unpassed value option like `--step=`;
+    // the command must not read that as step 0.
+    const workspace = makeTempDir('arkormx-db-rollback-empty-step-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    writeFileSync(
+      join(migrationsDir, 'CreateGadgets.ts'),
+      [
+        `import { Migration } from '${migrationBaseImport}'`,
+        '',
+        'export class CreateGadgets extends Migration {',
+        "  async up (schema) { schema.createTable('gadgets', (table) => { table.id() }) }",
+        "  async down (schema) { schema.dropTable('gadgets') }",
+        '}',
+        '',
+      ].join('\n'),
+    )
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    configureArkormRuntime(() => ({}), { adapter, paths: { migrations: migrationsDir } })
+
+    const app = new CliApp()
+
+    const migrate = new MigrateCommand(app, new Kernel(app))
+    ;(migrate as unknown as { app: CliApp }).app = app
+    attachCommandIo(migrate as unknown as any, { all: true })
+    await migrate.handle()
+
+    const rollback = new MigrateRollbackCommand(app, new Kernel(app))
+    ;(rollback as unknown as { app: CliApp }).app = app
+    const io = attachCommandIo(rollback as unknown as any, { step: '' })
+    await rollback.handle()
+
+    expect(io.errorLines).toHaveLength(0)
+    expect(io.successLines.some((line) => line.includes('Rolled back 1 migration(s).'))).toBe(true)
+    expect(adapter.state.migrations).toHaveLength(0)
+  })
+
   it('offers to create the configured database before adapter-backed migrate runs', async () => {
     const workspace = makeTempDir('arkormx-db-migrate-create-database-')
     process.chdir(workspace)

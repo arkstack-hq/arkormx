@@ -52,10 +52,26 @@ export class DbCommand extends Command<CliApp> {
         bindings: bindings as DatabaseValue[],
       })) as DatabaseRow[]
     } catch (error) {
-      return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+      return void this.error(`Error: ${this.describeError(error)}`)
     }
 
     this.render(rows)
+  }
+
+  /**
+   * Builds a readable message from an adapter error, appending the underlying
+   * cause (e.g. the PostgreSQL error) so failures aren't hidden behind the
+   * generic "Raw query execution failed" wrapper.
+   */
+  private describeError(error: unknown): string {
+    const message = error instanceof Error ? error.message : String(error)
+    const cause = (error as { cause?: unknown }).cause
+    const causeMessage =
+      cause instanceof Error ? cause.message : typeof cause === 'string' ? cause : undefined
+
+    return causeMessage && !message.includes(causeMessage)
+      ? `${message} (${causeMessage})`
+      : message
   }
 
   /**
