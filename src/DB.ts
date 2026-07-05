@@ -7,6 +7,7 @@ import {
 import { getRuntimeAdapter, getUserConfig } from './helpers/runtime-config'
 
 import { ArkormCollection } from './Collection'
+import { isMigrationPlanningActive } from './helpers/migration-planning'
 import { ArkormException } from './Exceptions/ArkormException'
 import type { DatabaseTableOptions } from './types/db'
 import type { ModelMetadata } from './types/metadata'
@@ -71,6 +72,10 @@ export class DB {
     sql: string,
     bindings: unknown[] = [],
   ): Promise<ArkormCollection<TRow>> {
+    // A migration invoked only to collect its schema plan must not re-execute its
+    // raw SQL side effects (see runInMigrationPlanning).
+    if (isMigrationPlanningActive()) return ArkormCollection.make<TRow>([])
+
     const adapter = this.getAdapter()
     if (!adapter)
       throw new ArkormException('Raw queries require a configured database adapter.', {
