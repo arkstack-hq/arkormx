@@ -24,6 +24,7 @@ try {
     logo,
     name: 'Arkormˣ CLI',
     baseCommands: [
+      DbCommand,
       InitCommand,
       MakeModelCommand,
       MakeFactoryCommand,
