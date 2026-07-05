@@ -627,7 +627,7 @@ export const rebuildPersistedColumnMappingsState = async (
       )
     }
 
-    const operations = await getMigrationPlan(migrationClass, 'up')
+    const operations = await getMigrationPlan(migrationClass, 'up', { inert: true })
     nextState = applyOperationsToPersistedColumnMappingsState(nextState, operations, features)
   }
 
@@ -659,7 +659,7 @@ export const validatePersistedMetadataFeaturesForMigrations = async (
   let nextState = createEmptyPersistedColumnMappingsState()
 
   for (const [migrationClass] of migrations) {
-    const operations = await getMigrationPlan(migrationClass, 'up')
+    const operations = await getMigrationPlan(migrationClass, 'up', { inert: true })
     nextState = applyOperationsToPersistedColumnMappingsState(nextState, operations, features)
   }
 }
