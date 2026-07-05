@@ -14,7 +14,7 @@ export const createEmptyAppliedMigrationsState = (): AppliedMigrationsState => (
 export const supportsDatabaseMigrationState = (
   adapter?: DatabaseAdapter,
 ): adapter is DatabaseAdapter &
-  Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
+Required<Pick<DatabaseAdapter, 'readAppliedMigrationsState' | 'writeAppliedMigrationsState'>> => {
   return (
     typeof adapter?.readAppliedMigrationsState === 'function' &&
     typeof adapter?.writeAppliedMigrationsState === 'function'
@@ -64,13 +64,13 @@ export const readAppliedMigrationsState = (stateFilePath: string): AppliedMigrat
       }),
       runs: Array.isArray(parsed.runs)
         ? parsed.runs.filter((run): run is AppliedMigrationRun => {
-            return (
-              typeof run?.id === 'string' &&
-              typeof run?.appliedAt === 'string' &&
-              Array.isArray(run?.migrationIds) &&
-              run.migrationIds.every((item) => typeof item === 'string')
-            )
-          })
+          return (
+            typeof run?.id === 'string' &&
+            typeof run?.appliedAt === 'string' &&
+            Array.isArray(run?.migrationIds) &&
+            run.migrationIds.every((item) => typeof item === 'string')
+          )
+        })
         : [],
     }
   } catch {
@@ -231,4 +231,63 @@ export const getLatestAppliedMigrations = (
     })
     .slice(0, Math.max(0, steps))
     .map((entry) => entry.migration)
+}
+
+/**
+ * Groups the applied migrations into batches, oldest batch first, each batch
+ * holding its migration ids in application order.
+ *
+ * A "batch" is one `migrate` run. When no runs were recorded (e.g. legacy state
+ * written before run tracking), each applied migration is treated as its own
+ * batch so `--step` still behaves predictably.
+ * 
+ * @param state 
+ * @returns 
+ */
+const resolveAppliedBatches = (state: AppliedMigrationsState): string[][] => {
+  const runs = state.runs ?? []
+
+  if (runs.length > 0) {
+    return runs
+      .map((run, index) => ({ run, index }))
+      .sort((left, right) => {
+        const appliedAtOrder = left.run.appliedAt.localeCompare(right.run.appliedAt)
+        if (appliedAtOrder !== 0) return appliedAtOrder
+
+        return left.index - right.index
+      })
+      .map((entry) => entry.run.migrationIds)
+  }
+
+  return state.migrations.map((migration) => [migration.id])
+}
+
+/**
+ * Resolves the migrations belonging to the most recent `batches` batches, ordered
+ * for rollback — **reverse of the order they were applied** (most recent batch
+ * first, and within each batch the migration that ran `up()` last runs `down()`
+ * first), so a rollback exactly reverses how the migrations were applied.
+ *
+ * Defaults to a single batch (`migrate:rollback` with no `--step`); `--step=N`
+ * rolls back the last N batches.
+ * 
+ * @param state 
+ * @param batches 
+ * @returns 
+ */
+export const getLastBatchMigrations = (
+  state: AppliedMigrationsState,
+  batches = 1,
+): AppliedMigrationEntry[] => {
+  if (batches < 1) return []
+
+  const allBatches = resolveAppliedBatches(state)
+  const selected = allBatches.slice(Math.max(0, allBatches.length - batches))
+  const byId = new Map(state.migrations.map((migration) => [migration.id, migration]))
+
+  return selected
+    .reverse()
+    .flatMap((migrationIds) => [...migrationIds].reverse())
+    .map((id) => byId.get(id))
+    .filter((migration): migration is AppliedMigrationEntry => Boolean(migration))
 }
