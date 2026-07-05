@@ -456,4 +456,10 @@ export interface DatabaseAdapter {
     callback: (adapter: DatabaseAdapter) => TResult | Promise<TResult>,
     context?: AdapterTransactionContext,
   ) => Promise<TResult>
+  /**
+   * Releases any resources the adapter holds (connection pools, clients). Called
+   * by short-lived processes such as the CLI so the event loop can drain and the
+   * process exits promptly instead of waiting for pool idle timeouts.
+   */
+  dispose?: () => Promise<void>
 }

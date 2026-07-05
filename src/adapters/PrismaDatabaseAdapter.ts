@@ -95,6 +95,16 @@ export class PrismaDatabaseAdapter implements DatabaseAdapter {
     }
   }
 
+  /**
+   * Disconnects the underlying Prisma client so a short-lived process (e.g. the
+   * CLI) can exit promptly instead of waiting for the connection to idle out.
+   */
+  public async dispose(): Promise<void> {
+    const disconnectable = this.prisma as { $disconnect?: () => Promise<void> }
+
+    if (typeof disconnectable.$disconnect === 'function') await disconnectable.$disconnect()
+  }
+
   private hasTransactionSupport(client: PrismaClientLike): client is PrismaClientLike & {
     $transaction: <TResult>(
       callback: (transactionClient: PrismaClientLike) => TResult | Promise<TResult>,
