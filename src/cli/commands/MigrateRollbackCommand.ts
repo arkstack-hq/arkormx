@@ -7,8 +7,7 @@ import {
 } from '../../helpers/migrations'
 import {
   buildMigrationIdentity,
-  getLastMigrationRun,
-  getLatestAppliedMigrations,
+  getLastBatchMigrations,
   readAppliedMigrationsStateFromStore,
   removeAppliedMigration,
   resolveMigrationStateFilePath,
@@ -36,7 +35,7 @@ import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
  */
 export class MigrateRollbackCommand extends Command<CliApp> {
   protected signature = `migrate:rollback
-        {--step= : Number of latest applied migration classes to rollback}
+        {--step= : Number of batches to rollback (defaults to 1, the last batch)}
         {--dry-run : Preview rollback targets without applying changes}
         {--deploy : Use prisma migrate deploy instead of migrate dev (Prisma compatibility driver only)}
         {--skip-generate : Skip prisma generate (Prisma compatibility driver only)}
@@ -73,24 +72,16 @@ export class MigrateRollbackCommand extends Command<CliApp> {
     const persistedFeatures = resolvePersistedMetadataFeatures(this.app.getConfig('features'))
     let appliedState = await readAppliedMigrationsStateFromStore(adapter, stateFilePath)
 
-    const stepOption = this.option('step', 1)
-    const stepCount = stepOption == null ? undefined : Number(stepOption)
-    if (
-      stepCount != null &&
-      (!Number.isFinite(stepCount) || stepCount <= 0 || !Number.isInteger(stepCount))
-    )
+    // `--step` is the number of batches to roll back and is optional: omitted, it
+    // rolls back the single most recent batch (the group of migrations from the
+    // last `migrate` run); `--step=N` rolls back the last N batches. Targets come
+    // back ordered for rollback — the reverse of the order they were applied.
+    const stepOption = this.option('step')
+    const stepCount = stepOption == null ? 1 : Number(stepOption)
+    if (!Number.isFinite(stepCount) || stepCount <= 0 || !Number.isInteger(stepCount))
       return void this.error('Error: --step must be a positive integer.')
 
-    const targets = stepCount
-      ? getLatestAppliedMigrations(appliedState, stepCount)
-      : (() => {
-          const lastRun = getLastMigrationRun(appliedState)
-          if (!lastRun) return []
-
-          return lastRun.migrationIds
-            .map((id) => appliedState.migrations.find((migration) => migration.id === id))
-            .filter((migration): migration is NonNullable<typeof migration> => Boolean(migration))
-        })()
+    const targets = getLastBatchMigrations(appliedState, stepCount)
 
     if (targets.length === 0)
       return void this.error('Error: No tracked migrations available to rollback.')

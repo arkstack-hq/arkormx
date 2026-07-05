@@ -31,7 +31,7 @@ const makeTempDir = (prefix: string): string => {
 
 const attachCommandIo = (
   command: {
-    option: (name: string) => unknown
+    option: (name: string, fallback?: unknown) => unknown
     options: () => Record<string, unknown>
     argument: (name: string) => unknown
     success: (line: string) => void
@@ -45,7 +45,8 @@ const attachCommandIo = (
   const successLines: string[] = []
   const errorLines: string[] = []
 
-  command.option = (name: string) => options[name]
+  // Mirror musket's `option(key, default)`: fall back to the default when unset.
+  command.option = (name: string, fallback?: unknown) => options[name] ?? fallback
   command.options = () => options
   command.argument = (name: string) => argumentsMap[name]
   command.success = (line: string) => {
@@ -251,6 +252,68 @@ describe('database-backed migration command fallback', () => {
     expect(adapter.executed[1]?.[0]).toMatchObject({ type: 'dropTable', table: 'users' })
     expect(adapter.state.migrations).toHaveLength(0)
     expect(existsSync(join(workspace, '.arkormx', 'column-mappings.json'))).toBe(false)
+  })
+
+  it('rolls back a batch in the exact reverse of the order it was applied', async () => {
+    const workspace = makeTempDir('arkormx-db-rollback-order-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    const writeMigration = (fileName: string, className: string, table: string) =>
+      writeFileSync(
+        join(migrationsDir, fileName),
+        [
+          `import { Migration } from '${migrationBaseImport}'`,
+          '',
+          `export class ${className} extends Migration {`,
+          '  async up (schema) {',
+          `    schema.createTable('${table}', (table) => { table.id() })`,
+          '  }',
+          '',
+          '  async down (schema) {',
+          `    schema.dropTable('${table}')`,
+          '  }',
+          '}',
+          '',
+        ].join('\n'),
+      )
+
+    // Files load alphabetically, so alpha applies before bravo before charlie.
+    writeMigration('CreateAlpha.ts', 'CreateAlpha', 'alpha')
+    writeMigration('CreateBravo.ts', 'CreateBravo', 'bravo')
+    writeMigration('CreateCharlie.ts', 'CreateCharlie', 'charlie')
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    configureArkormRuntime(() => ({}), { adapter, paths: { migrations: migrationsDir } })
+
+    const app = new CliApp()
+
+    const migrate = new MigrateCommand(app, new Kernel(app))
+    ;(migrate as unknown as { app: CliApp }).app = app
+    const migrateIo = attachCommandIo(migrate as unknown as any, { all: true })
+    await migrate.handle()
+    expect(migrateIo.errorLines).toHaveLength(0)
+    adapter.executed.splice(0, adapter.executed.length)
+
+    const rollback = new MigrateRollbackCommand(app, new Kernel(app))
+    ;(rollback as unknown as { app: CliApp }).app = app
+    // No --step: roll back the last (only) batch of all three migrations.
+    const rollbackIo = attachCommandIo(rollback as unknown as any, {})
+    await rollback.handle()
+
+    expect(rollbackIo.errorLines).toHaveLength(0)
+    const droppedTables = adapter.executed.map((operations) => (operations[0] as { table: string }).table)
+
+    // down() runs in reverse application order: charlie, then bravo, then alpha.
+    expect(droppedTables).toEqual(['charlie', 'bravo', 'alpha'])
+    expect(adapter.state.migrations).toHaveLength(0)
   })
 
   it('offers to create the configured database before adapter-backed migrate runs', async () => {
