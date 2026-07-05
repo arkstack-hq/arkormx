@@ -169,8 +169,11 @@ export class MigrateCommand extends Command<CliApp> {
 
     for (const [MigrationClassItem] of pending) {
       if (useDatabaseMigrations) {
+        // Planning-only: collect the migration's operations for column mappings
+        // without replaying its direct DB side effects (e.g. DB.raw). The actual
+        // side effects run once, in applyMigrationToDatabase below.
         const planned = await this.runWithDatabaseCreationRetry(adapter, () =>
-          getMigrationPlan(MigrationClassItem, 'up'),
+          getMigrationPlan(MigrationClassItem, 'up', { inert: true }),
         )
         if (!planned.ok) return
 

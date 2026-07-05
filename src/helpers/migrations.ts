@@ -20,6 +20,7 @@ import { existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { ArkormException } from '../Exceptions/ArkormException'
 import type { DatabaseAdapter } from 'src/types/adapter'
 import { SchemaBuilder } from '../database/SchemaBuilder'
+import { runInMigrationPlanning } from './migration-planning'
 import { join } from 'node:path'
 import { readFileSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
@@ -1046,12 +1047,20 @@ export const generateMigrationFile = (
 export const getMigrationPlan = async (
   migration: MigrationInstanceLike | (new () => MigrationInstanceLike),
   direction: 'up' | 'down' = 'up',
+  options: { inert?: boolean } = {},
 ): Promise<SchemaOperation[]> => {
   const instance = typeof migration === 'function' ? new migration() : migration
 
   const schema = new SchemaBuilder()
-  if (direction === 'up') await instance.up(schema)
-  else await instance.down(schema)
+  const invoke = async (): Promise<void> => {
+    if (direction === 'up') await instance.up(schema)
+    else await instance.down(schema)
+  }
+
+  // Planning-only callers (metadata sync/validation) run inert so a migration's
+  // direct DB side effects (e.g. DB.raw) are not replayed just to read its plan.
+  if (options.inert) await runInMigrationPlanning(invoke)
+  else await invoke()
 
   return schema.getOperations()
 }
