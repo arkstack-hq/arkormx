@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
 import { CliApp } from './CliApp'
+import { DbCommand } from './commands/DbCommand'
 import { InitCommand } from './commands/InitCommand'
 import { Kernel } from '@h3ravel/musket'
 import { MakeFactoryCommand } from './commands/MakeFactoryCommand'
@@ -22,6 +23,7 @@ await Kernel.init(app, {
   name: 'Arkormˣ CLI',
   baseCommands: [
     InitCommand,
+    DbCommand,
     MakeModelCommand,
     MakeFactoryCommand,
     MakeSeederCommand,
