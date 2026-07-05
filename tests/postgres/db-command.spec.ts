@@ -1,6 +1,6 @@
 import { Kysely, PostgresDialect } from 'kysely'
 import { afterAll, afterEach, describe, expect, it } from 'vitest'
-import { CliApp, resetArkormRuntimeForTests } from '../../src'
+import { CliApp, configureArkormRuntime, resetArkormRuntimeForTests } from '../../src'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { DbCommand } from '../../src/cli/commands/DbCommand'
 import { Kernel } from '@h3ravel/musket'
@@ -31,10 +31,9 @@ describe('DbCommand against the Kysely adapter', () => {
     const directory = mkdtempSync(join(tmpdir(), 'arkormx-db-cmd-pg-'))
     tempDirs.push(directory)
     process.chdir(directory)
+    configureArkormRuntime(undefined, { adapter })
 
     const app = new CliApp()
-    ;(app as unknown as { getConfig: (key: string) => unknown }).getConfig = (key: string) =>
-      key === 'adapter' ? adapter : undefined
     const command = new DbCommand(app, new Kernel(app))
     ;(command as unknown as { app: CliApp }).app = app
 
@@ -68,10 +67,7 @@ describe('DbCommand against the Kysely adapter', () => {
   })
 
   it('applies positional bindings', async () => {
-    const io = await runDb(
-      { json: true, bindings: '[7]' },
-      { sql: 'select ? as answer' },
-    )
+    const io = await runDb({ json: true, bindings: '[7]' }, { sql: 'select ? as answer' })
 
     expect(io.errorLines).toHaveLength(0)
     expect(JSON.parse(io.lines.join('\n'))).toEqual([{ answer: 7 }])

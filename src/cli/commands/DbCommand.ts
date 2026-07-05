@@ -1,9 +1,10 @@
 import type { DatabaseRow, DatabaseValue } from '../../types/adapter'
 import { existsSync, readFileSync } from 'node:fs'
+import { getRuntimeAdapter, loadArkormConfig } from '../../helpers/runtime-config'
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
-import { loadArkormConfig } from '../../helpers/runtime-config'
+import { getRuntimeCompatibilityAdapter } from '../../helpers/runtime-compatibility'
 import { resolve } from 'node:path'
 
 /**
@@ -25,23 +26,23 @@ export class DbCommand extends Command<CliApp> {
   async handle() {
     this.app.command = this
     await loadArkormConfig()
-    console.log(this.app.getConfig())
 
     const sql = await this.resolveSql()
     if (sql === null) return
-    if (sql.trim().length === 0)
-      return void this.error('Error: No SQL statement provided.')
+    if (sql.trim().length === 0) return void this.error('Error: No SQL statement provided.')
 
     const bindings = this.resolveBindings()
     if (bindings === null) return
 
-    const adapter = this.app.getConfig('adapter')
+    const adapter = getRuntimeAdapter() ?? getRuntimeCompatibilityAdapter()
     if (!adapter)
-      return void this.error('Error: Raw queries require a configured database adapter.')
+      return void this.error(
+        'Error: No database driver configured. Set an adapter or client in arkormx.config.',
+      )
 
     if (typeof adapter.rawQuery !== 'function')
       return void this.error(
-        'Error: The configured adapter does not support raw queries (rawQuery).',
+        'Error: The configured adapter does not support raw queries. Use a SQL-backed adapter (e.g. the Kysely/PostgreSQL adapter).',
       )
 
     let rows: DatabaseRow[]
