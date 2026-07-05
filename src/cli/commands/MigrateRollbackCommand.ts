@@ -80,8 +80,11 @@ export class MigrateRollbackCommand extends Command<CliApp> {
     // rolls back the single most recent batch (the group of migrations from the
     // last `migrate` run); `--step=N` rolls back the last N batches. Targets come
     // back ordered for rollback — the reverse of the order they were applied.
+    // musket yields an empty string for a declared-but-unpassed value option, so
+    // treat null/undefined/'' all as "not provided" (default: one batch).
     const stepOption = this.option('step')
-    const stepCount = stepOption == null ? 1 : Number(stepOption)
+    const stepProvided = stepOption != null && String(stepOption).trim() !== ''
+    const stepCount = stepProvided ? Number(stepOption) : 1
     if (!Number.isFinite(stepCount) || stepCount <= 0 || !Number.isInteger(stepCount))
       return void this.error('Error: --step must be a positive integer.')
 
