@@ -3,6 +3,7 @@ import { getRegisteredPaths, getRegisteredSeeders } from '../../helpers/runtime-
 
 import { CliApp } from '../CliApp'
 import { Command } from '@h3ravel/musket'
+import { loadArkormConfig } from '../../helpers/runtime-config'
 import { RuntimeModuleLoader } from '../../helpers/runtime-module-loader'
 import { SEEDER_BRAND, Seeder } from '../../database/Seeder'
 import { join } from 'node:path'
@@ -36,6 +37,9 @@ export class SeedCommand extends Command<CliApp> {
    */
   async handle() {
     this.app.command = this
+    // Load the project config (and its adapter) before resolving paths/adapter;
+    // harnesses may hand us a CliApp that hasn't applied the config yet.
+    await loadArkormConfig()
     const configuredSeedersDir =
       this.app.getConfig('paths')?.seeders ?? join(process.cwd(), 'database', 'seeders')
     const seederDirs = this.resolveSeederDirectories(configuredSeedersDir)
