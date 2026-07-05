@@ -124,6 +124,17 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     private readonly mapping: KyselyTableMapping = {},
   ) {}
 
+  /**
+   * Destroys the underlying Kysely instance, which ends its connection pool so a
+   * short-lived process (e.g. the CLI) can exit promptly. A no-op when `db` is a
+   * transaction executor, which does not own the pool.
+   */
+  public async dispose(): Promise<void> {
+    const destroyable = this.db as { destroy?: () => Promise<void> }
+
+    if (typeof destroyable.destroy === 'function') await destroyable.destroy()
+  }
+
   private resolveConfiguredDatabaseName(connectionString: string): string {
     const parsed = new URL(connectionString)
     const database = decodeURIComponent(parsed.pathname.replace(/^\/+/, ''))

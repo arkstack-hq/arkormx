@@ -157,6 +157,13 @@ Optional methods provide optimized or specialized behavior:
 - `introspectModels`, `executeSchemaOperations`, `resetDatabase`
 - `createDatabaseFromError`
 - `readAppliedMigrationsState`, `writeAppliedMigrationsState`
+- `dispose`
+
+Implement `dispose()` to release connection pools and clients. The CLI calls it
+after a command finishes so short-lived processes (`migrate`, `seed`, …) exit
+promptly instead of hanging on the pool's idle timeout. The built-in Kysely
+adapter destroys its Kysely instance (ending the pool) and the Prisma
+compatibility adapter calls `$disconnect()`.
 
 ## Query specifications
 
