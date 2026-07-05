@@ -214,6 +214,24 @@ describe('DbCommand (raw SQL)', () => {
     expect(io.errorLines.some((line) => line.includes('syntax error'))).toBe(true)
   })
 
+  it('appends the underlying cause behind a generic wrapper error', async () => {
+    const wrapper = new Error('Raw query execution failed for the Kysely adapter.')
+    ;(wrapper as { cause?: unknown }).cause = new Error('relation "widgets" does not exist')
+    const adapter = {
+      rawQuery: async () => {
+        throw wrapper
+      },
+    }
+
+    const io = await runDb(adapter, {}, { sql: 'select * from widgets' })
+
+    expect(
+      io.errorLines.some(
+        (line) => line.includes('Raw query execution failed') && line.includes('does not exist'),
+      ),
+    ).toBe(true)
+  })
+
   it('loads the adapter from arkormx.config when none is pre-set (regression)', async () => {
     // No getConfig stub: the command must load the project config itself and
     // resolve the adapter from it — the original bug returned "no adapter".
