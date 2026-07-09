@@ -1,7 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
 
 import { ArkormCollection, Model } from '../../src'
-import type { AttributeCreateInput, AttributeUpdateInput } from '../../src/types'
+import type { AttributeCreateInput, AttributeUpdateInput, ModelWhereInput } from '../../src/types'
 
 type IsAny<TValue> = 0 extends 1 & TValue ? true : false
 
@@ -203,5 +203,27 @@ describe('adapter-first typing', () => {
 
     expectTypeOf(validCreateInput).toMatchTypeOf<AttributeCreateInput<ProductAttributes>>()
     expectTypeOf(validUpdateInput).toMatchTypeOf<AttributeUpdateInput<ProductAttributes>>()
+  })
+
+  it('types positional and object where clauses against the model attributes', () => {
+    const query = DeclaredUser.query()
+
+    // Positional forms — the column autocompletes and is validated.
+    query.where('name', 'Ada')
+    query.where('id', '>', 10)
+    query.where('id', '<>', 1)
+    query.where('metadata', 'is-null')
+    query.orWhere('name', 'Grace')
+
+    // Object form is not `any` (columns autocomplete) and accepts known columns.
+    type WhereInput = Parameters<typeof query.where>[0]
+    expectTypeOf<IsAny<WhereInput>>().toEqualTypeOf<false>()
+    query.where({ id: 1, name: 'Ada' })
+
+    // Attribute-shaped where inputs are assignable to the object overload.
+    expectTypeOf<{ id: number }>().toMatchTypeOf<ModelWhereInput<DeclaredUser>>()
+
+    // @ts-expect-error unknown positional columns are rejected
+    query.where('missing', 1)
   })
 })
