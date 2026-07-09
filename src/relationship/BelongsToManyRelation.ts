@@ -31,6 +31,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
   private pivotWhere: QueryCondition | undefined
   private pivotModel: PivotModelStatic | undefined
   private shouldAttachPivot = false
+  private readonly pivotValues = new Map<string, unknown>()
 
   public constructor(
     private readonly parent: TParent & { getAttribute: (key: string) => unknown },
@@ -90,6 +91,44 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
 
     this.pivotAccessor = normalized
     this.shouldAttachPivot = true
+
+    return this
+  }
+
+  /**
+   * Constrains the relationship to pivot rows where the given column equals the
+   * given value, and uses that value as the default for the column whenever a new
+   * pivot row is created through this relationship (`attach`/`create`/`save`/`sync`).
+   *
+   * Combine forms are supported: pass a single `column`/`value`, or an object of
+   * `{ column: value }` pairs.
+   *
+   * @param column    The pivot column, or a map of pivot columns to values.
+   * @param value     The fixed value when `column` is a string.
+   * @returns
+   */
+  public withPivotValue(column: string, value: unknown): this
+  public withPivotValue(values: Record<string, unknown>): this
+  public withPivotValue(column: string | Record<string, unknown>, value?: unknown): this {
+    if (typeof column === 'object' && column !== null) {
+      Object.entries(column).forEach(([name, columnValue]) => {
+        this.applyPivotValue(name, columnValue)
+      })
+
+      return this
+    }
+
+    return this.applyPivotValue(column, value)
+  }
+
+  private applyPivotValue(column: string, value: unknown): this {
+    const normalized = column.trim()
+    if (normalized.length === 0) return this
+
+    // Scope the relationship to this fixed value…
+    this.wherePivot(normalized, value)
+    // …and remember it as the default when attaching new pivot rows.
+    this.pivotValues.set(normalized, value)
 
     return this
   }
@@ -384,6 +423,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
     attributes: Record<string, unknown> = {},
   ): Record<string, unknown> {
     const values: Record<string, unknown> = {
+      ...Object.fromEntries(this.pivotValues),
       ...attributes,
       [this.foreignPivotKey]: this.resolveParentPivotValue(),
       [this.relatedPivotKey]: this.resolveRelatedPivotValue(related),
