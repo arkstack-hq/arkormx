@@ -85,6 +85,7 @@ export abstract class Model<
   private static readonly lifecycleStates = new WeakMap<Function, ModelLifecycleState>()
   private static readonly castMapCache = new WeakMap<object, CastMap>()
   private static readonly computedCache = new WeakMap<object, Record<string, ExpressionNode>>()
+  private static readonly attributeAccessorCache = new WeakMap<object, Map<string, boolean>>()
   private static readonly emittedDeprecationWarnings = new Set<string>()
   private static eventsSuppressed = 0
 
@@ -161,7 +162,7 @@ export abstract class Model<
       get: (target, key, receiver) => {
         if (typeof key !== 'string') return Reflect.get(target, key, receiver)
 
-        const attributeMutator = target.resolveAttributeMutator(key)
+        const attributeMutator = target.resolveAttributeMutator(key, true)
         if (key in target && !attributeMutator) return Reflect.get(target, key, receiver)
 
         return target.getAttribute(key)
@@ -283,11 +284,11 @@ export abstract class Model<
       primaryKeyGeneration:
         persistedMetadata.primaryKeyGeneration?.column === this.getPrimaryKey()
           ? {
-              strategy: persistedMetadata.primaryKeyGeneration.strategy,
-              prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
-              databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
-              runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
-            }
+            strategy: persistedMetadata.primaryKeyGeneration.strategy,
+            prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
+            databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
+            runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
+          }
           : undefined,
       timestampColumns: persistedMetadata.timestampColumns?.map((column) => ({ ...column })),
     }
@@ -677,12 +678,12 @@ export abstract class Model<
   /**
    * Boot hook for subclasses to register scopes or perform one-time setup.
    */
-  protected static boot(): void {}
+  protected static boot(): void { }
 
   /**
    * Booted hook for subclasses to register callbacks after boot logic runs.
    */
-  protected static booted(): void {}
+  protected static booted(): void { }
 
   /**
    * Get a query builder instance that includes soft-deleted records.
@@ -890,9 +891,9 @@ export abstract class Model<
     attributes: Record<string, unknown>,
   ): TModel {
     const model = new this(attributes)
-    ;(model as unknown as Model).syncOriginal()
-    ;(model as unknown as Model).syncChanges({})
-    ;(model as unknown as Model).exists = true
+      ; (model as unknown as Model).syncOriginal()
+      ; (model as unknown as Model).syncChanges({})
+      ; (model as unknown as Model).exists = true
 
     return model
   }
@@ -1068,7 +1069,7 @@ export abstract class Model<
   ): ModelAttributeValue<TSelf, TAttributes, TKey>
   public getAttribute(key: string): unknown
   public getAttribute(key: string): unknown {
-    const attributeMutator = this.resolveAttributeMutator(key)
+    const attributeMutator = this.resolveAttributeMutator(key, true)
     const mutator = this.resolveGetMutator(key)
     const cast = this.casts[key]
     let value = this.attributes[key]
@@ -2077,7 +2078,10 @@ export abstract class Model<
    * @param key
    * @returns
    */
-  private resolveAttributeMutator(key: string): Attribute | null {
+  private resolveAttributeMutator(
+    key: string,
+    requireDeclaredAttribute = false,
+  ): Attribute | null {
     if (key === 'constructor') return null
 
     const methodName = `${str(key).camel()}`
@@ -2090,10 +2094,71 @@ export abstract class Model<
     const baseMethod = (Model.prototype as unknown as Record<string, unknown>)[methodName]
     if (method === baseMethod) return null
 
-    const resolved = (method as () => unknown).call(this)
-    if (Attribute.isAttribute(resolved)) return resolved
+    // Attribute-object accessors take no arguments (`name() { return Attribute.make(...) }`).
+    // Relations and actions (e.g. `posts()`, `recordView(viewer)`) must never be
+    // invoked merely because their property was accessed, or a bare `model.method`
+    // read would fire the method's side effects. We therefore only ever probe a
+    // zero-arity method, and cache the result per class so an arity-0 method with
+    // side effects is invoked at most once rather than on every property access.
+    if (method.length !== 0) return null
 
-    return null
+    // On the read path we additionally refuse to invoke any method whose name is
+    // not a model attribute, so even a zero-arity side-effecting method (e.g. a
+    // `recordView()` that inserts) is never fired by a plain `model.recordView`
+    // read. Writes go through setAttribute, where the key is an attribute by
+    // definition (it is being assigned), so this gate is not applied there.
+    if (requireDeclaredAttribute && !this.isDeclaredAttributeKey(key)) return null
+
+    const cache = Model.resolveAttributeAccessorCache(this.constructor)
+    let isAccessor = cache.get(methodName)
+
+    if (isAccessor === undefined) {
+      const probe = method.call(this)
+      isAccessor = Attribute.isAttribute(probe)
+      cache.set(methodName, isAccessor)
+      if (isAccessor) return probe as Attribute
+    }
+
+    if (!isAccessor) return null
+
+    // Re-invoke per instance: accessor closures capture `this`, so the Attribute
+    // must be built against the current model rather than a cached one.
+    const resolved = (method as () => unknown).call(this)
+
+    return Attribute.isAttribute(resolved) ? resolved : null
+  }
+
+  private static resolveAttributeAccessorCache(constructor: unknown): Map<string, boolean> {
+    let cache = Model.attributeAccessorCache.get(constructor as object)
+    if (!cache) {
+      cache = new Map<string, boolean>()
+      Model.attributeAccessorCache.set(constructor as object, cache)
+    }
+
+    return cache
+  }
+
+  /**
+   * Whether `key` names a model attribute — a loaded attribute, an appended
+   * accessor, a cast, or a mapped column. Gates Attribute-object accessor probing
+   * on the read path so relations/actions are never invoked by property access.
+   *
+   * @param key
+   * @returns
+   */
+  private isDeclaredAttributeKey(key: string): boolean {
+    if (Object.prototype.hasOwnProperty.call(this.attributes, key)) return true
+    if (Array.isArray(this.appends) && this.appends.includes(key)) return true
+    if (this.casts && Object.prototype.hasOwnProperty.call(this.casts, key)) return true
+
+    try {
+      const columns = (this.constructor as typeof Model).getColumnMap()
+      if (columns && Object.prototype.hasOwnProperty.call(columns, key)) return true
+    } catch {
+      // Column metadata is unavailable (e.g. no adapter yet); fall through.
+    }
+
+    return false
   }
 
   /**
