@@ -301,7 +301,21 @@ iterator** (`for await`). This is distinct from collect.js's synchronous
 
 ## Filtering
 
-Object filters can be combined with `AND`, `OR`, and negation:
+`where()` and `orWhere()` accept an attribute object, or positional
+`column, [operator,] value` arguments. On models with declared attributes, the
+object keys and the positional column autocomplete and are validated:
+
+```ts
+await User.query()
+  .where('role', 'member') // column, value (equality)
+  .where('age', '>=', 18) // column, operator, value
+  .where('deletedAt', 'is-null') // unary operator
+  .orWhere('role', 'admin')
+  .get()
+```
+
+`<>` and `==` are accepted as aliases for `!=` and `=`. Object filters combine
+with `AND`, `OR`, and negation:
 
 ```ts
 await User.query()

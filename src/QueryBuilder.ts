@@ -47,7 +47,12 @@ import type {
 } from './types'
 import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/query-builder'
 import { LengthAwarePaginator, Paginator } from './Paginator'
-import type { ModelAttributes, ModelCreateData, ModelUpdateData } from './types/model'
+import type {
+  ModelAttributes,
+  ModelCreateData,
+  ModelUpdateData,
+  ModelWhereInput,
+} from './types/model'
 import {
   Expression,
   avg as avgExpr,
@@ -73,6 +78,12 @@ export type EachCallback<TModel> = (model: TModel, index: number) => unknown | P
 
 /** A `group by` source: a column/select-alias name, an expression, or a raw fragment. */
 type GroupBySource = string | Expression | { raw: { sql: string; bindings: DatabaseValue[] } }
+
+/** A model attribute name usable as a positional `where` column (autocompletes). */
+type WhereColumn<TModel> = keyof ModelAttributes<TModel> & string
+
+/** Comparison operators accepted by the positional `where()` form (plus SQL aliases). */
+type WhereComparisonOperator = QueryComparisonOperator | '<>' | '=='
 
 /** Map of model attributes selected for an aggregate (`{ amount: true }`). */
 type AggregateColumnMap<TModel> = Partial<Record<keyof ModelAttributes<TModel> & string, true>>
@@ -188,28 +199,48 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
-   * Adds a where clause to the query. Multiple calls to where will combine
-   * the clauses with AND logic.
+   * Adds a where clause to the query. Multiple calls combine with AND logic.
    *
-   * Pass a callback to build a parenthesized group of nested conditions, e.g.
-   * `where(query => query.where({ a: 1 }).orWhere({ b: 2 }))` compiles to
-   * `(... or ...)`.
+   * Accepts several forms:
+   * - an attribute object: `where({ status: 'active' })` (columns autocomplete);
+   * - positional: `where('age', '>=', 18)` or `where('status', 'active')`;
+   * - a unary operator: `where('deletedAt', 'is-null')`;
+   * - a boolean {@link Expression}; or
+   * - a callback for a parenthesized group, e.g.
+   *   `where(query => query.where('a', 1).orWhere('b', 2))` → `(... or ...)`.
    *
-   * @param where
    * @returns
    */
+  public where(where: ModelWhereInput<TModel>): this
   public where(where: QuerySchemaWhere<TDelegate>): this
   public where(callback: WhereCallback<TModel, TDelegate>): this
   public where(expression: Expression): this
+  public where(column: WhereColumn<TModel>, value: DatabaseValue): this
   public where(
-    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate> | Expression,
+    column: WhereColumn<TModel>,
+    operator: WhereComparisonOperator,
+    value?: DatabaseValue | DatabaseValue[],
+  ): this
+  public where(
+    columnOrWhere:
+      | WhereColumn<TModel>
+      | ModelWhereInput<TModel>
+      | QuerySchemaWhere<TDelegate>
+      | WhereCallback<TModel, TDelegate>
+      | Expression,
+    operatorOrValue?: unknown,
+    value?: unknown,
   ): this {
-    if (whereOrCallback instanceof Expression)
-      return this.appendExpressionCondition('AND', whereOrCallback)
+    if (columnOrWhere instanceof Expression)
+      return this.appendExpressionCondition('AND', columnOrWhere)
 
-    if (typeof whereOrCallback === 'function') return this.appendNestedWhere('AND', whereOrCallback)
+    if (typeof columnOrWhere === 'function')
+      return this.appendNestedWhere('AND', columnOrWhere as WhereCallback<TModel, TDelegate>)
 
-    return this.addLogicalWhere('AND', whereOrCallback)
+    if (typeof columnOrWhere === 'string')
+      return this.addPositionalWhere('AND', columnOrWhere, arguments.length, operatorOrValue, value)
+
+    return this.addLogicalWhere('AND', columnOrWhere as QuerySchemaWhere<TDelegate>)
   }
 
   /**
@@ -219,18 +250,100 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param where
    * @returns
    */
+  public orWhere(where: ModelWhereInput<TModel>): this
   public orWhere(where: QuerySchemaWhere<TDelegate>): this
   public orWhere(callback: WhereCallback<TModel, TDelegate>): this
   public orWhere(expression: Expression): this
+  public orWhere(column: WhereColumn<TModel>, value: DatabaseValue): this
   public orWhere(
-    whereOrCallback: QuerySchemaWhere<TDelegate> | WhereCallback<TModel, TDelegate> | Expression,
+    column: WhereColumn<TModel>,
+    operator: WhereComparisonOperator,
+    value?: DatabaseValue | DatabaseValue[],
+  ): this
+  public orWhere(
+    columnOrWhere:
+      | WhereColumn<TModel>
+      | ModelWhereInput<TModel>
+      | QuerySchemaWhere<TDelegate>
+      | WhereCallback<TModel, TDelegate>
+      | Expression,
+    operatorOrValue?: unknown,
+    value?: unknown,
   ): this {
-    if (whereOrCallback instanceof Expression)
-      return this.appendExpressionCondition('OR', whereOrCallback)
+    if (columnOrWhere instanceof Expression)
+      return this.appendExpressionCondition('OR', columnOrWhere)
 
-    if (typeof whereOrCallback === 'function') return this.appendNestedWhere('OR', whereOrCallback)
+    if (typeof columnOrWhere === 'function')
+      return this.appendNestedWhere('OR', columnOrWhere as WhereCallback<TModel, TDelegate>)
 
-    return this.addLogicalWhere('OR', whereOrCallback)
+    if (typeof columnOrWhere === 'string')
+      return this.addPositionalWhere('OR', columnOrWhere, arguments.length, operatorOrValue, value)
+
+    return this.addLogicalWhere('OR', columnOrWhere as QuerySchemaWhere<TDelegate>)
+  }
+
+  /**
+   * Resolves the positional `where(column, value)`, `where(column, operator, value)`,
+   * and unary `where(column, 'is-null' | 'is-not-null')` forms into a comparison
+   * condition and appends it.
+   */
+  private addPositionalWhere(
+    boolean: 'AND' | 'OR',
+    column: string,
+    argCount: number,
+    operatorOrValue: unknown,
+    value: unknown,
+  ): this {
+    const unaryOperators = new Set<QueryComparisonOperator>(['is-null', 'is-not-null'])
+
+    let operator: QueryComparisonOperator
+    let resolvedValue: unknown
+
+    if (argCount >= 3) {
+      operator = this.normalizeWhereOperator(operatorOrValue)
+      resolvedValue = value
+    } else if (
+      typeof operatorOrValue === 'string' &&
+      unaryOperators.has(operatorOrValue as QueryComparisonOperator)
+    ) {
+      operator = operatorOrValue as QueryComparisonOperator
+      resolvedValue = undefined
+    } else {
+      operator = '='
+      resolvedValue = operatorOrValue
+    }
+
+    const condition: QueryComparisonCondition = {
+      type: 'comparison',
+      column,
+      operator,
+      value: resolvedValue as DatabaseValue,
+    }
+
+    return this.appendStructuredWhere(boolean, condition)
+  }
+
+  private normalizeWhereOperator(operator: unknown): QueryComparisonOperator {
+    if (operator === '<>') return '!='
+    if (operator === '==') return '='
+
+    return operator as QueryComparisonOperator
+  }
+
+  /**
+   * Appends a pre-built structured condition, first flushing any Prisma-like
+   * legacy where into the structured representation so the two combine correctly.
+   */
+  private appendStructuredWhere(boolean: 'AND' | 'OR', condition: QueryCondition): this {
+    if (this.legacyWhere) {
+      const existing = this.tryBuildQueryCondition(this.legacyWhere)
+      this.legacyWhere = undefined
+      if (existing) this.queryWhere = existing
+    }
+
+    this.appendQueryCondition(boolean, condition)
+
+    return this
   }
 
   /**
@@ -244,15 +357,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       expression: expression.toExpressionNode(),
     }
 
-    if (this.legacyWhere) {
-      const existing = this.tryBuildQueryCondition(this.legacyWhere)
-      this.legacyWhere = undefined
-      if (existing) this.queryWhere = existing
-    }
-
-    this.appendQueryCondition(boolean, condition)
-
-    return this
+    return this.appendStructuredWhere(boolean, condition)
   }
 
   /**
