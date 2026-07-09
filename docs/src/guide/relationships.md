@@ -156,6 +156,20 @@ class User extends Model {
 - `wherePivotNotBetween(column, [min, max])` excludes pivot rows inside a range.
 - `wherePivotNull(column)` requires a null pivot column.
 - `wherePivotNotNull(column)` requires a non-null pivot column.
+- `withPivotValue(column, value)` (or `withPivotValue({ column: value })`) constrains
+  the relationship to pivot rows where the column equals the value **and** uses that
+  value as the default for the column when attaching/creating new pivot rows.
+
+```ts
+// Only "admin" memberships, and new attachments default role = 'admin'.
+user.roles().withPivotValue('role', 'admin')
+
+await user.roles().withPivotValue('role', 'admin').attach(roleId) // pivot.role = 'admin'
+await user.roles().withPivotValue('role', 'admin').getResults() // only role = 'admin'
+```
+
+Explicit pivot attributes still override the fixed value
+(`.attach(id, { role: 'owner' })`).
 
 ```ts
 import { PivotModel } from 'arkormx'
