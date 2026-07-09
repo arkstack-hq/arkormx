@@ -284,11 +284,11 @@ export abstract class Model<
       primaryKeyGeneration:
         persistedMetadata.primaryKeyGeneration?.column === this.getPrimaryKey()
           ? {
-            strategy: persistedMetadata.primaryKeyGeneration.strategy,
-            prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
-            databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
-            runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
-          }
+              strategy: persistedMetadata.primaryKeyGeneration.strategy,
+              prismaDefault: persistedMetadata.primaryKeyGeneration.prismaDefault,
+              databaseDefault: persistedMetadata.primaryKeyGeneration.databaseDefault,
+              runtimeFactory: persistedMetadata.primaryKeyGeneration.runtimeFactory,
+            }
           : undefined,
       timestampColumns: persistedMetadata.timestampColumns?.map((column) => ({ ...column })),
     }
@@ -678,12 +678,12 @@ export abstract class Model<
   /**
    * Boot hook for subclasses to register scopes or perform one-time setup.
    */
-  protected static boot(): void { }
+  protected static boot(): void {}
 
   /**
    * Booted hook for subclasses to register callbacks after boot logic runs.
    */
-  protected static booted(): void { }
+  protected static booted(): void {}
 
   /**
    * Get a query builder instance that includes soft-deleted records.
@@ -891,9 +891,9 @@ export abstract class Model<
     attributes: Record<string, unknown>,
   ): TModel {
     const model = new this(attributes)
-      ; (model as unknown as Model).syncOriginal()
-      ; (model as unknown as Model).syncChanges({})
-      ; (model as unknown as Model).exists = true
+    ;(model as unknown as Model).syncOriginal()
+    ;(model as unknown as Model).syncChanges({})
+    ;(model as unknown as Model).exists = true
 
     return model
   }
@@ -2078,10 +2078,7 @@ export abstract class Model<
    * @param key
    * @returns
    */
-  private resolveAttributeMutator(
-    key: string,
-    requireDeclaredAttribute = false,
-  ): Attribute | null {
+  private resolveAttributeMutator(key: string, requireDeclaredAttribute = false): Attribute | null {
     if (key === 'constructor') return null
 
     const methodName = `${str(key).camel()}`
