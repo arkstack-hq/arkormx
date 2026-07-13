@@ -1,26 +1,25 @@
 import { defineConfig } from 'vitest/config'
-import swc from 'vite-plugin-swc-transform'
+import swc from 'unplugin-swc'
+
+const decorators = () =>
+  swc.vite({
+    jsc: {
+      target: 'es2022',
+      transform: {
+        legacyDecorator: true,
+        decoratorMetadata: true,
+        useDefineForClassFields: false,
+      },
+      externalHelpers: true,
+      parser: {
+        decorators: true,
+        syntax: 'typescript',
+      },
+    },
+  })
 
 export default defineConfig({
-  plugins: [
-    swc({
-      swcOptions: {
-        jsc: {
-          target: 'es2022',
-          transform: {
-            legacyDecorator: true,
-            decoratorMetadata: true,
-            useDefineForClassFields: false,
-          },
-          externalHelpers: true,
-          parser: {
-            decorators: true,
-            syntax: 'typescript',
-          },
-        },
-      },
-    }),
-  ],
+  plugins: [decorators()],
   resolve: {
     alias: {
       src: './src',
@@ -33,6 +32,7 @@ export default defineConfig({
     environment: 'node',
     projects: [
       {
+        plugins: [decorators()],
         test: {
           setupFiles: ['tests/base/setup.ts', 'tests/postgres/setup.ts'],
           include: ['**/tests/postgres/**/*.spec.{ts,tsx}'],
@@ -41,6 +41,7 @@ export default defineConfig({
         },
       },
       {
+        plugins: [decorators()],
         test: {
           setupFiles: 'tests/base/setup.ts',
           include: ['**/*.{test,spec}.{ts,tsx,js,jsx}', '!**/tests/postgres/**/*.spec.{ts,tsx}'],
