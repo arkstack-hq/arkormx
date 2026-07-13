@@ -6,12 +6,12 @@ Clear Router plugin for resolving Arkormx models from route parameters.
 import { Router } from 'clear-router/express'
 import { clearRouterPlugin } from '@arkormx/plugin-clear-router'
 
-Router.use(clearRouterPlugin)
+await Router.use(clearRouterPlugin)
 ```
 
 ## What it does
 
-When a controller action is decorated with `@Bind()`, the plugin checks each bound argument. If the argument type extends `arkormx`'s `Model`, the plugin resolves the matching route parameter and passes the hydrated model instance to the controller.
+When a controller action is decorated with `@Bind()`, the plugin checks each bound argument. ArkORM model arguments are hydrated from matching route parameters and registered in Clear Router's request container. Repeated arguments receive the same model instance for that request.
 
 ```ts
 import { Bind } from 'clear-router/decorators'
@@ -33,10 +33,14 @@ Router.get('/users/:user', [UserController, 'show'])
 For `/users/1`, the `user` argument is resolved with:
 
 ```ts
-await User.query().find('1', 'id')
+await User.query().where({ id: '1' }).firstOrFail()
 ```
 
-Non-model arguments continue to resolve through Clear Router's container.
+Non-model arguments continue to resolve through the active Clear Router request container, preserving singleton, request, and transient provider lifetimes.
+
+Model constructors are detected by their ArkORM static API rather than JavaScript constructor identity, so models loaded through jiti or another module runtime remain compatible.
+
+The plugin configures Clear Router container binding automatically. Legacy `@Bind()` type inference still requires TypeScript decorator metadata; use explicit `@Bind(User)` tokens with standard TypeScript decorators.
 
 ## Route Parameter Names
 
@@ -66,7 +70,7 @@ Router.get('/users/{user:email}', [UserController, 'show'])
 For `/users/jane@example.com`, the plugin runs:
 
 ```ts
-await User.query().find('jane@example.com', 'email')
+await User.query().where({ email: 'jane@example.com' }).firstOrFail()
 ```
 
 ## Custom Model Resolution

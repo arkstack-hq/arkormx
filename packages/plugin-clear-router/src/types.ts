@@ -2,9 +2,8 @@ import { Model } from 'arkormx'
 
 export interface Options {
   /**
-   * Absolute path or path relative to cwd where models are stored
-   *
-   * @default arkormx default paths.models config
+   * @deprecated Model discovery is no longer required. The plugin resolves the
+   * model tokens declared by the controller method directly.
    */
   modelsPath?: string
 }
