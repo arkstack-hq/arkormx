@@ -3,8 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import express, { Router as ExpressRouter } from 'express'
 
 import { Bind } from 'clear-router/decorators'
-import { Container } from 'clear-router/core'
 import { Router as ClearRouter } from 'clear-router/express'
+import { Container } from 'clear-router/core'
 import { Profile } from './models/Profile'
 import { RouteBindingParamExtractor } from '../src/RouteBindingParamExtractor'
 import { User } from './models/User'
@@ -12,7 +12,7 @@ import { clearRouterPlugin } from '../src'
 import { isModel } from '../src/helpers'
 import request from 'parasito'
 
-describe('@resora/plugin-clear-router express', () => {
+describe('@arkorm/plugin-clear-router express', () => {
   let app: express.Application
   let router: ExpressRouter
 
@@ -213,7 +213,7 @@ describe('@resora/plugin-clear-router express', () => {
 
   it('preserves request-scoped non-model dependencies', async () => {
     class RequestService {
-      constructor(readonly id: string) {}
+      constructor(readonly id: string) { }
     }
 
     Container.bind(RequestService, {
@@ -239,8 +239,8 @@ describe('@resora/plugin-clear-router express', () => {
 
   it('recognizes model constructors loaded through a separate module runtime', () => {
     class LoaderModel {
-      static query() {}
-      static hydrate() {}
+      static query() { }
+      static hydrate() { }
       static getPrimaryKey() {
         return 'id'
       }
