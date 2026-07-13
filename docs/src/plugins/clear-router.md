@@ -20,9 +20,16 @@ yarn add arkormx @arkormx/plugin-clear-router
 
 :::
 
-### Enable Legacy Metadata
+### Decorator Metadata
 
-Clear Router's container binding feature depends heavily on legacy metadata for full support, update your project's `tsconfig.json` file and set `experimentalDecorators` and `emitDecoratorMetadata` to `true` to enable legacy metadata support.
+TypeScript 5.2+ standard decorators work without additional compiler settings when model tokens are passed explicitly:
+
+```ts
+@Bind(Profile)
+show(profile: Profile) {}
+```
+
+To infer parameter types from tokenless `@Bind()`, enable legacy decorator metadata:
 
 ```json
 {
@@ -33,7 +40,7 @@ Clear Router's container binding feature depends heavily on legacy metadata for 
 }
 ```
 
-While this gives you complete access to how Clear Router's container binding feature is intended to be used, it is not required as [TypeScript 5.2+ Decorators](https://arkstack-hq.github.io/clear-router/guide/container-binding#typescript-5-2-decorators) are also supported.
+The plugin imports `reflect-metadata`, so no additional runtime import is required. See Clear Router's [container binding documentation](https://arkstack-hq.github.io/clear-router/guide/container-binding#typescript-5-2-decorators) for both decorator modes.
 
 ## Usage
 
@@ -43,7 +50,7 @@ Register the plugin with Clear Router:
 import { ClearRouter } from 'clear-router'
 import { clearRouterPlugin } from '@arkormx/plugin-clear-router'
 
-ClearRouter.use(clearRouterPlugin)
+await ClearRouter.use(clearRouterPlugin)
 ```
 
 ## Route Model Binding
@@ -82,12 +89,17 @@ GET /profiles/1
 
 Clear Router will resolve the `:profile` route parameter into a `Profile` model instance before calling the controller method.
 
-## Custom Model Path
+Route-bound models use Clear Router's request scope. Resolving the same model token more than once during a request returns the same hydrated instance. Other controller arguments retain their configured singleton, request, or transient container lifetime.
 
-Use `modelsPath` when your models live outside Arkorm’s configured model directory:
+The plugin uses the model token declared by the controller, so it does not need to scan or dynamically import a models directory. Structural model detection also supports model classes loaded through jiti or another module runtime.
+
+With TypeScript 5.2+ standard decorators, pass model tokens explicitly:
 
 ```ts
-ClearRouter.use(clearRouterPlugin, {
-  modelsPath: path.join(process.cwd(), 'src/models'),
-})
+class ProfileController extends Controller {
+  @Bind(Profile)
+  show(profile: Profile) {
+    return { data: profile }
+  }
+}
 ```
