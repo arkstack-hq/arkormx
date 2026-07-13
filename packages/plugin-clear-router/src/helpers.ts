@@ -18,7 +18,14 @@ export async function resolveRouteBinding(modelClass: IModel, value: unknown, fi
 }
 
 export const isModel = (cls: any): cls is IModel => {
-  return typeof cls === 'function' && cls.prototype instanceof Model
+  if (typeof cls !== 'function') return false
+
+  return (
+    cls === Model ||
+    (typeof cls.query === 'function' &&
+      typeof cls.hydrate === 'function' &&
+      typeof cls.getPrimaryKey === 'function')
+  )
 }
 
 export const getRouteBindingName = (modelClass: IModel): string => {

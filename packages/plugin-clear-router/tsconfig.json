@@ -17,6 +17,7 @@
     "src/**/*",
     "tests/**/*",
     "tsdown.config.ts",
+    "vitest.config.ts",
     "tests/app.d.ts",
     "../../tests/decorators.test.ts"
   ],

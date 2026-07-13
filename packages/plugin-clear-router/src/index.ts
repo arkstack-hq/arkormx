@@ -1,36 +1,57 @@
-import 'clear-router/decorators/setup'
+import 'reflect-metadata'
 
 import { getRouteBindingName, isModel, resolveRouteBinding } from './helpers'
 
-import { Container } from 'clear-router/decorators'
-import { Options } from './types'
+import { Container, definePlugin } from 'clear-router/core'
 import { RouteBindingParamExtractor } from './RouteBindingParamExtractor'
-import { definePlugin } from 'clear-router/core'
 
-export const clearRouterPlugin = definePlugin<Options>({
+export const clearRouterPlugin = definePlugin({
   name: 'plugin-clear-router',
-  async setup({ resolveArguments }) {
+  setup({ configure, resolveArguments }) {
+    configure({
+      container: {
+        enabled: true,
+        autoDiscover: true,
+      },
+    })
+
     resolveArguments(async ({ request, tokens }) => {
-      return await Promise.all(
-        tokens.map(async (token) => {
-          if (!isModel(token)) {
-            return await Container.resolve(token, request.ctx, true)
-          }
+      const container = Container.current()
+      const boundModels = new Set<(typeof tokens)[number]>()
+      const args: any[] = []
 
-          const binding = RouteBindingParamExtractor.extract(
-            request.route.path,
-            request.path,
-            request.params,
-            getRouteBindingName(token),
-          )
+      for (const token of tokens) {
+        if (!isModel(token)) {
+          args.push(await container.resolveOrFail(token, request.ctx, true))
+          continue
+        }
 
-          if (!binding) {
-            return await Container.resolve(token, request.ctx, true)
-          }
+        const binding = RouteBindingParamExtractor.extract(
+          request.route.path,
+          request.path,
+          request.params,
+          getRouteBindingName(token),
+        )
 
-          return await resolveRouteBinding(token, binding.value, binding.field)
-        }),
-      )
+        if (!binding) {
+          args.push(await container.resolveOrFail(token, request.ctx, true))
+          continue
+        }
+
+        if (!boundModels.has(token)) {
+          container.bind(token, {
+            scope: 'request',
+            useFactory: async () => {
+              return await resolveRouteBinding(token, binding.value, binding.field)
+            },
+          })
+          boundModels.add(token)
+        }
+
+        args.push(await container.resolveOrFail(token, request.ctx, true))
+      }
+
+      return args
     })
   },
 })

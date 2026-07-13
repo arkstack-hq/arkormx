@@ -1,6 +1,6 @@
 {
   "name": "@arkormx/plugin-clear-router",
-  "version": "0.1.52",
+  "version": "0.1.53",
   "description": "Clear Router plugin for resolving Arkormx models from route parameters.",
   "publishConfig": {
     "access": "public"
@@ -40,7 +40,7 @@
     "README.md"
   ],
   "scripts": {
-    "test": "vitest run tests/*.spec.ts",
+    "test": "vitest run --config vitest.config.ts tests/*.spec.ts",
     "build": "tsdown",
     "lint": "eslint src tests --ext .ts",
     "version:patch": "pnpm version patch",
@@ -51,7 +51,7 @@
     "arkormx": "workspace:^"
   },
   "peerDependencies": {
-    "clear-router": "^2.9.0"
+    "clear-router": "^2.9.2"
   },
   "devDependencies": {
     "express": "^5.2.1",
