@@ -213,7 +213,7 @@ describe('@arkorm/plugin-clear-router express', () => {
 
   it('preserves request-scoped non-model dependencies', async () => {
     class RequestService {
-      constructor(readonly id: string) { }
+      constructor(readonly id: string) {}
     }
 
     Container.bind(RequestService, {
@@ -239,8 +239,8 @@ describe('@arkorm/plugin-clear-router express', () => {
 
   it('recognizes model constructors loaded through a separate module runtime', () => {
     class LoaderModel {
-      static query() { }
-      static hydrate() { }
+      static query() {}
+      static hydrate() {}
       static getPrimaryKey() {
         return 'id'
       }
