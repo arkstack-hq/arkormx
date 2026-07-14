@@ -1,4 +1,4 @@
-import { Model } from 'arkormx'
+import { Model } from '../../../../src'
 import { User } from './User'
 
 export class Profile extends Model {

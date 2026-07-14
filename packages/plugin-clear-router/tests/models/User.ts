@@ -1,4 +1,4 @@
-import { Model } from 'arkormx'
+import { Model } from '../../../../src'
 import { Profile } from './Profile'
 
 export class User extends Model<{ isActive: string }> {
