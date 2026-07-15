@@ -1,9 +1,6 @@
 import { ModelFactory } from 'arkormx'
-import { {{ModelName}} } from '{{ModelImportPath}}'
 
 export class {{FactoryName}} extends ModelFactory {
-    model = {{ModelName}}
-
     /**
      * @param {number} _sequence
      * @returns {Record<string, unknown>}
