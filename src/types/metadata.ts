@@ -30,6 +30,7 @@ export type RelationMetadataType =
   | 'morphMany'
   | 'morphTo'
   | 'morphToMany'
+  | 'morphedByMany'
 
 interface BaseRelationMetadata {
   type: RelationMetadataType
@@ -128,6 +129,17 @@ export interface MorphToManyRelationMetadata extends BaseRelationMetadata {
   relatedKey: string
 }
 
+export interface MorphedByManyRelationMetadata extends BaseRelationMetadata {
+  type: 'morphedByMany'
+  throughTable: string
+  morphName: string
+  foreignPivotKey: string
+  morphTypeColumn: string
+  relatedPivotKey: string
+  parentKey: string
+  relatedKey: string
+}
+
 export type RelationMetadata =
   | HasOneRelationMetadata
   | HasManyRelationMetadata
@@ -139,3 +151,4 @@ export type RelationMetadata =
   | MorphManyRelationMetadata
   | MorphToRelationMetadata
   | MorphToManyRelationMetadata
+  | MorphedByManyRelationMetadata

@@ -344,6 +344,10 @@ export class Comment extends Model {
 
 export class Tag extends Model {
   protected static override table = 'tags'
+
+  public users() {
+    return this.morphedByMany(User, 'taggable')
+  }
 }
 
 export class Article extends Model<'article'> {

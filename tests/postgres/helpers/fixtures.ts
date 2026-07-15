@@ -85,6 +85,10 @@ export class DbComment extends Model {
 
 export class DbTag extends Model {
   protected static override table = 'tags'
+
+  public users() {
+    return this.morphedByMany(DbUser, 'taggable')
+  }
 }
 
 export class DbArticle extends Model<'article'> {
