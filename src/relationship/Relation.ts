@@ -9,6 +9,7 @@ import type {
   QuerySchemaForModelInstance,
   QuerySchemaInclude,
   QuerySchemaSelect,
+  RelationAggregateInput,
   RelationMetadata,
 } from '../types'
 import type { LengthAwarePaginator, Paginator } from '../Paginator'
@@ -932,6 +933,66 @@ export abstract class Relation<TModel> {
    */
   public with(relations: string | string[] | EagerLoadRelations<TModel>): this {
     return this.constrain((query) => query.with(relations))
+  }
+
+  /**
+   * Add relationship count aggregates to the related-model query.
+   *
+   * @param relations
+   * @returns
+   */
+  public withCount(relations: RelationAggregateInput): this {
+    return this.constrain((query) => query.withCount(relations))
+  }
+
+  /**
+   * Add relationship existence aggregates to the related-model query.
+   *
+   * @param relations
+   * @returns
+   */
+  public withExists(relations: RelationAggregateInput): this {
+    return this.constrain((query) => query.withExists(relations))
+  }
+
+  /**
+   * Add relationship sum aggregates to the related-model query.
+   *
+   * @param relations
+   * @returns
+   */
+  public withSum(relations: RelationAggregateInput, column: string): this {
+    return this.constrain((query) => query.withSum(relations, column))
+  }
+
+  /**
+   * Add relationship average aggregates to the related-model query.
+   *
+   * @param relations
+   * @returns
+   */
+  public withAvg(relations: RelationAggregateInput, column: string): this {
+    return this.constrain((query) => query.withAvg(relations, column))
+  }
+
+  /**
+   * Add relationship minimum aggregates to the related-model query.
+   *
+   * @param relations
+   * @returns
+   */
+  public withMin(relations: RelationAggregateInput, column: string): this {
+    return this.constrain((query) => query.withMin(relations, column))
+  }
+
+  /**
+   * Add relationship maximum aggregates to the related-model query.
+   *
+   * @param relations
+   * @returns
+   */
+  public withMax(relations: RelationAggregateInput, column: string): this {
+    return this.constrain((query) => query.withMax(relations, column))
   }
 
   /**

@@ -1,6 +1,7 @@
 import { describe, expectTypeOf, it } from 'vitest'
 
-import { ArkormCollection, Model } from '../../src'
+import { ArkormCollection, Model, QueryBuilder } from '../../src'
+import type { Relation } from '../../src/relationship'
 import type { AttributeCreateInput, AttributeUpdateInput, ModelWhereInput } from '../../src/types'
 
 type IsAny<TValue> = 0 extends 1 & TValue ? true : false
@@ -43,6 +44,12 @@ class DeclaredUserWithRelations extends Model {
 
   posts() {
     return this.hasMany(TypedPost, 'authorId', 'id')
+  }
+}
+
+class UnknownRelationUser extends Model {
+  unknownRelation(): Relation<unknown> {
+    throw new Error('Typing fixture only')
   }
 }
 
@@ -119,6 +126,18 @@ describe('adapter-first typing', () => {
     expectTypeOf(missingRelations).toMatchTypeOf<LoadMissingInput>()
   })
 
+  it('uses a permissive query builder when a relationship loses its related model type', () => {
+    UnknownRelationUser.query().with({
+      unknownRelation: (query) => {
+        type QueryModel = typeof query extends QueryBuilder<infer TModel, any> ? TModel : never
+
+        expectTypeOf<IsAny<QueryModel>>().toEqualTypeOf<true>()
+
+        return query.where({ userId: 1 })
+      },
+    })
+  })
+
   it('preserves related model query types on relation methods', () => {
     const relation = new DeclaredUserWithRelations().posts()
 
@@ -157,6 +176,8 @@ describe('adapter-first typing', () => {
       .offset(5)
       .limit(10)
       .forPage(2, 10)
+
+    expectTypeOf(relation.withCount('comments')).toEqualTypeOf<typeof relation>()
 
     // @ts-expect-error Related model keys must be suggested and validated.
     relation.whereKey('missing', 1)

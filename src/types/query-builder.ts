@@ -21,6 +21,16 @@ export type RelatedModelForRelationship<
     : never
   : never
 
+export type EagerLoadQueryForRelationship<
+  TModel,
+  TKey extends ModelRelationshipKey<TModel>,
+  TRelated = RelatedModelForRelationship<TModel, TKey>,
+> = [TRelated] extends [never]
+  ? QueryBuilder<any, any>
+  : unknown extends TRelated
+    ? QueryBuilder<any, any>
+    : QueryBuilder<TRelated, QuerySchemaForModelInstance<TRelated>>
+
 /**
  * The left-hand argument accepted by the join helpers: either a column name or a
  * closure that configures the join constraints through a {@link JoinClause}.
@@ -42,10 +52,5 @@ export type WhereCallback<TModel, TDelegate extends ModelQuerySchemaLike> = (
 export type EagerLoadRelations<TModel> = {
   [TKey in ModelRelationshipKey<TModel>]?:
     | true
-    | EagerLoadConstraint<
-        QueryBuilder<
-          RelatedModelForRelationship<TModel, TKey>,
-          QuerySchemaForModelInstance<RelatedModelForRelationship<TModel, TKey>>
-        >
-      >
+    | EagerLoadConstraint<EagerLoadQueryForRelationship<TModel, TKey>>
 }
