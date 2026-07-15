@@ -21,6 +21,7 @@ import {
   MorphOneRelation,
   MorphToRelation,
   MorphToManyRelation,
+  MorphedByManyRelation,
   Relation,
 } from './relationship'
 import { PrismaDatabaseAdapter } from './adapters/PrismaDatabaseAdapter'
@@ -1977,6 +1978,58 @@ export abstract class Model<
       resolvedTable,
       morphName,
       morphIdColumn,
+      resolvedMorphTypeColumn,
+      resolvedRelatedPivotKey,
+      parentKey ?? constructor.getPrimaryKey(),
+      resolvedRelatedKey,
+    )
+  }
+
+  /**
+   * Define the inverse side of a polymorphic many-to-many relationship.
+   *
+   * @param related
+   * @param morphName
+   * @param throughTable
+   * @param foreignPivotKey
+   * @param morphTypeColumn
+   * @param relatedPivotKey
+   * @param parentKey
+   * @param relatedKey
+   * @returns
+   */
+  protected morphedByMany<TRelatedClass extends RelatedModelClass>(
+    related: TRelatedClass,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphedByManyRelation<this, InstanceType<TRelatedClass>> {
+    const constructor = this.constructor as unknown as typeof Model
+    const namingCase = Model.getNamingCase()
+    const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
+    const resolvedTable =
+      throughTable ?? this.formatConventionName(`${str(morphName).plural()}`, namingCase)
+    const resolvedForeignPivotKey =
+      foreignPivotKey ??
+      this.formatConventionName(
+        `${str(constructor.getTable()).singular()}_${parentKey ?? constructor.getPrimaryKey()}`,
+        namingCase,
+      )
+    const resolvedMorphTypeColumn =
+      morphTypeColumn ?? this.formatConventionName(`${morphName}_type`, namingCase)
+    const resolvedRelatedPivotKey =
+      relatedPivotKey ?? this.formatConventionName(`${morphName}_id`, namingCase)
+
+    return new MorphedByManyRelation(
+      this,
+      related,
+      resolvedTable,
+      morphName,
+      resolvedForeignPivotKey,
       resolvedMorphTypeColumn,
       resolvedRelatedPivotKey,
       parentKey ?? constructor.getPrimaryKey(),

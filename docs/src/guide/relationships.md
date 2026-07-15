@@ -30,6 +30,7 @@ Supported relationships:
 - [`morphMany`](#morphmany)
 - [`morphTo`](#morphto)
 - [`morphToMany`](#morphtomany)
+- [`morphedByMany`](#morphedbymany)
 
 ## Supported relationship patterns
 
@@ -422,6 +423,49 @@ The complete positional signature is:
 
 ```ts
 morphToMany(
+  related,
+  name,
+  table?,
+  foreignPivotKey?,
+  typeColumn?,
+  relatedPivotKey?,
+  parentKey?,
+  relatedKey?,
+);
+```
+
+### morphedByMany
+
+Use `morphedByMany` for the inverse side of a polymorphic many-to-many
+relationship. Because polymorphic targets can live in different tables, pass the
+concrete related model to obtain a normal, typed relation query for that model.
+
+```ts
+class Tag extends Model {
+  posts() {
+    return this.morphedByMany(Post, 'taggable')
+  }
+
+  videos() {
+    return this.morphedByMany(Video, 'taggable')
+  }
+}
+```
+
+The relation constrains the pivot by both the parent key and the requested
+related model type. Its result remains queryable and can be filtered, ordered,
+or paginated before models are hydrated:
+
+```ts
+const posts = await tag.posts().where({ published: true }).paginate(20)
+```
+
+For the conventional `taggables` example, ArkORM infers `tag_id` as the parent
+pivot key, `taggable_type` as the discriminator, and `taggable_id` as the related
+pivot key. The complete positional signature is:
+
+```ts
+morphedByMany(
   related,
   name,
   table?,

@@ -213,6 +213,14 @@ describe('PostgreSQL model relationships', () => {
     expect(tags?.all().length).toBe(2)
   })
 
+  it('supports MorphedByManyRelation', async () => {
+    const tag = await DbTag.query().find(1)
+    const users = await tag?.users().getResults()
+
+    expectTypeOf(users).toEqualTypeOf<ArkormCollection<DbUser> | undefined>()
+    expect(users?.pluck('id').all()).toEqual([1])
+  })
+
   it('returns empty collections for through and many-to-many relations with no matches', async () => {
     const user = await DbUser.query().find(2)
 
