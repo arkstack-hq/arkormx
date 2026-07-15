@@ -8,11 +8,9 @@ Arkorm includes class-based factories and seeders for test data and local bootst
 
 ```ts
 import { ModelFactory } from 'arkormx'
-import { User } from '../../src/models/User'
+import type { User } from '../../src/models/User'
 
 export class UserFactory extends ModelFactory<User> {
-  protected model = User
-
   protected definition(sequence: number) {
     return {
       name: `User ${sequence}`,
@@ -21,6 +19,12 @@ export class UserFactory extends ModelFactory<User> {
   }
 }
 ```
+
+When a model declares this factory through `factoryClass` (or `setFactory()`),
+`Model.factory()` injects the model constructor into the factory. The factory can
+therefore use a type-only model import and avoid a runtime model → factory → model
+cycle. Directly instantiated factories can call `.setModel(User)`; defining the
+legacy `protected model = User` property remains supported.
 
 ### Use from model
 

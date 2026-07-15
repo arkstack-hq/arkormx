@@ -51,6 +51,7 @@ import {
 } from './helpers/runtime-compatibility'
 
 import {
+  FactoryModelConstructor,
   ModelEventHandlerConstructor,
   ModelEventListener,
   ModelMetadata,
@@ -384,7 +385,9 @@ export abstract class Model<
         model: this.name,
       })
 
-    const factory = new factoryClass()
+    const factory = new factoryClass().setModel(
+      this as unknown as FactoryModelConstructor<unknown>,
+    ) as TFactory
     if (typeof count === 'number') factory.count(count)
 
     return factory
