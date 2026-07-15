@@ -142,6 +142,14 @@ describe('Model relationships', () => {
     expect(commentPost?.getAttribute('id')).toBe(100)
   })
 
+  it('supports inverse polymorphic many-to-many relations without hydrating pivot models', async () => {
+    const tag = await Tag.query().findOrFail(1200)
+    const users = await tag.users().where({ id: 1 }).getResults()
+
+    expectTypeOf(users.all()).toEqualTypeOf<User[]>()
+    expect(users.pluck('id').all()).toEqual([1])
+  })
+
   it('forwards query builder constraints through relations', async () => {
     const user = await User.query().findOrFail(1)
     const posts = await user
@@ -207,6 +215,16 @@ describe('Model relationships', () => {
       morphIdColumn: 'taggableId',
       morphTypeColumn: 'taggableType',
       relatedPivotKey: 'tagId',
+      parentKey: 'id',
+      relatedKey: 'id',
+    })
+    expect(Tag.getRelationMetadata('users')).toMatchObject({
+      type: 'morphedByMany',
+      throughTable: 'taggables',
+      morphName: 'taggable',
+      foreignPivotKey: 'tagId',
+      morphTypeColumn: 'taggableType',
+      relatedPivotKey: 'taggableId',
       parentKey: 'id',
       relatedKey: 'id',
     })
