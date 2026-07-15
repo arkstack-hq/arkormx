@@ -42,8 +42,9 @@ export abstract class ModelFactory<
   }> = []
   private recyclePool = new Map<FactoryModelConstructor<unknown>, Model[]>()
   private recycleOffsets = new Map<FactoryModelConstructor<unknown>, number>()
+  private injectedModel?: FactoryModelConstructor<TModel>
 
-  protected abstract model: FactoryModelConstructor<TModel>
+  protected model?: FactoryModelConstructor<TModel>
   protected abstract definition(
     sequence: number,
   ): MaybePromise<FactoryDefinitionAttributes<TAttributes>>
@@ -52,6 +53,23 @@ export abstract class ModelFactory<
    * Configure states and lifecycle callbacks for each new factory instance.
    */
   protected configure(): void {}
+
+  /**
+   * Supply the model constructor that this factory should create.
+   *
+   * Model.factory() calls this automatically, allowing a factory referenced by
+   * a model's factoryClass to use a type-only model import and avoid a runtime
+   * model -> factory -> model cycle. Directly instantiated factories may call
+   * this method explicitly or continue defining the protected model property.
+   *
+   * @param model
+   * @returns
+   */
+  public setModel(model: FactoryModelConstructor<TModel>): this {
+    this.injectedModel = model
+
+    return this
+  }
 
   /**
    * Set the number of models to create.
@@ -115,7 +133,8 @@ export abstract class ModelFactory<
   public make(overrides: Partial<TAttributes> = {}): TModel {
     this.ensureConfigured()
     const attributes = this.buildAttributes(overrides)
-    const model = new this.model(attributes as Record<string, unknown>)
+    const ModelConstructor = this.getModelConstructor()
+    const model = new ModelConstructor(attributes as Record<string, unknown>)
     this.runCallbacksSync(this.afterMakingCallbacks, model, 'afterMaking')
 
     return model
@@ -131,7 +150,8 @@ export abstract class ModelFactory<
   public async makeAsync(overrides: Partial<TAttributes> = {}): Promise<TModel> {
     this.ensureConfigured()
     const attributes = await this.buildAttributesAsync(overrides)
-    const model = new this.model(attributes as Record<string, unknown>)
+    const ModelConstructor = this.getModelConstructor()
+    const model = new ModelConstructor(attributes as Record<string, unknown>)
     await this.runCallbacks(this.afterMakingCallbacks, model)
 
     return model
@@ -273,7 +293,13 @@ export abstract class ModelFactory<
    * @returns
    */
   public getModelConstructor(): FactoryModelConstructor<TModel> {
-    return this.model
+    const model = this.injectedModel ?? this.model
+    if (!model)
+      throw new Error(
+        'Factory model is not configured. Use Model.factory(), call factory.setModel(Model), or define the protected model property.',
+      )
+
+    return model
   }
 
   /**
@@ -427,7 +453,8 @@ export abstract class ModelFactory<
     relationship?: string,
   ): FactoryDefinitionAttributes<TAttributes> {
     const relationName = relationship ?? `${str(related.constructor.name).camel().singular()}`
-    const metadata = this.model.getRelationMetadata?.(relationName) as {
+    const model = this.getModelConstructor()
+    const metadata = model.getRelationMetadata?.(relationName) as {
       type?: string
       foreignKey?: string
       ownerKey?: string
@@ -435,7 +462,7 @@ export abstract class ModelFactory<
 
     if (metadata?.type !== 'belongsTo' || !metadata.foreignKey || !metadata.ownerKey)
       throw new Error(
-        `Factory relationship [${relationName}] is not a belongsTo relation on [${this.model.name}].`,
+        `Factory relationship [${relationName}] is not a belongsTo relation on [${model.name}].`,
       )
 
     return {
@@ -528,7 +555,7 @@ export abstract class ModelFactory<
     const resolver = (model as Record<string, unknown>)[relationship]
     if (typeof resolver !== 'function')
       throw new Error(
-        `Factory relationship [${relationship}] is not defined on [${this.model.name}].`,
+        `Factory relationship [${relationship}] is not defined on [${this.getModelConstructor().name}].`,
       )
 
     return resolver.call(model) as {
@@ -563,7 +590,7 @@ export abstract class ModelFactory<
   }
 
   private takeRecycledModel(): Model | null {
-    const constructor = this.model as FactoryModelConstructor<unknown>
+    const constructor = this.getModelConstructor() as FactoryModelConstructor<unknown>
     const models = this.recyclePool.get(constructor)
     if (!models || models.length === 0) return null
 

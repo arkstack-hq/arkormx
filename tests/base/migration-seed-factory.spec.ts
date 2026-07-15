@@ -27,8 +27,6 @@ describe('Database migration, seeding and factory helpers', () => {
 
   it('supports class-based factories via model factory access', async () => {
     class UserFactory extends ModelFactory<User> {
-      protected model = User
-
       protected definition(sequence: number) {
         return {
           id: 2000 + sequence,
@@ -48,6 +46,7 @@ describe('Database migration, seeding and factory helpers', () => {
     }))
 
     const model = factory.make()
+    expect(factory.getModelConstructor()).toBe(User)
     expect(model.getAttribute('name')).toBe('USER 0')
 
     const created = await factory.create({ email: 'special@example.com' })
@@ -58,7 +57,9 @@ describe('Database migration, seeding and factory helpers', () => {
     expect(createdMany[0]?.getAttribute('name')).toBe('USER 2')
     expect(createdMany[1]?.getAttribute('name')).toBe('USER 3')
 
-    const directFactory = new UserFactory().count(1)
+    expect(() => new UserFactory().make()).toThrow('Factory model is not configured.')
+
+    const directFactory = new UserFactory().setModel(User).count(1)
     const directModel = directFactory.make()
     expect(directModel.getAttribute('name')).toBe('User 0')
   })
