@@ -727,8 +727,8 @@ export class SetBasedEagerLoader {
     const seenByType = new Map<string, Set<string>>()
 
     this.models.forEach((model) => {
-      const morphType = model.getAttribute(metadata.morphTypeColumn)
-      const morphId = model.getAttribute(metadata.morphIdColumn)
+      const morphType = this.readModelAttribute(model, metadata.morphTypeColumn)
+      const morphId = this.readModelAttribute(model, metadata.morphIdColumn)
       if (typeof morphType !== 'string' || morphType.length === 0 || morphId == null) return
 
       const ids = idsByType.get(morphType) ?? []
@@ -766,8 +766,8 @@ export class SetBasedEagerLoader {
     )
 
     this.models.forEach((model) => {
-      const morphType = model.getAttribute(metadata.morphTypeColumn)
-      const morphId = model.getAttribute(metadata.morphIdColumn)
+      const morphType = this.readModelAttribute(model, metadata.morphTypeColumn)
+      const morphId = this.readModelAttribute(model, metadata.morphIdColumn)
       const relationValue =
         typeof morphType !== 'string' || morphId == null
           ? null
@@ -1022,7 +1022,22 @@ export class SetBasedEagerLoader {
    * @returns
    */
   private readModelAttribute(model: unknown, key: string): unknown {
-    return (model as { getAttribute?: (attribute: string) => unknown }).getAttribute?.(key)
+    const readable = model as {
+      constructor?: { getColumnMap?: () => Record<string, string> }
+      getAttribute?: (attribute: string) => unknown
+    }
+    const value = readable.getAttribute?.(key)
+    if (value !== undefined) return value
+
+    try {
+      const attribute = Object.entries(readable.constructor?.getColumnMap?.() ?? {}).find(
+        ([, column]) => column === key,
+      )?.[0]
+
+      return attribute ? readable.getAttribute?.(attribute) : value
+    } catch {
+      return value
+    }
   }
 
   /**

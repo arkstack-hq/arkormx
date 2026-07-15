@@ -1,5 +1,6 @@
 import {
   ArkormCollection,
+  type DatabaseAdapter,
   Model,
   PivotModel,
   QueryBuilder,
@@ -292,6 +293,78 @@ describe('Model relationships', () => {
     } finally {
       User.setAdapter(undefined)
       Comment.setAdapter(undefined)
+    }
+  })
+
+  it('adds related-model aggregates directly from a morph-many relation', async () => {
+    const user = await User.query().find(1)
+    if (!user) throw new Error('Expected user fixture')
+
+    const comments = await user.comments().withCount('user').getResults()
+
+    expect(comments.first()?.getAttribute('userCount')).toBe(1)
+  })
+
+  it('eager loads polymorphic relations whose database columns are mapped attributes', async () => {
+    class MappedReaction extends Model {
+      protected static override table = 'mapped_reactions'
+      protected static override columns = {
+        reactableId: 'reactable_id',
+        reactableType: 'reactable_type',
+      }
+
+      public reactable() {
+        return this.morphTo('reactable', 'reactable_type', 'reactable_id')
+      }
+    }
+
+    class MappedPost extends Model {
+      protected static override table = 'mapped_posts'
+
+      public reactions() {
+        return this.morphMany(MappedReaction, 'reactable', 'reactable_id', 'reactable_type')
+      }
+    }
+
+    const select = vi.fn(async ({ target }: { target: { table: string } }) => {
+      if (target.table === 'mapped_posts') return [{ id: 1, title: 'Mapped post' }]
+      if (target.table === 'mapped_reactions') {
+        return [{ id: 10, reactableId: 1, reactableType: 'MappedPost', type: 'love' }]
+      }
+
+      return []
+    })
+    const adapter = {
+      select,
+      selectOne: async () => null,
+      insert: async () => ({}),
+      update: async () => ({}),
+      delete: async () => ({}),
+      count: async () => 0,
+      exists: async () => false,
+      transaction: async <TResult>(
+        callback: (transaction: DatabaseAdapter) => TResult | Promise<TResult>,
+      ): Promise<TResult> => callback(adapter as DatabaseAdapter),
+    } as DatabaseAdapter
+
+    MappedPost.setAdapter(adapter)
+    MappedReaction.setAdapter(adapter)
+    registerModels(MappedPost)
+
+    try {
+      const posts = await MappedPost.query().with('reactions').get()
+      const reactions = posts.first()?.getAttribute('reactions') as ArkormCollection<MappedReaction>
+
+      expect(reactions.all().map((reaction) => reaction.getAttribute('id'))).toEqual([10])
+
+      const loadedReactions = await MappedReaction.query().with('reactable').get()
+      const reactable = loadedReactions.first()?.getAttribute('reactable')
+
+      expect(reactable).toBeInstanceOf(MappedPost)
+      expect((reactable as MappedPost).getAttribute('id')).toBe(1)
+    } finally {
+      MappedPost.setAdapter(undefined)
+      MappedReaction.setAdapter(undefined)
     }
   })
 
