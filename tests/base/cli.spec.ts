@@ -177,6 +177,8 @@ describe('CLI application', () => {
     const migrationSource = readFileSync(migration.path, 'utf-8')
 
     expect(factorySource).toContain('@returns {Record<string, unknown>}')
+    expect(factorySource).not.toContain('model = User')
+    expect(factorySource).not.toContain("from '../../src/models/User")
     expect(seederSource).toContain('@returns {Promise<void>}')
     expect(migrationSource).toContain("import { Migration } from 'arkormx'")
     expect(migrationSource).toContain("@param {import('arkormx').SchemaBuilder} schema")
@@ -198,9 +200,12 @@ describe('CLI application', () => {
       true
 
     const created = app.makeFactory('User')
+    const source = readFileSync(created.path, 'utf-8')
 
     expect(existsSync(created.path)).toBe(true)
     expect(created.path.endsWith('.ts')).toBe(true)
+    expect(source).toContain('import type { User }')
+    expect(source).not.toContain('protected model = User')
   })
 
   it('resolves TS runtime script path to built JS output path', () => {
