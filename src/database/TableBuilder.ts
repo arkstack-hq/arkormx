@@ -11,6 +11,8 @@ import {
 
 import { ForeignKeyBuilder } from './ForeignKeyBuilder'
 import { PrimaryKeyGenerationPlanner } from '../helpers/PrimaryKeyGenerationPlanner'
+import { getUserConfig } from '../helpers/runtime-config'
+import { str } from '@h3ravel/support'
 import {
   type GeneratedColumnExpression,
   resolveGeneratedExpression,
@@ -490,8 +492,17 @@ export class TableBuilder {
    * @returns
    */
   public morphs(name: string, nullable = false): this {
-    this.string(`${name}Type`, { nullable })
-    this.integer(`${name}Id`, { nullable })
+    const typeAttribute = `${name}Type`
+    const idAttribute = `${name}Id`
+
+    this.string(typeAttribute, {
+      nullable,
+      map: this.resolveConventionMap(typeAttribute, `${name}_type`),
+    })
+    this.integer(idAttribute, {
+      nullable,
+      map: this.resolveConventionMap(idAttribute, `${name}_id`),
+    })
 
     return this
   }
@@ -503,8 +514,17 @@ export class TableBuilder {
    * @returns
    */
   public uuidMorphs(name: string, nullable = false): this {
-    this.string(`${name}Type`, { nullable })
-    this.uuid(`${name}Id`, { nullable })
+    const typeAttribute = `${name}Type`
+    const idAttribute = `${name}Id`
+
+    this.string(typeAttribute, {
+      nullable,
+      map: this.resolveConventionMap(typeAttribute, `${name}_type`),
+    })
+    this.uuid(idAttribute, {
+      nullable,
+      map: this.resolveConventionMap(idAttribute, `${name}_id`),
+    })
 
     return this
   }
@@ -893,6 +913,15 @@ export class TableBuilder {
     if (!column) throw new Error(`Column [${targetName}] was not found in the table definition.`)
 
     return column
+  }
+
+  /** Map a conventional attribute to the database name used by inferred relationships. */
+  private resolveConventionMap(attribute: string, value: string): string | undefined {
+    const naming = getUserConfig('naming')
+    const namingCase = naming?.case ?? naming?.modelTableCase ?? 'snake'
+    const column = `${str(value)[namingCase]()}`
+
+    return column === attribute ? undefined : column
   }
 
   private normalizeCompositeColumns(columns: string[], label: string): string[] {
