@@ -17,8 +17,8 @@ export type RelatedModelForRelationship<
   TKey extends ModelRelationshipKey<TModel>,
 > = TModel[TKey] extends (...args: any[]) => infer TRelation
   ? TRelation extends { getResults: (...args: any[]) => Promise<infer TResult> }
-  ? RelatedModelFromResult<TResult>
-  : never
+    ? RelatedModelFromResult<TResult>
+    : never
   : never
 
 export type EagerLoadQueryForRelationship<
@@ -28,8 +28,8 @@ export type EagerLoadQueryForRelationship<
 > = [TRelated] extends [never]
   ? QueryBuilder<any, any>
   : unknown extends TRelated
-  ? QueryBuilder<any, any>
-  : QueryBuilder<TRelated, QuerySchemaForModelInstance<TRelated>>
+    ? QueryBuilder<any, any>
+    : QueryBuilder<TRelated, QuerySchemaForModelInstance<TRelated>>
 
 /**
  * The left-hand argument accepted by the join helpers: either a column name or a
@@ -51,6 +51,6 @@ export type WhereCallback<TModel, TDelegate extends ModelQuerySchemaLike> = (
 
 export type EagerLoadRelations<TModel> = {
   [TKey in ModelRelationshipKey<TModel>]?:
-  | true
-  | EagerLoadConstraint<EagerLoadQueryForRelationship<TModel, TKey>>
+    | true
+    | EagerLoadConstraint<EagerLoadQueryForRelationship<TModel, TKey>>
 }
