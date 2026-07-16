@@ -122,7 +122,7 @@ import { ArkormCollection } from './Collection'
 import { ArkormException } from './Exceptions/ArkormException'
 import { JoinClause } from './JoinClause'
 import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
-import type { ModelStatic } from './types/ModelStatic'
+import type { ModelStatic, RelationshipModelStatic } from './types/ModelStatic'
 import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
 import { QueryConstraintException } from './Exceptions/QueryConstraintException'
 import { QueryExecutionException } from './Exceptions/QueryExecutionException'
@@ -159,10 +159,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   private randomOrderEnabled = false
   private readonly relationFilters: Array<{
     relation: string
-    callback?: (query: QueryBuilder<any, any>) => unknown
+    callback?: (query: QueryBuilder<any, any>, type?: string) => unknown
     operator: '>=' | '>' | '=' | '!=' | '<=' | '<'
     count: number
     boolean: 'AND' | 'OR'
+    morphTargets?: Array<{ type: string; model: RelationshipModelStatic }>
   }> = []
   private readonly relationAggregates: Array<{
     type: RelationAggregateType
@@ -1605,9 +1606,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   /**
    * Add a constrained polymorphic relationship has clause.
    *
-   * The current relationship metadata does not expose morph-to targets yet, so
-   * this method delegates to whereHas while preserving the forward-compatible
-   * API shape.
+   * Each requested morph target is compiled as its own correlated subquery so
+   * callbacks run against the concrete target model rather than the morph
+   * container model.
    *
    * @param relation
    * @param types
@@ -1616,16 +1617,23 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param count
    * @returns
    */
-  public whereHasMorph(
+  public whereHasMorph<TRelated = any>(
     relation: string,
-    types: unknown | unknown[],
-    callback?: (query: QueryBuilder<any, any>) => unknown,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
     operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
     count = 1,
   ): this {
-    void types
+    this.relationFilters.push({
+      relation,
+      callback: callback as ((query: QueryBuilder<any, any>, type?: string) => unknown) | undefined,
+      operator,
+      count,
+      boolean: 'AND',
+      morphTargets: this.resolveMorphTargets(relation, types),
+    })
 
-    return this.whereHas(relation, callback, operator, count)
+    return this
   }
 
   /**
@@ -1636,14 +1644,41 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @param callback
    * @returns
    */
-  public whereDoesntHaveMorph(
+  public whereDoesntHaveMorph<TRelated = any>(
     relation: string,
-    types: unknown | unknown[],
-    callback?: (query: QueryBuilder<any, any>) => unknown,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
   ): this {
-    void types
+    return this.whereHasMorph(relation, types, callback, '<', 1)
+  }
 
-    return this.whereDoesntHave(relation, callback)
+  /** Add an OR constrained polymorphic relationship has clause. */
+  public orWhereHasMorph<TRelated = any>(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+  ): this {
+    this.relationFilters.push({
+      relation,
+      callback: callback as ((query: QueryBuilder<any, any>, type?: string) => unknown) | undefined,
+      operator,
+      count,
+      boolean: 'OR',
+      morphTargets: this.resolveMorphTargets(relation, types),
+    })
+
+    return this
+  }
+
+  /** Add an OR constrained polymorphic relationship does-not-have clause. */
+  public orWhereDoesntHaveMorph<TRelated = any>(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
+  ): this {
+    return this.orWhereHasMorph(relation, types, callback, '<', 1)
   }
 
   /**
@@ -5512,6 +5547,48 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return this.relationFilters.length > 0
   }
 
+  private resolveMorphTargets(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+  ): Array<{ type: string; model: RelationshipModelStatic }> {
+    const metadata = this.model.getRelationMetadata(relation)
+    if (!metadata || metadata.type !== 'morphTo') {
+      throw new RelationResolutionException(
+        `Relation [${relation}] must be a morphTo relationship to use morph constraints.`,
+        {
+          operation: 'whereHasMorph',
+          model: this.model.name,
+          relation,
+        },
+      )
+    }
+
+    const requested = Array.isArray(types) ? types : [types]
+    if (requested.length === 0) {
+      throw new RelationResolutionException(
+        `Morph constraint [${relation}] requires at least one target model.`,
+        {
+          operation: 'whereHasMorph',
+          model: this.model.name,
+          relation,
+        },
+      )
+    }
+
+    return requested.reduce<Array<{ type: string; model: RelationshipModelStatic }>>(
+      (targets, requestedType) => {
+        const type = typeof requestedType === 'string' ? requestedType : requestedType.name
+        const model =
+          typeof requestedType === 'string' ? metadata.resolveModel(requestedType) : requestedType
+
+        if (!targets.some((target) => target.type === type)) targets.push({ type, model })
+
+        return targets
+      },
+      [],
+    )
+  }
+
   private hasOrRelationFilters(): boolean {
     return this.relationFilters.some((filter) => filter.boolean === 'OR')
   }
@@ -5579,6 +5656,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
     return this.relationFilters.some((filter) => {
       const metadata = this.model.getRelationMetadata(filter.relation)
+      if (filter.morphTargets && metadata?.type === 'morphTo') {
+        return this.tryBuildMorphRelationFilterSpec(filter) === null
+      }
       if (!this.isSqlRelationFeatureMetadata(metadata)) return false
 
       return this.tryBuildRelationConstraintWhere(filter.relation, filter.callback) === null
@@ -5602,6 +5682,14 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       if (!specs) return null
 
       const metadata = this.model.getRelationMetadata(filter.relation)
+      if (filter.morphTargets && metadata?.type === 'morphTo') {
+        const morphSpec = this.tryBuildMorphRelationFilterSpec(filter)
+        if (!morphSpec) return null
+
+        specs.push(morphSpec)
+
+        return specs
+      }
       if (!this.isSqlRelationFeatureMetadata(metadata)) return null
 
       const where = this.tryBuildRelationConstraintWhere(filter.relation, filter.callback)
@@ -5617,6 +5705,54 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
       return specs
     }, [])
+  }
+
+  private tryBuildMorphRelationFilterSpec(
+    filter: (typeof this.relationFilters)[number],
+  ): RelationFilterSpec | null {
+    const metadata = this.model.getRelationMetadata(filter.relation)
+    if (metadata?.type !== 'morphTo' || !filter.morphTargets) return null
+
+    const branches: NonNullable<RelationFilterSpec['morph']>['branches'] = []
+    for (const target of filter.morphTargets) {
+      const relatedQuery = target.model.query()
+      if (filter.callback) {
+        const constrained = filter.callback(relatedQuery, target.type)
+        if (constrained && constrained !== relatedQuery) return null
+      }
+
+      const where = this.tryBuildRelationQueryConstraintWhere(relatedQuery)
+      if (where === null) return null
+
+      const relatedMetadata = target.model.getModelMetadata()
+      branches.push({
+        type: target.type,
+        target: {
+          model: target.model as unknown as ModelStatic<any, any>,
+          modelName: target.model.name,
+          table: relatedMetadata.table,
+          primaryKey: relatedMetadata.primaryKey,
+          primaryKeyGeneration: relatedMetadata.primaryKeyGeneration,
+          timestampColumns: relatedMetadata.timestampColumns,
+          columns: relatedMetadata.columns,
+          softDelete: relatedMetadata.softDelete,
+        },
+        ownerKey: metadata.ownerKey ?? target.model.getPrimaryKey(),
+        where: where ?? undefined,
+      })
+    }
+
+    return {
+      relation: filter.relation,
+      operator: filter.operator,
+      count: filter.count,
+      boolean: filter.boolean,
+      morph: {
+        morphIdColumn: metadata.morphIdColumn,
+        morphTypeColumn: metadata.morphTypeColumn,
+        branches,
+      },
+    }
   }
 
   private tryBuildRelationAggregateSpecs(): RelationAggregateSpec[] | null {
@@ -5661,6 +5797,12 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       if (constrained && constrained !== relatedQuery) return null
     }
 
+    return this.tryBuildRelationQueryConstraintWhere(relatedQuery)
+  }
+
+  private tryBuildRelationQueryConstraintWhere(
+    relatedQuery: QueryBuilder<any, any>,
+  ): QueryCondition | undefined | null {
     if (
       relatedQuery.hasRelationFilters() ||
       relatedQuery.hasRelationAggregates() ||
@@ -5705,12 +5847,36 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
         if (baseIds) result = baseIds.has(this.getModelId(model) as string | number)
 
         for (const filter of this.relationFilters) {
-          const relatedCount = await this.resolveRelatedCount(
-            model,
-            filter.relation,
-            relationCache,
-            filter.callback,
-          )
+          const morphMetadata = filter.morphTargets
+            ? this.model.getRelationMetadata(filter.relation)
+            : null
+          const morphType =
+            morphMetadata?.type === 'morphTo'
+              ? String(
+                  (model as unknown as { getAttribute: (key: string) => unknown }).getAttribute(
+                    morphMetadata.morphTypeColumn,
+                  ) ?? '',
+                )
+              : null
+          const morphMatches =
+            !filter.morphTargets ||
+            (morphType !== null && filter.morphTargets.some((target) => target.type === morphType))
+          const relatedCount = morphMatches
+            ? filter.morphTargets && morphMetadata?.type === 'morphTo'
+              ? await this.resolveMorphTargetCount(
+                  model,
+                  morphMetadata,
+                  filter.morphTargets,
+                  morphType!,
+                  filter.callback,
+                )
+              : await this.resolveRelatedCount(
+                  model,
+                  filter.relation,
+                  relationCache,
+                  filter.callback,
+                )
+            : 0
           const condition = this.compareCount(relatedCount, filter.operator, filter.count)
 
           if (result == null) result = condition
@@ -5722,6 +5888,40 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     )
 
     return evaluations.filter((entry) => entry.passes).map((entry) => entry.model)
+  }
+
+  private async resolveMorphTargetCount(
+    model: TModel,
+    metadata: Extract<
+      NonNullable<ReturnType<ModelStatic<TModel, TDelegate>['getRelationMetadata']>>,
+      { type: 'morphTo' }
+    >,
+    targets: Array<{ type: string; model: RelationshipModelStatic }>,
+    morphType: string,
+    callback?: (query: QueryBuilder<any, any>, type?: string) => unknown,
+  ): Promise<number> {
+    const target = targets.find((candidate) => candidate.type === morphType)
+    if (!target) return 0
+
+    const ownerKey = metadata.ownerKey ?? target.model.getPrimaryKey()
+    const morphId = (model as unknown as { getAttribute: (key: string) => unknown }).getAttribute(
+      metadata.morphIdColumn,
+    )
+    const query = target.model.query().where({ [ownerKey]: morphId })
+    if (callback) {
+      const constrained = callback(query, morphType)
+      if (constrained && constrained !== query) {
+        throw new UnsupportedAdapterFeatureException(
+          'Morph relation constraints must mutate and return the provided query builder.',
+          {
+            operation: 'whereHasMorph',
+            model: this.model.name,
+          },
+        )
+      }
+    }
+
+    return query.count()
   }
 
   private getModelId(model: TModel): string | number | null {
