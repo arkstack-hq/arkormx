@@ -1883,6 +1883,8 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     target: QueryTarget<any>,
     filter: RelationFilterSpec,
   ): RawBuilder<boolean> {
+    if (filter.morph) return this.buildMorphRelationFilterExpression(target, filter)
+
     const { relatedTarget, from, condition } = this.buildRelatedJoinCondition(
       target,
       filter.relation,
@@ -1898,6 +1900,46 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             from ${from}
             where ${whereCondition}
         ) ${operator} ${filter.count}`
+  }
+
+  private buildMorphRelationFilterExpression(
+    outerTarget: QueryTarget<any>,
+    filter: RelationFilterSpec,
+  ): RawBuilder<boolean> {
+    const morph = filter.morph
+    if (!morph || morph.branches.length === 0) return sql<boolean>`false`
+
+    const outerTable = this.resolveTable(outerTarget)
+    const outerMorphId = this.buildColumnReference(
+      outerTable,
+      this.mapColumn(outerTarget, morph.morphIdColumn),
+    )
+    const outerMorphType = this.buildColumnReference(
+      outerTable,
+      this.mapColumn(outerTarget, morph.morphTypeColumn),
+    )
+    const counts = morph.branches.map((branch) => {
+      const relatedTable = this.resolveTable(branch.target)
+      const relationCondition = sql<boolean>`
+        ${this.buildColumnReference(relatedTable, this.mapColumn(branch.target, branch.ownerKey))}
+        = ${outerMorphId}
+      `
+      const typeCondition = sql<boolean>`${outerMorphType} = ${branch.type}`
+      const whereCondition = this.combineConditions([
+        relationCondition,
+        typeCondition,
+        branch.where ? this.buildWhereCondition(branch.target, branch.where) : undefined,
+      ])
+
+      return sql<number>`(
+        select count(*)::int
+        from ${sql.table(relatedTable)}
+        where ${whereCondition}
+      )`
+    })
+    const operator = filter.operator === '!=' ? sql.raw('!=') : sql.raw(filter.operator)
+
+    return sql<boolean>`(${sql.join(counts, sql` + `)}) ${operator} ${filter.count}`
   }
 
   private buildRelationFilterCondition(

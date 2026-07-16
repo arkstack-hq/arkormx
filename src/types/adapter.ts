@@ -218,6 +218,16 @@ export interface RelationFilterSpec {
   count: number
   boolean?: 'AND' | 'OR'
   where?: QueryCondition
+  morph?: {
+    morphIdColumn: string
+    morphTypeColumn: string
+    branches: Array<{
+      type: string
+      target: QueryTarget<any>
+      ownerKey: string
+      where?: QueryCondition
+    }>
+  }
 }
 
 export interface RelationLoadPlan {
