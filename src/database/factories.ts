@@ -511,11 +511,12 @@ export abstract class ModelFactory<
         definition.relationship ??
         `${str(definition.factory.getModelConstructor().name).camel().plural()}`
       const relation = this.resolveRelation(model, relationship)
+      const overrides = relation.getFactoryCreationAttributes()
 
       definition.factory.inheritRecyclePool(this.recyclePool)
       for (let index = 0; index < definition.factory.amount; index++) {
         await definition.factory.createPersisted(
-          {},
+          overrides,
           async (related) => await relation.save(related),
         )
       }
@@ -550,6 +551,7 @@ export abstract class ModelFactory<
     relationship: string,
   ): {
     save: (related: unknown) => Promise<unknown>
+    getFactoryCreationAttributes: () => Record<string, unknown>
     attach?: (related: unknown, pivot?: Record<string, unknown>) => Promise<number>
   } {
     const resolver = (model as Record<string, unknown>)[relationship]
@@ -560,6 +562,7 @@ export abstract class ModelFactory<
 
     return resolver.call(model) as {
       save: (related: unknown) => Promise<unknown>
+      getFactoryCreationAttributes: () => Record<string, unknown>
       attach?: (related: unknown, pivot?: Record<string, unknown>) => Promise<number>
     }
   }
