@@ -1,5 +1,6 @@
 import {
   Migration,
+  Model,
   ModelFactory,
   SchemaBuilder,
   Seeder,
@@ -65,6 +66,8 @@ describe('Database migration, seeding and factory helpers', () => {
   })
 
   it('supports has, for, hasAttached, and recycle factory relationships', async () => {
+    let redundantParentsCreated = 0
+
     class UserFactory extends ModelFactory<User> {
       protected model = User
 
@@ -84,6 +87,9 @@ describe('Database migration, seeding and factory helpers', () => {
 
       protected definition(sequence: number) {
         return {
+          userId: new UserFactory().afterCreating(() => {
+            redundantParentsCreated += 1
+          }),
           title: `Post ${sequence}`,
         }
       }
@@ -112,6 +118,7 @@ describe('Database migration, seeding and factory helpers', () => {
       user.getAttribute('id'),
       user.getAttribute('id'),
     ])
+    expect(redundantParentsCreated).toBe(0)
 
     const roles = await user
       .roles()
@@ -147,6 +154,31 @@ describe('Database migration, seeding and factory helpers', () => {
       .recycle(recycledUser)
       .create()
     expect(recycledPost.getAttribute('userId')).toBe(1)
+  })
+
+  it('normalizes mapped relationship keys before applying factory overrides', () => {
+    class MappedComment extends Model {
+      protected static override table = 'comments'
+      protected static override columns = {
+        commentableId: 'commentable_id',
+        commentableType: 'commentable_type',
+      }
+    }
+
+    class MappedPost extends Model {
+      protected static override table = 'posts'
+
+      public comments() {
+        return this.morphMany(MappedComment, 'commentable')
+      }
+    }
+
+    const post = new MappedPost({ id: 42 })
+
+    expect(post.comments().getFactoryCreationAttributes()).toEqual({
+      commentableId: 42,
+      commentableType: MappedPost.name,
+    })
   })
 
   it('supports dependent definitions, configured callbacks, and ordered states', async () => {
