@@ -1,6 +1,8 @@
 import { ArkormCollection, LengthAwarePaginator, Paginator } from '../../src'
 import {
   DbArticle,
+  DbComment,
+  DbPost,
   DbUser,
   acquirePostgresTestLock,
   releasePostgresTestLock,
@@ -269,6 +271,40 @@ describe('PostgreSQL QueryBuilder', () => {
     expect(withAggregates.getAttribute('postsAvgId')).toBe(1.5)
     expect(withAggregates.getAttribute('postsMinId')).toBe(1)
     expect(withAggregates.getAttribute('postsMaxId')).toBe(2)
+  })
+
+  it('compiles morphTo relationship filters into correlated target queries', async () => {
+    const userComments = await DbComment.query()
+      .whereHasMorph('commentable', [DbUser], (query) => query.where({ email: 'jane@example.com' }))
+      .get()
+    expect(userComments.all().map((comment) => comment.getAttribute('body'))).toEqual(['Hi user'])
+
+    const postComments = await DbComment.query()
+      .whereHasMorph('commentable', [DbPost], (query) => query.where({ title: 'A' }))
+      .get()
+    expect(postComments.all().map((comment) => comment.getAttribute('body'))).toEqual(['Hi post'])
+
+    const typedComments = await DbComment.query()
+      .whereHasMorph('commentable', [DbUser, DbPost], (query, type) =>
+        type === DbUser.name
+          ? query.where({ email: 'jane@example.com' })
+          : query.where({ title: 'A' }),
+      )
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(typedComments.all().map((comment) => comment.getAttribute('body'))).toEqual([
+      'Hi user',
+      'Hi post',
+    ])
+
+    const withoutMatchingUser = await DbComment.query()
+      .whereDoesntHaveMorph('commentable', [DbUser], (query) =>
+        query.where({ email: 'jane@example.com' }),
+      )
+      .get()
+    expect(withoutMatchingUser.all().map((comment) => comment.getAttribute('body'))).toEqual([
+      'Hi post',
+    ])
   })
 
   it('supports insert and upsert family write helpers', async () => {

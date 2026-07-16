@@ -4,9 +4,10 @@ import {
   Paginator,
   UnsupportedAdapterFeatureException,
   createPrismaDatabaseAdapter,
+  registerModels,
   type DatabaseAdapter,
 } from '../../src'
-import { Article, User } from './helpers/core-fixtures'
+import { Article, Comment, Post, User } from './helpers/core-fixtures'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { createCoreClient, setupCoreRuntime } from './helpers/core-fixtures'
 import { Model } from '../../src'
@@ -899,6 +900,43 @@ describe('QueryBuilder', () => {
     expect(withAggregates.getAttribute('postsAvgId')).toBe(100.5)
     expect(withAggregates.getAttribute('postsMinId')).toBe(100)
     expect(withAggregates.getAttribute('postsMaxId')).toBe(101)
+  })
+
+  it('filters morphTo relationships against their concrete target models', async () => {
+    registerModels(User, Post)
+
+    const userComments = await Comment.query()
+      .whereHasMorph('commentable', [User], (query) => query.where({ email: 'jane@example.com' }))
+      .get()
+    expect(userComments.all().map((comment) => comment.getAttribute('id'))).toEqual([1000])
+
+    const postComments = await Comment.query()
+      .whereHasMorph('commentable', [Post], (query) => query.where({ title: 'A' }))
+      .get()
+    expect(postComments.all().map((comment) => comment.getAttribute('id'))).toEqual([1001])
+
+    const stringTarget = await Comment.query()
+      .whereHasMorph('commentable', User.name, (query) =>
+        query.where({ email: 'jane@example.com' }),
+      )
+      .get()
+    expect(stringTarget.all().map((comment) => comment.getAttribute('id'))).toEqual([1000])
+
+    const typedComments = await Comment.query()
+      .whereHasMorph('commentable', [User, Post], (query, type) =>
+        type === User.name
+          ? query.where({ email: 'jane@example.com' })
+          : query.where({ title: 'A' }),
+      )
+      .get()
+    expect(typedComments.all().map((comment) => comment.getAttribute('id'))).toEqual([1000, 1001])
+
+    const withoutMatchingUser = await Comment.query()
+      .whereDoesntHaveMorph('commentable', [User], (query) =>
+        query.where({ email: 'jane@example.com' }),
+      )
+      .get()
+    expect(withoutMatchingUser.all().map((comment) => comment.getAttribute('id'))).toEqual([1001])
   })
 
   it('supports object and alias syntax for relationship aggregates', async () => {

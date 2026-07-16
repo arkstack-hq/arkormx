@@ -572,6 +572,14 @@ await User.query()
   })
   .get()
 await User.query().withSum('comments as total_votes', 'votes').get()
+
+await Activity.query()
+  .whereHasMorph('subject', [Post, Photo], (query, type) => {
+    return type === Post.name
+      ? query.whereKey('published', true)
+      : query.whereNotNull('processedAt')
+  })
+  .get()
 ```
 
 Use `loadCount(...)` when you already have a model instance and want to attach
@@ -586,6 +594,14 @@ relation or a callback for a constrained relation.
 Use `loadMorph(...)` when a polymorphic relation is already available and each
 resolved model type needs a different nested eager load map. The keys are model
 class names, such as `Photo` or `Post`.
+
+Use `whereHasMorph(...)` and `whereDoesntHaveMorph(...)` to constrain a
+`morphTo` relationship against one or more concrete model classes. The callback
+runs once per target and receives its stored morph type as the second argument.
+Model-name strings are also accepted when those models are registered with the
+Arkorm runtime. SQL-backed adapters execute these constraints as correlated
+target subqueries; compatibility adapters resolve only the target matching each
+row's morph type.
 
 On SQL-backed adapters, keep relation filter callbacks predicate-focused. Query
 shapes such as nested eager loading, pagination, or other non-filter
