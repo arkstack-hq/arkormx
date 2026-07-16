@@ -64,6 +64,7 @@ export abstract class Relation<TModel> {
     hydrate: (attributes: Record<string, unknown>) => TModel
     query: () => QueryBuilder<TModel>
     getPrimaryKey: () => string
+    getColumnMap?: () => Record<string, string>
   } {
     return (
       this as unknown as {
@@ -71,6 +72,7 @@ export abstract class Relation<TModel> {
           hydrate: (attributes: Record<string, unknown>) => TModel
           query: () => QueryBuilder<TModel>
           getPrimaryKey: () => string
+          getColumnMap?: () => Record<string, string>
         }
       }
     ).related
@@ -82,6 +84,26 @@ export abstract class Relation<TModel> {
 
   protected getCreationAttributes(): Record<string, unknown> {
     return {}
+  }
+
+  /**
+   * Return the attributes a factory must apply before resolving dependent
+   * definitions for a model created through this relationship.
+   *
+   * Applying these as factory overrides prevents a default foreign-key factory
+   * from creating an unnecessary model that the relationship would immediately
+   * replace while saving the child.
+   */
+  public getFactoryCreationAttributes(): Record<string, unknown> {
+    const attributes = this.getCreationAttributes()
+    const columns = this.getRelatedModelConstructor().getColumnMap?.() ?? {}
+    const physicalToAttribute = Object.fromEntries(
+      Object.entries(columns).map(([attribute, column]) => [column, attribute]),
+    )
+
+    return Object.fromEntries(
+      Object.entries(attributes).map(([key, value]) => [physicalToAttribute[key] ?? key, value]),
+    )
   }
 
   protected mergeCreationAttributes(
