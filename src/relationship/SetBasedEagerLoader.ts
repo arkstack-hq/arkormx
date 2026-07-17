@@ -121,6 +121,11 @@ export class SetBasedEagerLoader {
         await this.loadMorphMany(name, metadata, constraint)
 
         return
+      case 'morphToMany':
+      case 'morphedByMany':
+        await this.loadPolymorphicManyToMany(name, metadata, constraint)
+
+        return
       default:
         await this.loadIndividually(name, resolver, constraint)
     }
@@ -245,7 +250,7 @@ export class SetBasedEagerLoader {
 
     query = this.applyConstraint(query, constraint)
 
-    const relatedModels = (await query.get()).all()
+    const relatedModels = await this.getPartitionedModels(query, metadata.ownerKey, keys)
     const relatedByOwnerKey = new Map<string, unknown>()
 
     relatedModels.forEach((related) => {
@@ -291,7 +296,7 @@ export class SetBasedEagerLoader {
 
     query = this.applyConstraint(query, constraint)
 
-    const relatedModels = (await query.get()).all()
+    const relatedModels = await this.getPartitionedModels(query, metadata.foreignKey, keys)
     const relatedByForeignKey = new Map<string, unknown[]>()
 
     relatedModels.forEach((related) => {
@@ -356,6 +361,13 @@ export class SetBasedEagerLoader {
 
     query = this.applyConstraint(query, constraint)
 
+    if (
+      query.hasEagerLoadPagination() &&
+      parentKeys.length > 1 &&
+      (await this.loadLimitedBelongsToMany(name, metadata, query, parentKeys, pivotRows))
+    )
+      return
+
     const relatedModels = (await query.get()).all()
     const relatedByKey = new Map<string, unknown>()
 
@@ -404,6 +416,140 @@ export class SetBasedEagerLoader {
 
       model.setLoadedRelation(name, new ArkormCollection(related))
     })
+  }
+
+  private async loadLimitedBelongsToMany(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    query: QueryBuilder<any>,
+    parentKeys: unknown[],
+    pivotRows: DatabaseRow[],
+  ): Promise<boolean> {
+    if (metadata.pivotWhere) {
+      await this.loadLimitedBelongsToManyIndividually(name, metadata, query, pivotRows)
+
+      return true
+    }
+
+    const pivotColumns = this.getBelongsToManyPivotColumns(metadata)
+    const pivotAliases = new Map(
+      pivotColumns.map((column, index) => [column, `__arkorm_pivot_${index}`]),
+    )
+    const parentAlias = pivotAliases.get(metadata.foreignPivotKey) as string
+    const throughTable = metadata.throughTable
+    const relatedTable = metadata.relatedModel.getTable()
+    const selection = query
+      .clone()
+      .innerJoin(
+        throughTable,
+        `${relatedTable}.${metadata.relatedModel.getColumnName(metadata.relatedKey)}`,
+        '=',
+        `${throughTable}.${metadata.relatedPivotKey}`,
+      )
+      .whereIn(`${throughTable}.${metadata.foreignPivotKey}` as never, parentKeys as never[])
+      .addSelect({
+        ...Object.fromEntries(
+          [...pivotAliases].map(([column, alias]) => [`${throughTable}.${column}`, alias]),
+        ),
+      })
+    const rows = await selection.getRowsForEagerLoad([
+      `${throughTable}.${metadata.foreignPivotKey}`,
+    ])
+    if (!rows) {
+      await this.loadLimitedBelongsToManyIndividually(name, metadata, query, pivotRows)
+
+      return true
+    }
+
+    const selectedIds = this.collectUniqueRowValues(rows, metadata.relatedKey)
+    const relatedModels = (
+      await query
+        .clone()
+        .withoutPagination()
+        .whereIn(metadata.relatedKey as never, selectedIds as never[])
+        .get()
+    ).all()
+    const relatedByKey = new Map<string, unknown>()
+    relatedModels.forEach((related) => {
+      const key = this.readModelAttribute(related, metadata.relatedKey)
+      if (key != null) relatedByKey.set(this.toLookupKey(key), related)
+    })
+
+    const relatedByParent = new Map<string, unknown[]>()
+    rows.forEach((row) => {
+      const parentKey = row[parentAlias]
+      const relatedKey = row[metadata.relatedKey]
+      if (parentKey == null || relatedKey == null) return
+
+      const related = relatedByKey.get(this.toLookupKey(relatedKey))
+      if (!related) return
+
+      const pivot = Object.fromEntries(
+        [...pivotAliases].map(([column, alias]) => [column, row[alias]]),
+      )
+      const bucket = relatedByParent.get(this.toLookupKey(parentKey)) ?? []
+      bucket.push(this.attachBelongsToManyPivot(metadata, related, pivot))
+      relatedByParent.set(this.toLookupKey(parentKey), bucket)
+    })
+
+    this.models.forEach((model) => {
+      const parentKey = model.getAttribute(metadata.parentKey)
+      const related =
+        parentKey == null ? [] : (relatedByParent.get(this.toLookupKey(parentKey)) ?? [])
+      model.setLoadedRelation(name, new ArkormCollection(related))
+    })
+
+    return true
+  }
+
+  private async loadLimitedBelongsToManyIndividually(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'belongsToMany' }>,
+    query: QueryBuilder<any>,
+    pivotRows: DatabaseRow[],
+  ): Promise<void> {
+    const rowsByParent = new Map<string, DatabaseRow[]>()
+    pivotRows.forEach((row) => {
+      const parentKey = row[metadata.foreignPivotKey]
+      if (parentKey == null) return
+      const bucket = rowsByParent.get(this.toLookupKey(parentKey)) ?? []
+      bucket.push(row)
+      rowsByParent.set(this.toLookupKey(parentKey), bucket)
+    })
+
+    await Promise.all(
+      this.models.map(async (model) => {
+        const parentKey = model.getAttribute(metadata.parentKey)
+        const rows = parentKey == null ? [] : (rowsByParent.get(this.toLookupKey(parentKey)) ?? [])
+        const relatedIds = this.collectUniqueRowValues(rows, metadata.relatedPivotKey)
+        const related = relatedIds.length
+          ? (
+              await query
+                .clone()
+                .whereIn(metadata.relatedKey as never, relatedIds as never[])
+                .get()
+            ).all()
+          : []
+        const pivotByRelated = new Map(
+          rows.map((row) => [this.toLookupKey(row[metadata.relatedPivotKey]), row]),
+        )
+
+        model.setLoadedRelation(
+          name,
+          new ArkormCollection(
+            related.map((entry) =>
+              this.attachBelongsToManyPivot(
+                metadata,
+                entry,
+                pivotByRelated.get(
+                  this.toLookupKey(this.readModelAttribute(entry, metadata.relatedKey)),
+                ),
+              ),
+            ),
+          ),
+        )
+      }),
+    )
   }
 
   private buildBelongsToManyPivotWhere(
@@ -522,7 +668,7 @@ export class SetBasedEagerLoader {
 
     query = this.applyConstraint(query, constraint)
 
-    const relatedModels = (await query.get()).all()
+    const relatedModels = await this.getPartitionedModels(query, metadata.foreignKey, keys)
     const relatedByForeignKey = new Map<string, unknown>()
 
     relatedModels.forEach((related) => {
@@ -588,6 +734,17 @@ export class SetBasedEagerLoader {
       .whereIn(metadata.secondKey as never, intermediateKeys as never[])
 
     query = this.applyConstraint(query, constraint)
+
+    if (query.hasEagerLoadPagination() && parentKeys.length > 1) {
+      const limited = await this.loadLimitedThrough(metadata, query, parentKeys, throughRows)
+      this.models.forEach((model) => {
+        const parentKey = model.getAttribute(metadata.localKey)
+        const related = parentKey == null ? [] : (limited.get(this.toLookupKey(parentKey)) ?? [])
+        model.setLoadedRelation(name, new ArkormCollection(related))
+      })
+
+      return
+    }
 
     const relatedModels = (await query.get()).all()
     const relatedByIntermediate = new Map<string, unknown[]>()
@@ -673,6 +830,18 @@ export class SetBasedEagerLoader {
 
     query = this.applyConstraint(query, constraint)
 
+    if (query.hasEagerLoadPagination() && parentKeys.length > 1) {
+      const limited = await this.loadLimitedThrough(metadata, query, parentKeys, throughRows)
+      this.models.forEach((model) => {
+        const parentKey = model.getAttribute(metadata.localKey)
+        const related =
+          parentKey == null ? undefined : limited.get(this.toLookupKey(parentKey))?.[0]
+        model.setLoadedRelation(name, related ?? this.resolveSingleDefault(resolver, model))
+      })
+
+      return
+    }
+
     const relatedModels = (await query.get()).all()
     const relatedByIntermediate = new Map<string, unknown>()
 
@@ -706,6 +875,91 @@ export class SetBasedEagerLoader {
 
       model.setLoadedRelation(name, relationValue ?? this.resolveSingleDefault(resolver, model))
     })
+  }
+
+  private async loadLimitedThrough(
+    metadata: Extract<RelationMetadata, { type: 'hasManyThrough' | 'hasOneThrough' }>,
+    query: QueryBuilder<any>,
+    parentKeys: unknown[],
+    throughRows: DatabaseRow[],
+  ): Promise<Map<string, unknown[]>> {
+    const parentAlias = '__arkorm_parent_key'
+    const throughTable = metadata.throughTable
+    const relatedTable = metadata.relatedModel.getTable()
+    const selection = query
+      .clone()
+      .innerJoin(
+        throughTable,
+        `${relatedTable}.${metadata.relatedModel.getColumnName(metadata.secondKey)}`,
+        '=',
+        `${throughTable}.${metadata.secondLocalKey}`,
+      )
+      .whereIn(`${throughTable}.${metadata.firstKey}` as never, parentKeys as never[])
+      .addSelect({ [`${throughTable}.${metadata.firstKey}`]: parentAlias })
+    const rows = await selection.getRowsForEagerLoad([`${throughTable}.${metadata.firstKey}`])
+
+    if (!rows) return await this.loadLimitedThroughIndividually(metadata, query, throughRows)
+
+    const relatedKey = metadata.relatedModel.getPrimaryKey()
+    const selectedIds = this.collectUniqueRowValues(rows, relatedKey)
+    const relatedModels = (
+      await query
+        .clone()
+        .withoutPagination()
+        .whereIn(relatedKey as never, selectedIds as never[])
+        .get()
+    ).all()
+    const relatedByKey = new Map<string, unknown>()
+    relatedModels.forEach((related) => {
+      const key = this.readModelAttribute(related, relatedKey)
+      if (key != null) relatedByKey.set(this.toLookupKey(key), related)
+    })
+
+    return rows.reduce<Map<string, unknown[]>>((all, row) => {
+      const parentKey = row[parentAlias]
+      const key = row[relatedKey]
+      if (parentKey == null || key == null) return all
+      const related = relatedByKey.get(this.toLookupKey(key))
+      if (!related) return all
+      const lookup = this.toLookupKey(parentKey)
+      const bucket = all.get(lookup) ?? []
+      bucket.push(related)
+      all.set(lookup, bucket)
+
+      return all
+    }, new Map())
+  }
+
+  private async loadLimitedThroughIndividually(
+    metadata: Extract<RelationMetadata, { type: 'hasManyThrough' | 'hasOneThrough' }>,
+    query: QueryBuilder<any>,
+    throughRows: DatabaseRow[],
+  ): Promise<Map<string, unknown[]>> {
+    const intermediateByParent = new Map<string, unknown[]>()
+    throughRows.forEach((row) => {
+      const parentKey = row[metadata.firstKey]
+      const intermediateKey = row[metadata.secondLocalKey]
+      if (parentKey == null || intermediateKey == null) return
+      const lookup = this.toLookupKey(parentKey)
+      const bucket = intermediateByParent.get(lookup) ?? []
+      bucket.push(intermediateKey)
+      intermediateByParent.set(lookup, bucket)
+    })
+
+    const entries = await Promise.all(
+      [...intermediateByParent].map(async ([parentKey, intermediateKeys]) => {
+        const related = (
+          await query
+            .clone()
+            .whereIn(metadata.secondKey as never, intermediateKeys as never[])
+            .get()
+        ).all()
+
+        return [parentKey, related] as const
+      }),
+    )
+
+    return new Map(entries)
   }
 
   /**
@@ -755,7 +1009,7 @@ export class SetBasedEagerLoader {
 
         query = this.applyConstraint(query, constraint)
 
-        const relatedModels = (await query.get()).all()
+        const relatedModels = await this.getPartitionedModels(query, ownerKey, ids)
         relatedModels.forEach((related) => {
           const value = this.readModelAttribute(related, ownerKey)
           if (value == null) return
@@ -823,6 +1077,159 @@ export class SetBasedEagerLoader {
     })
   }
 
+  private async loadPolymorphicManyToMany(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'morphToMany' | 'morphedByMany' }>,
+    constraint?: EagerLoadConstraint,
+  ): Promise<void> {
+    const parentKeys = this.collectUniqueKeys((model) => model.getAttribute(metadata.parentKey))
+    if (parentKeys.length === 0) {
+      this.models.forEach((model) => model.setLoadedRelation(name, new ArkormCollection([])))
+
+      return
+    }
+
+    const parentPivotKey =
+      metadata.type === 'morphToMany' ? metadata.morphIdColumn : metadata.foreignPivotKey
+    const morphType =
+      metadata.type === 'morphToMany'
+        ? this.morphTypeOf(this.models[0] as EagerLoadableModel)
+        : metadata.relatedModel.name
+    const pivotRows = await this.createRelationTableLoader().selectRows({
+      table: metadata.throughTable,
+      where: {
+        type: 'group',
+        operator: 'and',
+        conditions: [
+          {
+            type: 'comparison',
+            column: parentPivotKey,
+            operator: 'in',
+            value: parentKeys as never[],
+          },
+          {
+            type: 'comparison',
+            column: metadata.morphTypeColumn,
+            operator: '=',
+            value: morphType,
+          },
+        ],
+      },
+      columns: [parentPivotKey, metadata.relatedPivotKey].map((column) => ({ column })),
+    })
+    const relatedIds = this.collectUniqueRowValues(pivotRows, metadata.relatedPivotKey)
+    if (relatedIds.length === 0) {
+      this.models.forEach((model) => model.setLoadedRelation(name, new ArkormCollection([])))
+
+      return
+    }
+
+    let query = metadata.relatedModel
+      .query()
+      .whereIn(metadata.relatedKey as never, relatedIds as never[])
+    query = this.applyConstraint(query, constraint)
+
+    let pairs = pivotRows.map((row) => ({
+      parent: row[parentPivotKey],
+      related: row[metadata.relatedPivotKey],
+    }))
+    let relatedModels: unknown[]
+
+    if (query.hasEagerLoadPagination() && parentKeys.length > 1) {
+      const parentAlias = '__arkorm_parent_key'
+      const throughTable = metadata.throughTable
+      const relatedTable = metadata.relatedModel.getTable()
+      const selection = query
+        .clone()
+        .innerJoin(
+          throughTable,
+          `${relatedTable}.${metadata.relatedModel.getColumnName(metadata.relatedKey)}`,
+          '=',
+          `${throughTable}.${metadata.relatedPivotKey}`,
+        )
+        .whereIn(`${throughTable}.${parentPivotKey}` as never, parentKeys as never[])
+        .where({ [`${throughTable}.${metadata.morphTypeColumn}`]: morphType } as never)
+        .addSelect({ [`${throughTable}.${parentPivotKey}`]: parentAlias })
+      const rows = await selection.getRowsForEagerLoad([`${throughTable}.${parentPivotKey}`])
+
+      if (rows) {
+        pairs = rows.map((row) => ({
+          parent: row[parentAlias],
+          related: row[metadata.relatedKey],
+        }))
+        const selectedIds = this.collectUniqueRowValues(rows, metadata.relatedKey)
+        relatedModels = (
+          await query
+            .clone()
+            .withoutPagination()
+            .whereIn(metadata.relatedKey as never, selectedIds as never[])
+            .get()
+        ).all()
+      } else {
+        await this.loadPolymorphicManyToManyIndividually(
+          name,
+          metadata,
+          query,
+          parentPivotKey,
+          pivotRows,
+        )
+
+        return
+      }
+    } else {
+      relatedModels = (await query.get()).all()
+    }
+
+    const relatedByKey = new Map<string, unknown>()
+    relatedModels.forEach((related) => {
+      const key = this.readModelAttribute(related, metadata.relatedKey)
+      if (key != null) relatedByKey.set(this.toLookupKey(key), related)
+    })
+    const relatedByParent = new Map<string, unknown[]>()
+    pairs.forEach(({ parent, related }) => {
+      if (parent == null || related == null) return
+      const model = relatedByKey.get(this.toLookupKey(related))
+      if (!model) return
+      const lookup = this.toLookupKey(parent)
+      const bucket = relatedByParent.get(lookup) ?? []
+      bucket.push(model)
+      relatedByParent.set(lookup, bucket)
+    })
+
+    this.models.forEach((model) => {
+      const parentKey = model.getAttribute(metadata.parentKey)
+      const related =
+        parentKey == null ? [] : (relatedByParent.get(this.toLookupKey(parentKey)) ?? [])
+      model.setLoadedRelation(name, new ArkormCollection(related))
+    })
+  }
+
+  private async loadPolymorphicManyToManyIndividually(
+    name: string,
+    metadata: Extract<RelationMetadata, { type: 'morphToMany' | 'morphedByMany' }>,
+    query: QueryBuilder<any>,
+    parentPivotKey: string,
+    pivotRows: DatabaseRow[],
+  ): Promise<void> {
+    await Promise.all(
+      this.models.map(async (model) => {
+        const parentKey = model.getAttribute(metadata.parentKey)
+        const ids = pivotRows
+          .filter((row) => this.toLookupKey(row[parentPivotKey]) === this.toLookupKey(parentKey))
+          .map((row) => row[metadata.relatedPivotKey])
+        const related = ids.length
+          ? (
+              await query
+                .clone()
+                .whereIn(metadata.relatedKey as never, ids as never[])
+                .get()
+            ).all()
+          : []
+        model.setLoadedRelation(name, new ArkormCollection(related))
+      }),
+    )
+  }
+
   /**
    * Batch-loads the children for a morphOne/morphMany relationship. Parents are
    * grouped by their own morph type (constructor name), so each distinct type
@@ -870,7 +1277,7 @@ export class SetBasedEagerLoader {
 
         query = this.applyConstraint(query, constraint)
 
-        const relatedModels = (await query.get()).all()
+        const relatedModels = await this.getPartitionedModels(query, metadata.morphIdColumn, keys)
         relatedModels.forEach((related) => {
           const value = this.readModelAttribute(related, metadata.morphIdColumn)
           if (value == null) return
@@ -937,6 +1344,30 @@ export class SetBasedEagerLoader {
     const constrained = constraint(query)
 
     return (constrained ?? query) as QueryBuilder<TModel>
+  }
+
+  private async getPartitionedModels<TModel>(
+    query: QueryBuilder<TModel>,
+    partitionColumn: string,
+    partitionValues: unknown[],
+  ): Promise<TModel[]> {
+    if (partitionValues.length <= 1) return (await query.get()).all()
+
+    const partitioned = await query.getForEagerLoad([partitionColumn])
+    if (partitioned) return partitioned.all()
+
+    return (
+      await Promise.all(
+        partitionValues.map(async (value) => {
+          return (
+            await query
+              .clone()
+              .where({ [partitionColumn]: value } as never)
+              .get()
+          ).all()
+        }),
+      )
+    ).flat()
   }
 
   /**

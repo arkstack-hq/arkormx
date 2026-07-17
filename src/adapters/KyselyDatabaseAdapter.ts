@@ -28,6 +28,7 @@ import type {
   QueryJsonCondition,
   QueryNotCondition,
   QueryOrderBy,
+  PartitionedSelectSpec,
   QueryRawCondition,
   QuerySelectColumn,
   QueryTarget,
@@ -1054,6 +1055,22 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     return target.columns?.[column] ?? column
   }
 
+  private buildIdentifierReference(
+    target: QueryTarget<any>,
+    reference: string,
+  ): RawBuilder<unknown> {
+    const segments = reference.split('.')
+    if (segments.length === 1) return sql.ref(this.mapColumn(target, reference))
+
+    const column = segments.pop() as string
+    const table = segments.join('.')
+    const mappedTable = this.mapping[table] ?? table
+    const targetTable = target.table ? (this.mapping[target.table] ?? target.table) : undefined
+    const mappedColumn = mappedTable === targetTable ? this.mapColumn(target, column) : column
+
+    return this.buildColumnReference(mappedTable, mappedColumn)
+  }
+
   private reverseColumnMap(target: QueryTarget<any>): Record<string, string> {
     return Object.entries(target.columns ?? {}).reduce<Record<string, string>>(
       (all, [attribute, column]) => {
@@ -1095,12 +1112,15 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
   private buildSelectList(
     target: QueryTarget<any>,
     columns?: QuerySelectColumn[],
+    qualifyColumns = false,
   ): RawBuilder<unknown> {
-    if (!columns || columns.length === 0) return sql.raw('*')
+    const table = this.resolveTable(target)
+    if (!columns || columns.length === 0)
+      return qualifyColumns ? sql`${sql.table(table)}.*` : sql.raw('*')
 
     return sql.join(
       columns.map(({ column, alias, raw, wildcard, expression }) => {
-        if (wildcard) return sql.raw('*')
+        if (wildcard) return qualifyColumns ? sql`${sql.table(table)}.*` : sql.raw('*')
 
         if (expression) {
           const compiled = this.buildExpression(target, expression)
@@ -1110,29 +1130,40 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         }
 
         if (raw) {
-          const rawExpression = sql.raw(column)
+          const rawExpression = /^[A-Za-z_][\w]*(?:\.[A-Za-z_][\w]*)+$/.test(column)
+            ? this.buildIdentifierReference(target, column)
+            : sql.raw(column)
 
           return alias ? sql`${rawExpression} as ${sql.id(alias)}` : rawExpression
         }
 
         const mappedColumn = this.mapColumn(target, column)
         const resultAlias = alias ?? column
+        const reference = qualifyColumns
+          ? this.buildColumnReference(table, mappedColumn)
+          : sql.ref(mappedColumn)
 
-        if (mappedColumn === resultAlias) return sql.ref(mappedColumn)
+        if (mappedColumn === resultAlias) return reference
 
-        return sql`${sql.ref(mappedColumn)} as ${sql.id(resultAlias)}`
+        return sql`${reference} as ${sql.id(resultAlias)}`
       }),
     )
   }
 
-  private buildOrderBy(target: QueryTarget<any>, orderBy?: QueryOrderBy[]): RawBuilder<unknown> {
+  private buildOrderBy(
+    target: QueryTarget<any>,
+    orderBy?: QueryOrderBy[],
+    qualifyColumns = false,
+  ): RawBuilder<unknown> {
     if (!orderBy || orderBy.length === 0) return sql``
 
     return sql` order by ${sql.join(
       orderBy.map(({ column, direction, expression }) => {
         const reference = expression
           ? this.buildExpression(target, expression)
-          : sql.ref(this.mapColumn(target, column))
+          : qualifyColumns
+            ? this.buildColumnReference(this.resolveTable(target), this.mapColumn(target, column))
+            : sql.ref(this.mapColumn(target, column))
 
         return sql`${reference} ${sql.raw(direction === 'desc' ? 'desc' : 'asc')}`
       }),
@@ -1244,7 +1275,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     constraint: QueryJoinConstraint,
   ): RawBuilder<boolean> {
     if (constraint.type === 'column') {
-      return sql<boolean>`${sql.ref(constraint.first)} ${sql.raw(constraint.operator)} ${sql.ref(constraint.second)}`
+      return sql<boolean>`${this.buildIdentifierReference(target, constraint.first)} ${sql.raw(
+        constraint.operator,
+      )} ${this.buildIdentifierReference(target, constraint.second)}`
     }
 
     if (constraint.type === 'null') {
@@ -1263,7 +1296,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (constraint.type === 'nested')
       return sql<boolean>`(${this.buildJoinConstraints(target, constraint.constraints)})`
 
-    const column = sql.ref(constraint.column)
+    const column = this.buildIdentifierReference(target, constraint.column)
     const operator = constraint.operator
 
     if (operator === 'is-null') return sql<boolean>`${column} is null`
@@ -1308,7 +1341,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     target: QueryTarget<any>,
     condition: QueryComparisonCondition,
   ): RawBuilder<boolean> {
-    const column = sql.ref(this.mapColumn(target, condition.column))
+    const column = this.buildIdentifierReference(target, condition.column)
 
     if (condition.operator === 'is-null') return sql<boolean>`${column} is null`
 
@@ -2126,6 +2159,46 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         `
   }
 
+  private buildPartitionedSelectStatement<TModel = unknown>(
+    spec: PartitionedSelectSpec<TModel>,
+  ): RawBuilder<Record<string, unknown>> {
+    const table = this.resolveTable(spec.target)
+    const rankedAlias = '__arkorm_partitioned'
+    const rowAlias = '__arkorm_partition_row'
+    const offset = Math.max(0, spec.perPartitionOffset ?? 0)
+    const upperBound = offset + Math.max(0, spec.perPartitionLimit)
+    const partitionColumns = spec.partitionBy.map((column) =>
+      this.buildIdentifierReference(spec.target, column),
+    )
+    const orderBy =
+      spec.orderBy && spec.orderBy.length > 0
+        ? this.buildOrderBy(spec.target, spec.orderBy, true)
+        : sql` order by ${this.buildColumnReference(
+            table,
+            this.resolvePrimaryKey(spec.target),
+          )} asc`
+
+    return sql<Record<string, unknown>>`
+      select *
+      from (
+        select ${spec.distinct ? sql`distinct ` : sql``}${this.buildSelectList(
+          spec.target,
+          spec.columns,
+          true,
+        )}
+        ${this.buildRelationAggregateSelectList(spec.target, spec.relationAggregates)},
+        row_number() over (
+          partition by ${sql.join(partitionColumns, sql`, `)}${orderBy}
+        ) as ${sql.id(rowAlias)}
+        from ${sql.table(table)}
+        ${this.buildJoinClause(spec.target, spec.joins)}
+        ${this.buildCombinedWhereClause(spec.target, spec.where, spec.relationFilters)}
+      ) as ${sql.table(rankedAlias)}
+      where ${sql.ref(rowAlias)} > ${offset} and ${sql.ref(rowAlias)} <= ${upperBound}
+      order by ${sql.ref(rowAlias)} asc
+    `
+  }
+
   private buildCountStatement<TModel = unknown>(
     spec: AggregateSpec<TModel>,
   ): RawBuilder<{ count: number | string }> {
@@ -2299,6 +2372,35 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         groupBy: spec.groupBy,
         limit: spec.limit,
         offset: spec.offset,
+      },
+    )
+  }
+
+  public async selectPerPartition<TModel = unknown>(
+    spec: PartitionedSelectSpec<TModel>,
+  ): Promise<DatabaseRow[]> {
+    if (spec.partitionBy.length === 0) return await this.select(spec)
+
+    return await this.executeWithDebug(
+      'select',
+      spec.target,
+      this.buildPartitionedSelectStatement(spec),
+      (rows) =>
+        this.mapRows(
+          spec.target,
+          rows.map((row) => {
+            const { __arkorm_partition_row: _partitionRow, ...attributes } = row
+
+            return attributes
+          }),
+        ),
+      {
+        where: spec.where,
+        relationFilters: spec.relationFilters,
+        orderBy: spec.orderBy,
+        partitionBy: spec.partitionBy,
+        perPartitionLimit: spec.perPartitionLimit,
+        perPartitionOffset: spec.perPartitionOffset,
       },
     )
   }
