@@ -678,6 +678,16 @@ The method returns `null` when the adapter does not implement `inspectQuery()`.
 See [Observability and Errors](./observability-errors.md) for runtime query
 events and structured execution failures.
 
+Use `toSql()` when only the compiled SQL string is needed:
+
+```ts
+const sql = User.query().where({ isActive: true }).orderBy({ id: 'desc' }).toSql()
+```
+
+`toSql()` does not execute the query and retains the adapter's parameter placeholders. Use
+`inspect()` when passing both the SQL and its `parameters` to another application. It throws an
+`UnsupportedAdapterFeatureException` when the active adapter cannot compile SQL.
+
 ## Creating records
 
 `create()` returns one hydrated model. `createMany()` returns hydrated models:

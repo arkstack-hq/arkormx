@@ -46,13 +46,6 @@ import type {
   UpsertSpec,
 } from './types'
 import { EagerLoadRelations, JoinOn, JoinSource, WhereCallback } from './types/query-builder'
-import { LengthAwarePaginator, Paginator } from './Paginator'
-import type {
-  ModelAttributes,
-  ModelCreateData,
-  ModelUpdateData,
-  ModelWhereInput,
-} from './types/model'
 import {
   Expression,
   avg as avgExpr,
@@ -63,6 +56,28 @@ import {
   sum as sumExpr,
 } from './Expression'
 import type { ExpressionNode, QueryExpressionCondition, QueryGroupByItem } from './types'
+import { LengthAwarePaginator, Paginator } from './Paginator'
+import type {
+  ModelAttributes,
+  ModelCreateData,
+  ModelUpdateData,
+  ModelWhereInput,
+} from './types/model'
+import type { ModelStatic, RelationshipModelStatic } from './types/ModelStatic'
+
+import { ArkormCollection } from './Collection'
+import { ArkormException } from './Exceptions/ArkormException'
+import { JoinClause } from './JoinClause'
+import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
+import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
+import { QueryConstraintException } from './Exceptions/QueryConstraintException'
+import { QueryExecutionException } from './Exceptions/QueryExecutionException'
+import { RelationResolutionException } from './Exceptions/RelationResolutionException'
+import { ScopeNotDefinedException } from './Exceptions/ScopeNotDefinedException'
+import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
+import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
+import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
+import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
 
 /** Object select projection whose values may be expressions, columns, or booleans. */
 export type ExpressionSelectMap = Record<string, Expression | boolean | string>
@@ -117,21 +132,6 @@ export type GroupByAggregateRow<TModel, TSpec extends GroupByAggregateSpec<TMode
   (TSpec extends { _avg: infer A } ? { _avg: { [K in keyof A]: number | null } } : object) &
   (TSpec extends { _min: infer M } ? { _min: SameTypeAggregate<TModel, M> } : object) &
   (TSpec extends { _max: infer M } ? { _max: SameTypeAggregate<TModel, M> } : object)
-
-import { ArkormCollection } from './Collection'
-import { ArkormException } from './Exceptions/ArkormException'
-import { JoinClause } from './JoinClause'
-import { ModelNotFoundException } from './Exceptions/ModelNotFoundException'
-import type { ModelStatic, RelationshipModelStatic } from './types/ModelStatic'
-import { PrimaryKeyGenerationPlanner } from './helpers/PrimaryKeyGenerationPlanner'
-import { QueryConstraintException } from './Exceptions/QueryConstraintException'
-import { QueryExecutionException } from './Exceptions/QueryExecutionException'
-import { RelationResolutionException } from './Exceptions/RelationResolutionException'
-import { ScopeNotDefinedException } from './Exceptions/ScopeNotDefinedException'
-import { SetBasedEagerLoader } from './relationship/SetBasedEagerLoader'
-import { UniqueConstraintResolutionException } from './Exceptions/UniqueConstraintResolutionException'
-import { UnsupportedAdapterFeatureException } from './Exceptions/UnsupportedAdapterFeatureException'
-import { getRuntimePaginationCurrentPageResolver } from './helpers/runtime-config'
 
 /**
  * The QueryBuilder class provides a fluent interface for building and
@@ -2758,6 +2758,36 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
+   * Compiles the current query into SQL without executing it. Values remain represented by the
+   * adapter's parameter placeholders; use {@link inspect} when the corresponding bindings are
+   * also required.
+   *
+   * @param operation
+   * @returns
+   */
+  public toSql(
+    operation: Extract<
+      AdapterQueryOperation,
+      'select' | 'selectOne' | 'count' | 'exists'
+    > = 'select',
+  ): string {
+    const inspection = this.inspect(operation)
+    if (inspection?.sql) return inspection.sql
+
+    throw new UnsupportedAdapterFeatureException(
+      'The active database adapter cannot compile this query to SQL.',
+      {
+        operation: 'query.toSql',
+        model: this.model.name,
+        meta: {
+          feature: 'inspectQuery',
+          requestedOperation: operation,
+        },
+      },
+    )
+  }
+
+  /**
    * Sets offset/limit for a 1-based page.
    *
    * @param page
@@ -2818,6 +2848,74 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     await this.eagerLoadModels(filteredModels)
 
     return new ArkormCollection(filteredModels)
+  }
+
+  /**
+   * Executes a bounded eager-load query independently for each partition while retaining a
+   * single set-based database query. Returns null when the active adapter cannot represent the
+   * query so the relationship loader can use its correctness fallback.
+   *
+   * @internal
+   *
+   * @param partitionBy
+   * @returns
+   */
+  public async getForEagerLoad(partitionBy: string[]): Promise<ArkormCollection<TModel> | null> {
+    if (this.limitValue === undefined && this.offsetValue === undefined) return await this.get()
+
+    const rows = await this.getRowsForEagerLoad(partitionBy)
+    if (!rows) return null
+
+    const models = await this.model.hydrateManyRetrieved(
+      rows as Parameters<ModelStatic<TModel, TDelegate>['hydrateManyRetrieved']>[0],
+    )
+
+    await this.eagerLoadModels(models)
+
+    return new ArkormCollection(models)
+  }
+
+  /** @internal */
+  public async getRowsForEagerLoad(partitionBy: string[]): Promise<DatabaseRow[] | null> {
+    if (this.limitValue === undefined && this.offsetValue === undefined)
+      return await this.executeReadRows()
+
+    const adapter = this.requireAdapter()
+    if (
+      partitionBy.length === 0 ||
+      typeof adapter.selectPerPartition !== 'function' ||
+      this.randomOrderEnabled ||
+      this.queryDistinct ||
+      this.queryGroupBy !== undefined ||
+      this.queryHaving !== undefined ||
+      !this.canExecuteRelationFeaturesInAdapter()
+    )
+      return null
+
+    const spec = this.tryBuildSelectSpec(this.buildWhere())
+    if (!spec) return null
+
+    return await adapter.selectPerPartition({
+      ...spec,
+      limit: undefined,
+      offset: undefined,
+      partitionBy,
+      perPartitionLimit: this.limitValue ?? Number.MAX_SAFE_INTEGER,
+      perPartitionOffset: this.offsetValue,
+    })
+  }
+
+  /** Removes limit and offset clauses from a cloned relationship query. @internal */
+  public withoutPagination(): this {
+    this.limitValue = undefined
+    this.offsetValue = undefined
+
+    return this
+  }
+
+  /** @internal */
+  public hasEagerLoadPagination(): boolean {
+    return this.limitValue !== undefined || this.offsetValue !== undefined
   }
 
   /**
@@ -4541,6 +4639,11 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
           return null
 
         if (normalizedQuery.randomOrderEnabled) return null
+
+        // Relation load plans cannot currently represent aggregates selected by an eager-load
+        // constraint. Falling back to SetBasedEagerLoader preserves the original callback and
+        // lets the related query execute withCount/withExists instead of silently dropping them.
+        if (normalizedQuery.hasRelationAggregates()) return null
 
         const callbackRelationLoads = normalizedQuery.tryBuildAdapterRelationLoadPlans()
         const childRelationLoads =
