@@ -1,7 +1,10 @@
 import {
   DbArticle,
+  DbComment,
+  DbImage,
   DbPost,
   DbRole,
+  DbTag,
   DbUser,
   acquirePostgresTestLock,
   prisma,
@@ -19,6 +22,7 @@ import {
   QueryBuilder,
   createKyselyAdapter,
   createPrismaDatabaseAdapter,
+  registerModels,
 } from '../../src'
 
 import { Pool } from 'pg'
@@ -680,6 +684,209 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(executedQueries.filter((query) => query.includes('from "comments"'))).toHaveLength(1)
   })
 
+  it('preserves relation aggregates nested inside eager-load constraints', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const users = await DbUser.query()
+      .with({
+        posts: (query) =>
+          (query as QueryBuilder<DbPost>).withCount('comments').withExists('comments'),
+      })
+      .orderBy({ id: 'asc' })
+      .get()
+
+    const firstUserPosts = users.all()[0]?.getAttribute('posts')
+    expect(
+      firstUserPosts.all().map((post) => ({
+        id: post.getAttribute('id'),
+        commentsCount: post.getAttribute('commentsCount'),
+        commentsExists: post.getAttribute('commentsExists'),
+      })),
+    ).toEqual([
+      { id: 1, commentsCount: 1, commentsExists: true },
+      { id: 2, commentsCount: 0, commentsExists: false },
+    ])
+
+    const secondUserPosts = users.all()[1]?.getAttribute('posts')
+    expect(
+      secondUserPosts.all().map((post) => ({
+        id: post.getAttribute('id'),
+        commentsCount: post.getAttribute('commentsCount'),
+        commentsExists: post.getAttribute('commentsExists'),
+      })),
+    ).toEqual([{ id: 3, commentsCount: 0, commentsExists: false }])
+  })
+
+  it('applies eager-load limits independently to each has-many parent', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const users = await DbUser.query()
+      .with({
+        posts: (query) => (query as QueryBuilder<DbPost>).orderBy({ id: 'desc' }).limit(1),
+      })
+      .orderBy({ id: 'asc' })
+      .get()
+
+    const firstUserPosts = users.all()[0]?.getAttribute('posts') as ArkormCollection<DbPost>
+    const secondUserPosts = users.all()[1]?.getAttribute('posts') as ArkormCollection<DbPost>
+
+    expect(firstUserPosts.all().map((post) => post.getAttribute('id'))).toEqual([2])
+    expect(secondUserPosts.all().map((post) => post.getAttribute('id'))).toEqual([3])
+
+    const postQueries = executedQueries.filter((query) => query.includes('from "posts"'))
+    expect(postQueries).toHaveLength(1)
+    expect(postQueries[0]?.replace(/\s+/g, ' ')).toContain(
+      'row_number() over ( partition by "userId" order by "posts"."id" desc )',
+    )
+  })
+
+  it('applies eager-load limits independently to direct single-value relationships', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const posts = await DbPost.query()
+      .with({ user: (query) => query.limit(1) })
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(
+      posts.all().map((post) => (post.getAttribute('user') as DbUser).getAttribute('id')),
+    ).toEqual([1, 1, 2])
+
+    const users = await DbUser.query()
+      .with({ profile: (query) => query.limit(1) })
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(
+      users
+        .all()
+        .map((user) => user.getAttribute('profile'))
+        .filter(Boolean),
+    ).toHaveLength(2)
+  })
+
+  it('applies eager-load limits independently to through relationships', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    await prisma.image.create({ data: { profileId: 2, postId: 3, url: 'c.png' } })
+
+    const users = await DbUser.query()
+      .with({
+        postImages: (query) => (query as QueryBuilder<DbImage>).orderBy({ id: 'desc' }).limit(1),
+        avatar: (query) => (query as QueryBuilder<DbImage>).orderBy({ id: 'desc' }).limit(1),
+      })
+      .orderBy({ id: 'asc' })
+      .get()
+
+    expect(
+      users
+        .all()
+        .map((user) =>
+          (user.getAttribute('postImages') as ArkormCollection<DbImage>)
+            .all()
+            .map((image) => image.getAttribute('id')),
+        ),
+    ).toEqual([[2], [3]])
+    expect(
+      users
+        .all()
+        .map((user) => (user.getAttribute('avatar') as DbImage | undefined)?.getAttribute('id')),
+    ).toEqual([2, 3])
+  })
+
+  it('applies eager-load limits independently to many-to-many relationships', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    await prisma.roleUser.create({ data: { userId: 2, roleId: 1 } })
+
+    const users = await DbUser.query()
+      .with({
+        roles: (query) => (query as QueryBuilder<DbRole>).orderBy({ id: 'desc' }).limit(1),
+      })
+      .orderBy({ id: 'asc' })
+      .get()
+
+    expect(
+      users
+        .all()
+        .map((user) =>
+          (user.getAttribute('roles') as ArkormCollection<DbRole>)
+            .all()
+            .map((role) => role.getAttribute('id')),
+        ),
+    ).toEqual([[2], [1]])
+  })
+
+  it('applies eager-load limits independently to polymorphic relationships', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    registerModels(DbUser, DbPost)
+    await prisma.comment.createMany({
+      data: [
+        { commentableId: 2, commentableType: 'DbUser', body: 'Hi second user' },
+        { commentableId: 2, commentableType: 'DbPost', body: 'Hi second post' },
+      ],
+    })
+    await prisma.taggable.create({
+      data: { tagId: 1, taggableId: 2, taggableType: 'DbUser' },
+    })
+
+    const users = await DbUser.query()
+      .with({
+        comments: (query) => (query as QueryBuilder<DbComment>).orderBy({ id: 'desc' }).limit(1),
+        primaryComment: (query) =>
+          (query as QueryBuilder<DbComment>).orderBy({ id: 'desc' }).limit(1),
+        tags: (query) => (query as QueryBuilder<DbTag>).orderBy({ id: 'desc' }).limit(1),
+      })
+      .orderBy({ id: 'asc' })
+      .get()
+
+    expect(
+      users
+        .all()
+        .map((user) =>
+          (user.getAttribute('comments') as ArkormCollection<DbComment>)
+            .all()
+            .map((comment) => comment.getAttribute('id')),
+        ),
+    ).toEqual([[1], [3]])
+    expect(
+      users
+        .all()
+        .map((user) =>
+          (user.getAttribute('primaryComment') as DbComment | undefined)?.getAttribute('id'),
+        ),
+    ).toEqual([1, 3])
+    expect(
+      users
+        .all()
+        .map((user) =>
+          (user.getAttribute('tags') as ArkormCollection<DbTag>)
+            .all()
+            .map((tag) => tag.getAttribute('id')),
+        ),
+    ).toEqual([[2], [1]])
+
+    const tags = await DbTag.query()
+      .with({
+        users: (query) => (query as QueryBuilder<DbUser>).orderBy({ id: 'desc' }).limit(1),
+      })
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(
+      tags
+        .all()
+        .map((tag) =>
+          (tag.getAttribute('users') as ArkormCollection<DbUser>)
+            .all()
+            .map((user) => user.getAttribute('id')),
+        ),
+    ).toEqual([[2], [1]])
+
+    const comments = await DbComment.query()
+      .with({ commentable: (query) => query.limit(1) })
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(comments.all().every((comment) => Boolean(comment.getAttribute('commentable')))).toBe(
+      true,
+    )
+  })
+
   it('supports constrained eager loading and model.load() through Arkorm relation load specs on the Kysely path', async () => {
     setPostgresModelAdapter(kyselyAdapter)
 
@@ -1214,6 +1421,9 @@ describe('PostgreSQL Kysely adapter', () => {
   })
 
   it('inspects compiled SQL for supported Kysely queries', () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const sql = DbUser.query().whereKey('id', 1).limit(1).toSql()
     const inspection = kyselyAdapter.inspectQuery?.({
       operation: 'select',
       spec: {
@@ -1236,6 +1446,8 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(inspection?.sql).toContain('select')
     expect(inspection?.sql).toContain('from "users"')
     expect(inspection?.parameters).toContain(1)
+    expect(sql.replace(/\s+/g, ' ')).toContain('from "users" where "id" = $1 limit $2')
+    expect(executedQueries).toHaveLength(0)
   })
 
   it('compiles distinct and group-by select clauses', () => {
