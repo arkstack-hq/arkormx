@@ -94,6 +94,7 @@ describe('QueryBuilder', () => {
 
     try {
       const inspection = User.query().whereKey('id', 1).inspect()
+      const sql = User.query().whereKey('id', 1).toSql()
 
       expect(inspectQuery).toHaveBeenCalledWith(
         expect.objectContaining({
@@ -107,6 +108,18 @@ describe('QueryBuilder', () => {
         sql: 'select * from users where id = ?',
         parameters: [1],
       })
+      expect(sql).toBe('select * from users where id = ?')
+    } finally {
+      User.setAdapter(undefined)
+    }
+  })
+
+  it('fails clearly when the active adapter cannot compile a query to SQL', () => {
+    const prisma = createCoreClient()
+    User.setAdapter(createPrismaDatabaseAdapter(prisma))
+
+    try {
+      expect(() => User.query().toSql()).toThrow(UnsupportedAdapterFeatureException)
     } finally {
       User.setAdapter(undefined)
     }

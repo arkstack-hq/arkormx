@@ -318,6 +318,12 @@ export interface SelectSpec<TModel = unknown> {
   aggregates?: AggregateSelection[]
 }
 
+export interface PartitionedSelectSpec<TModel = unknown> extends SelectSpec<TModel> {
+  partitionBy: string[]
+  perPartitionLimit: number
+  perPartitionOffset?: number
+}
+
 export interface InsertSpec<TModel = unknown> {
   target: QueryTarget<TModel>
   values: DatabaseRow
@@ -437,6 +443,9 @@ export interface AdapterDatabaseCreationResult {
 export interface DatabaseAdapter {
   readonly capabilities?: AdapterCapabilities
   select: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<DatabaseRows>
+  selectPerPartition?: <TModel = unknown>(
+    spec: PartitionedSelectSpec<TModel>,
+  ) => Promise<DatabaseRows>
   selectOne: <TModel = unknown>(spec: SelectSpec<TModel>) => Promise<DatabaseRow | null>
   insert: <TModel = unknown>(spec: InsertSpec<TModel>) => Promise<DatabaseRow>
   insertMany?: <TModel = unknown>(spec: InsertManySpec<TModel>) => Promise<number>
