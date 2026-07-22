@@ -65,6 +65,7 @@
     "build": "tsdown",
     "barrel": "barrelize",
     "release": "pnpm publish --access public --tag latest --no-git-checks",
+    "release:ci": "pnpm publish --access public --tag latest --no-git-checks --ignore-scripts",
     "prepublishOnly": "pnpm barrel && pnpm build && pnpm test:all",
     "docs:dev": "vitepress dev docs",
     "docs:build": "vitepress build docs",
