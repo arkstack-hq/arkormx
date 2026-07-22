@@ -12,6 +12,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
+import { RelationTableLoader } from '../../src/relationship/RelationTableLoader'
 
 const originalCwd = process.cwd()
 const tempDirectories: string[] = []
@@ -33,6 +34,56 @@ afterEach(() => {
 })
 
 describe('persisted column mappings', () => {
+  it('applies persisted mappings to relation-table lookups', async () => {
+    const workspace = makeTempDir('arkormx-relation-table-mappings-')
+    process.chdir(workspace)
+
+    mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+    writeFileSync(
+      join(workspace, '.arkormx', 'column-mappings.json'),
+      JSON.stringify({
+        version: 1,
+        tables: {
+          role_permissions: {
+            columns: {
+              roleId: 'role_id',
+              permissionId: 'permission_id',
+            },
+            enums: {},
+          },
+        },
+      }),
+    )
+
+    const selectSpecs: Array<SelectSpec<any>> = []
+    const adapter = {
+      select: async <TModel = unknown>(spec: SelectSpec<TModel>) => {
+        selectSpecs.push(spec)
+
+        return []
+      },
+    } as DatabaseAdapter
+
+    await new RelationTableLoader(adapter).selectRows({
+      table: 'role_permissions',
+      where: {
+        type: 'comparison',
+        column: 'roleId',
+        operator: 'in',
+        value: ['role-1'],
+      },
+      columns: [{ column: 'roleId' }, { column: 'permissionId' }],
+    })
+
+    expect(selectSpecs[0]?.target).toEqual({
+      table: 'role_permissions',
+      columns: {
+        roleId: 'role_id',
+        permissionId: 'permission_id',
+      },
+    })
+  })
+
   it('merges persisted mappings into model metadata for adapter-backed queries', async () => {
     const workspace = makeTempDir('arkormx-column-mappings-')
     process.chdir(workspace)
