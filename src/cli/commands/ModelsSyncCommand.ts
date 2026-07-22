@@ -25,9 +25,10 @@ export class ModelsSyncCommand extends Command<CliApp> {
         schemaPath: this.option('schema') ? resolve(String(this.option('schema'))) : undefined,
         modelsDir: this.option('models') ? resolve(String(this.option('models'))) : undefined,
       }
-      result = this.option('registryOnly') || this.option('registry-only') || this.option('r')
-        ? this.app.syncModelRegistry({ modelsDir: options.modelsDir })
-        : await this.app.syncModels(options)
+      result =
+        this.option('registryOnly') || this.option('registry-only') || this.option('r')
+          ? this.app.syncModelRegistry({ modelsDir: options.modelsDir })
+          : await this.app.syncModels(options)
     } catch (error) {
       return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -49,7 +50,9 @@ export class ModelsSyncCommand extends Command<CliApp> {
       ),
       ...(result.schemaPath ? [this.app.splitLogger('Schema', result.schemaPath)] : []),
       this.app.splitLogger('Models', result.modelsDir),
-      ...(result.modelTypesPath ? [this.app.splitLogger('Model Types', result.modelTypesPath)] : []),
+      ...(result.modelTypesPath
+        ? [this.app.splitLogger('Model Types', result.modelTypesPath)]
+        : []),
       this.app.splitLogger('Processed', String(result.total)),
       ...updatedLines,
       this.app.splitLogger('Skipped', String(result.skipped.length)),
