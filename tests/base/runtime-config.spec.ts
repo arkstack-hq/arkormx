@@ -24,7 +24,7 @@ import {
   registerSeeders,
 } from '../../src/helpers/runtime-registry'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
-import { Migration, Model, Seeder } from '../../src'
+import { Arkorm, getModel, Migration, Model, Seeder } from '../../src'
 import type { DatabaseAdapter } from '../../src'
 import { DB } from '../../src'
 import { RuntimeModuleLoader } from '../../src/helpers/runtime-module-loader'
@@ -252,6 +252,43 @@ describe('runtime config defaults', () => {
     expect(getRegisteredSeeders()).toEqual([RuntimeSeeder])
     expect(getRegisteredModels()).toEqual([RuntimeModel])
     expect(getRegisteredFactories()).toEqual([RuntimeFactory, AlternateFactory])
+  })
+
+  it('resolves registered models by name synchronously', () => {
+    class RuntimeLookupUser extends Model {}
+
+    registerModels(RuntimeLookupUser)
+
+    expect(getModel('RuntimeLookupUser')).toBe(RuntimeLookupUser)
+    expect(Arkorm.getModel('RuntimeLookupUser')).toBe(RuntimeLookupUser)
+  })
+
+  it('loads and registers models from configured model paths synchronously', () => {
+    const workspace = makeTempDir('arkormx-runtime-config-get-model-')
+    const modelsDirectory = join(workspace, 'src', 'models')
+
+    mkdirSync(modelsDirectory, { recursive: true })
+    process.chdir(workspace)
+
+    configureArkormRuntime(undefined, {
+      paths: {
+        models: './src/models',
+      },
+    })
+
+    writeFileSync(
+      join(modelsDirectory, 'User.ts'),
+      [
+        `import { Model } from ${JSON.stringify(join(originalCwd, 'src', 'Model.ts'))}`,
+        'export class User extends Model {}',
+        '',
+      ].join('\n'),
+    )
+
+    const User = getModel('User')
+
+    expect(User.name).toBe('User')
+    expect(getRegisteredModels()).toContain(User)
   })
 
   it('keeps default stubs path when loaded user config only overrides other path keys', async () => {

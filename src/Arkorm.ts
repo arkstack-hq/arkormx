@@ -12,6 +12,7 @@ import type {
   RuntimePathKey,
 } from './helpers/runtime-registry'
 import { configureArkormRuntime, getRuntimeAdapter, getUserConfig } from './helpers'
+import { getModel } from './helpers/model-resolver'
 import {
   getRegisteredFactories,
   getRegisteredMigrations,
@@ -191,6 +192,15 @@ export class Arkorm {
     return getRegisteredModels()
   }
   getRegisteredModels = Arkorm.getRegisteredModels
+
+  /**
+   * Synchronously resolve an application model by name.
+   *
+   * @param modelName
+   * @returns
+   */
+  static getModel = getModel
+  getModel = Arkorm.getModel
 
   /**
    * Get registered factory constructors or instances.
