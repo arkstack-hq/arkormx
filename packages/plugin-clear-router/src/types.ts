@@ -9,6 +9,7 @@ export interface Options {
 }
 
 export type IModel = (new (attrs?: Record<string, unknown>) => Model) & {
+  prototype: RouteBindableModel
   query: (typeof Model)['query']
   getPrimaryKey: (typeof Model)['getPrimaryKey']
 }

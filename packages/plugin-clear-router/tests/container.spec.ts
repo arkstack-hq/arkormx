@@ -34,15 +34,14 @@ describe('@arkorm/plugin-clear-router express', () => {
   }
 
   it('resolves bound model arguments for controller actions', async () => {
-    const firstOrFail = vi.fn(async () =>
+    const findOrFail = vi.fn(async () =>
       User.hydrate({
         id: 1,
         name: 'Linus',
       }),
     )
-    const where = vi.fn(() => ({ firstOrFail }))
 
-    vi.spyOn(User, 'query').mockReturnValue({ where } as any)
+    vi.spyOn(User, 'query').mockReturnValue({ findOrFail } as any)
 
     class UserController extends Controller {
       // TODO: Review typescript configuration for full legacy decorators support so we can remove explicit binding.
@@ -79,8 +78,8 @@ describe('@arkorm/plugin-clear-router express', () => {
         },
       })
 
-    expect(where).toHaveBeenCalledWith({ id: '1' })
-    expect(firstOrFail).toHaveBeenCalledOnce()
+    expect(findOrFail).toHaveBeenCalledWith('1', 'id')
+    expect(findOrFail).toHaveBeenCalledOnce()
   })
 
   it('extracts custom route binding fields', () => {
@@ -156,9 +155,8 @@ describe('@arkorm/plugin-clear-router express', () => {
   })
 
   it('reuses a route-bound model within the same request', async () => {
-    const firstOrFail = vi.fn(async () => User.hydrate({ id: 1, name: 'Ada' }))
-    const where = vi.fn(() => ({ firstOrFail }))
-    vi.spyOn(User, 'query').mockReturnValue({ where } as any)
+    const findOrFail = vi.fn(async () => User.hydrate({ id: 1, name: 'Ada' }))
+    vi.spyOn(User, 'query').mockReturnValue({ findOrFail } as any)
 
     class UserController extends Controller {
       @Bind(User, User)
@@ -180,15 +178,12 @@ describe('@arkorm/plugin-clear-router express', () => {
       .expect(200)
       .expect({ data: { sameInstance: true, id: 1 } })
 
-    expect(where).toHaveBeenCalledOnce()
-    expect(firstOrFail).toHaveBeenCalledOnce()
+    expect(findOrFail).toHaveBeenCalledOnce()
   })
 
   it('isolates route-bound models across concurrent requests', async () => {
-    const where = vi.fn((attributes: { id: string }) => ({
-      firstOrFail: async () => User.hydrate({ id: Number(attributes.id) }),
-    }))
-    vi.spyOn(User, 'query').mockReturnValue({ where } as any)
+    const findOrFail = vi.fn(async (value: string) => User.hydrate({ id: Number(value) }))
+    vi.spyOn(User, 'query').mockReturnValue({ findOrFail } as any)
 
     class UserController extends Controller {
       @Bind(User)
@@ -207,8 +202,43 @@ describe('@arkorm/plugin-clear-router express', () => {
 
     expect(first.body).toEqual({ data: { id: 1 } })
     expect(second.body).toEqual({ data: { id: 2 } })
-    expect(where).toHaveBeenCalledWith({ id: '1' })
-    expect(where).toHaveBeenCalledWith({ id: '2' })
+    expect(findOrFail).toHaveBeenCalledWith('1', 'id')
+    expect(findOrFail).toHaveBeenCalledWith('2', 'id')
+  })
+
+  it('does not instantiate a model when the route has no matching binding', async () => {
+    let constructions = 0
+
+    class UnboundModel extends User {
+      constructor(attributes?: Record<string, unknown>) {
+        super(attributes)
+        constructions++
+      }
+    }
+
+    class UnboundController extends Controller {
+      @Bind(UnboundModel)
+      show(_model: UnboundModel) {
+        return { data: { resolved: true } }
+      }
+    }
+
+    ClearRouter.get('/unbound', [UnboundController, 'show'])
+    setup()
+    app.use(
+      (
+        _error: unknown,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction,
+      ) => {
+        res.status(500).json({ error: 'unresolved' })
+      },
+    )
+
+    await request(app).get('/unbound').expect(500).expect({ error: 'unresolved' })
+
+    expect(constructions).toBe(0)
   })
 
   it('preserves request-scoped non-model dependencies', async () => {
