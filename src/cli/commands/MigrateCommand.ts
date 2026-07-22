@@ -50,6 +50,7 @@ export class MigrateCommand extends Command<CliApp> {
         {--deploy : Use prisma migrate deploy instead of migrate dev (Prisma compatibility driver only)}
         {--skip-generate : Skip prisma generate (Prisma compatibility driver only)}
         {--skip-migrate : Skip prisma migrate command}
+        {--r|registry : Sync the generated model registry type augmentation after a successful migration}
         {--state-file= : Path to applied migration state file}
         {--schema= : Explicit prisma schema path (Prisma compatibility driver only)}
         {--migration-name= : Name for prisma migrate dev (Prisma compatibility driver only)}
@@ -153,6 +154,7 @@ export class MigrateCommand extends Command<CliApp> {
         }
       }
 
+      if (!this.syncModelRegistryIfRequested()) return
       this.success('No pending migration classes to apply.')
 
       return
@@ -252,6 +254,22 @@ export class MigrateCommand extends Command<CliApp> {
 
     this.success(`Applied ${pending.length} migration(s).`)
     pending.forEach(([_, file]) => this.success(this.app.splitLogger('Migrated', file)))
+    this.syncModelRegistryIfRequested()
+  }
+
+  private syncModelRegistryIfRequested(): boolean {
+    if (!this.option('registry') && !this.option('r')) return true
+
+    try {
+      const result = this.app.syncModelRegistry()
+      this.success(this.app.splitLogger('Model Types', result.modelTypesPath ?? 'none'))
+
+      return true
+    } catch (error) {
+      this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
+
+      return false
+    }
   }
 
   /**

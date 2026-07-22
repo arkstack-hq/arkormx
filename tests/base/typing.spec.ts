@@ -1,8 +1,15 @@
 import { describe, expectTypeOf, it } from 'vitest'
 
-import { ArkormCollection, Model, QueryBuilder } from '../../src'
+import { ArkormCollection, Model, QueryBuilder, registerModels } from '../../src'
 import type { Relation } from '../../src/relationship'
 import type { AttributeCreateInput, AttributeUpdateInput, ModelWhereInput } from '../../src/types'
+
+declare module '../../src/types/model' {
+  interface ArkormModelRegistry {
+    TypedPost: typeof TypedPost
+    TypedProfile: typeof TypedProfile
+  }
+}
 
 type IsAny<TValue> = 0 extends 1 & TValue ? true : false
 
@@ -47,6 +54,26 @@ class DeclaredUserWithRelations extends Model {
   }
 }
 
+class DeclaredUserWithStringRelations extends Model {
+  declare id: number
+  declare name: string
+
+  profile() {
+    return this.hasOne('TypedProfile', 'userId', 'id')
+  }
+
+  posts() {
+    return this.hasMany('TypedPost', 'authorId', 'id')
+  }
+}
+
+class DeclaredUserWithInvalidStringRelation extends Model {
+  posts() {
+    // @ts-expect-error String relationships must use generated registered model names.
+    return this.hasMany('MissingModel', 'userId')
+  }
+}
+
 class UnknownRelationUser extends Model {
   unknownRelation(): Relation<unknown> {
     throw new Error('Typing fixture only')
@@ -84,6 +111,19 @@ describe('adapter-first typing', () => {
 
     user.setAttribute('profile', new TypedProfile())
     user.setAttribute('posts', new ArkormCollection<TypedPost>([]))
+  })
+
+  it('infers relationship types from registered model name strings', () => {
+    registerModels(TypedPost, TypedProfile)
+
+    const user = new DeclaredUserWithStringRelations()
+
+    expectTypeOf(user.profile()).toMatchTypeOf<Relation<TypedProfile>>()
+    expectTypeOf(user.posts()).toMatchTypeOf<Relation<TypedPost>>()
+    expectTypeOf(user.getAttribute('profile')).toEqualTypeOf<TypedProfile | null>()
+    expectTypeOf(user.getAttribute('posts')).toEqualTypeOf<ArkormCollection<TypedPost>>()
+
+    expectTypeOf(DeclaredUserWithInvalidStringRelation).toBeConstructibleWith()
   })
 
   it('infers eager-load constraint builders from relationship methods', () => {

@@ -267,15 +267,20 @@ describe('CLI application', () => {
     })
 
     const result = app.syncModelsFromPrisma({ schemaPath, modelsDir })
+    const modelTypesPath = join(workspace, '.arkormx', 'models.d.ts')
 
     expect(result.total).toBe(1)
-    expect(result.updated).toEqual([modelPath])
+    expect(result.updated).toEqual([modelPath, modelTypesPath])
+    expect(result.modelTypesPath).toBe(modelTypesPath)
 
     const updatedSource = readFileSync(modelPath, 'utf-8')
+    const modelTypesSource = readFileSync(modelTypesPath, 'utf-8')
     expect(updatedSource).toContain('declare id: number')
     expect(updatedSource).toContain('declare email: string')
     expect(updatedSource).toContain('declare nickname: string | null')
     expect(updatedSource).toContain('declare isActive: boolean')
+    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
+    expect(modelTypesSource).toContain('User: typeof User')
   })
 
   it('syncs json, enum imports, and list declarations from prisma schema', () => {
@@ -322,11 +327,13 @@ describe('CLI application', () => {
     })
 
     const result = app.syncModelsFromPrisma({ schemaPath, modelsDir })
+    const modelTypesPath = join(workspace, '.arkormx', 'models.d.ts')
 
     expect(result.total).toBe(1)
-    expect(result.updated).toEqual([modelPath])
+    expect(result.updated).toEqual([modelPath, modelTypesPath])
 
     const updatedSource = readFileSync(modelPath, 'utf-8')
+    const modelTypesSource = readFileSync(modelTypesPath, 'utf-8')
     expect(updatedSource).toContain("import type { UserStatus } from '@prisma/client'")
     expect(updatedSource).toContain('declare metadata: Record<string, unknown> | unknown[]')
     expect(updatedSource).toContain(
@@ -335,6 +342,7 @@ describe('CLI application', () => {
     expect(updatedSource).toContain('declare snapshots: Array<Record<string, unknown> | unknown[]>')
     expect(updatedSource).toContain('declare status: UserStatus')
     expect(updatedSource).toContain('declare tags: Array<UserStatus>')
+    expect(modelTypesSource).toContain('User: typeof User')
   })
 
   it('preserves compatible manual declaration overrides', () => {
@@ -384,15 +392,18 @@ describe('CLI application', () => {
     })
 
     const result = app.syncModelsFromPrisma({ schemaPath, modelsDir })
+    const modelTypesPath = join(workspace, '.arkormx', 'models.d.ts')
 
     expect(result.total).toBe(1)
-    expect(result.updated).toEqual([])
+    expect(result.updated).toEqual([modelTypesPath])
     expect(result.skipped).toEqual([modelPath])
 
     const updatedSource = readFileSync(modelPath, 'utf-8')
+    const modelTypesSource = readFileSync(modelTypesPath, 'utf-8')
     expect(updatedSource).toContain('declare metadata: string[]')
     expect(updatedSource).toContain("declare status: 'ACTIVE'")
     expect(updatedSource).not.toContain("import type { UserStatus } from '@prisma/client'")
+    expect(modelTypesSource).toContain('User: typeof User')
   })
 
   it('syncs model declarations from adapter introspection when available', async () => {
@@ -431,13 +442,17 @@ describe('CLI application', () => {
     })
 
     const result = await app.syncModels({ modelsDir })
+    const modelTypesPath = join(workspace, '.arkormx', 'models.d.ts')
 
     expect(result.source).toBe('adapter')
-    expect(result.updated).toEqual([modelPath])
+    expect(result.updated).toEqual([modelPath, modelTypesPath])
+    expect(result.modelTypesPath).toBe(modelTypesPath)
 
     const updatedSource = readFileSync(modelPath, 'utf-8')
+    const modelTypesSource = readFileSync(modelTypesPath, 'utf-8')
     expect(updatedSource).toContain('declare id: number')
     expect(updatedSource).toContain('declare email: string')
     expect(updatedSource).toContain('declare isActive: boolean')
+    expect(modelTypesSource).toContain('User: typeof User')
   })
 })
