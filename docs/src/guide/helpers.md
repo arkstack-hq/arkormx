@@ -10,9 +10,6 @@ Import helpers from `arkormx`:
 import { defineConfig, loadModelsFrom, registerModels } from 'arkormx'
 ```
 
-Avoid importing from `src/helpers/*` in application code. Those module paths are
-implementation details; the stable public surface is the package export.
-
 ## Configuration
 
 ### `defineConfig(config)`
