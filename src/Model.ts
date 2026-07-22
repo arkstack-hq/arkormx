@@ -6,6 +6,8 @@ import type {
   ModelEventDispatcher,
   ModelEventName,
   ModelLifecycleState,
+  RegisteredModelInstance,
+  RegisteredModelName,
   ModelUpdateData,
   QuerySchemaForModel,
   RelatedModelClass,
@@ -49,6 +51,7 @@ import {
   getRuntimeCompatibilityAdapter,
   resolveRuntimeCompatibilityQuerySchemaOrThrow,
 } from './helpers/runtime-compatibility'
+import { resolveRegisteredModel } from './helpers/runtime-registry'
 
 import {
   FactoryModelConstructor,
@@ -1684,14 +1687,26 @@ export abstract class Model<
     related: TRelatedClass,
     foreignKey: string,
     localKey?: string,
-  ): HasOneRelation<this, InstanceType<TRelatedClass>> {
+  ): HasOneRelation<this, InstanceType<TRelatedClass>>
+  protected hasOne<TName extends RegisteredModelName>(
+    related: TName,
+    foreignKey?: string,
+    localKey?: string,
+  ): HasOneRelation<this, RegisteredModelInstance<TName>>
+  protected hasOne(
+    related: RelatedModelClass | RegisteredModelName,
+    foreignKey?: string,
+    localKey?: string,
+  ): HasOneRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'hasOne')
+    const resolvedLocalKey = localKey ?? constructor.getPrimaryKey()
 
-    return new HasOneRelation<this, InstanceType<TRelatedClass>>(
+    return new HasOneRelation(
       this,
-      related,
-      foreignKey,
-      localKey ?? constructor.getPrimaryKey(),
+      relatedModel,
+      foreignKey ?? this.resolveDefaultHasForeignKey(constructor, resolvedLocalKey),
+      resolvedLocalKey,
     )
   }
 
@@ -1707,14 +1722,26 @@ export abstract class Model<
     related: TRelatedClass,
     foreignKey: string,
     localKey?: string,
-  ): HasManyRelation<this, InstanceType<TRelatedClass>> {
+  ): HasManyRelation<this, InstanceType<TRelatedClass>>
+  protected hasMany<TName extends RegisteredModelName>(
+    related: TName,
+    foreignKey?: string,
+    localKey?: string,
+  ): HasManyRelation<this, RegisteredModelInstance<TName>>
+  protected hasMany(
+    related: RelatedModelClass | RegisteredModelName,
+    foreignKey?: string,
+    localKey?: string,
+  ): HasManyRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'hasMany')
+    const resolvedLocalKey = localKey ?? constructor.getPrimaryKey()
 
-    return new HasManyRelation<this, InstanceType<TRelatedClass>>(
+    return new HasManyRelation(
       this,
-      related,
-      foreignKey,
-      localKey ?? constructor.getPrimaryKey(),
+      relatedModel,
+      foreignKey ?? this.resolveDefaultHasForeignKey(constructor, resolvedLocalKey),
+      resolvedLocalKey,
     )
   }
 
@@ -1730,12 +1757,25 @@ export abstract class Model<
     related: TRelatedClass,
     foreignKey: string,
     ownerKey?: string,
-  ): BelongsToRelation<this, InstanceType<TRelatedClass>> {
-    return new BelongsToRelation<this, InstanceType<TRelatedClass>>(
+  ): BelongsToRelation<this, InstanceType<TRelatedClass>>
+  protected belongsTo<TName extends RegisteredModelName>(
+    related: TName,
+    foreignKey?: string,
+    ownerKey?: string,
+  ): BelongsToRelation<this, RegisteredModelInstance<TName>>
+  protected belongsTo(
+    related: RelatedModelClass | RegisteredModelName,
+    foreignKey?: string,
+    ownerKey?: string,
+  ): BelongsToRelation<this, any> {
+    const relatedModel = this.resolveRelationshipModel(related, 'belongsTo')
+    const resolvedOwnerKey = ownerKey ?? relatedModel.getPrimaryKey()
+
+    return new BelongsToRelation(
       this,
-      related,
-      foreignKey,
-      ownerKey ?? related.getPrimaryKey(),
+      relatedModel,
+      foreignKey ?? this.resolveDefaultBelongsToForeignKey(relatedModel, resolvedOwnerKey),
+      resolvedOwnerKey,
     )
   }
 
@@ -1757,17 +1797,35 @@ export abstract class Model<
     relatedPivotKey: string,
     parentKey?: string,
     relatedKey?: string,
-  ): BelongsToManyRelation<this, InstanceType<TRelatedClass>> {
+  ): BelongsToManyRelation<this, InstanceType<TRelatedClass>>
+  protected belongsToMany<TName extends RegisteredModelName>(
+    related: TName,
+    throughTable: string,
+    foreignPivotKey: string,
+    relatedPivotKey: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): BelongsToManyRelation<this, RegisteredModelInstance<TName>>
+  protected belongsToMany(
+    related: RelatedModelClass | RegisteredModelName,
+    throughTable: string,
+    foreignPivotKey: string,
+    relatedPivotKey: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): BelongsToManyRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'belongsToMany')
+    const resolvedRelatedKey = relatedKey ?? relatedModel.getPrimaryKey()
 
-    return new BelongsToManyRelation<this, InstanceType<TRelatedClass>>(
+    return new BelongsToManyRelation(
       this,
-      related,
+      relatedModel,
       throughTable,
       foreignPivotKey,
       relatedPivotKey,
       parentKey ?? constructor.getPrimaryKey(),
-      relatedKey ?? related.getPrimaryKey(),
+      resolvedRelatedKey,
     )
   }
 
@@ -1788,18 +1846,35 @@ export abstract class Model<
     firstKey: string,
     secondKey: string,
     localKey?: string,
-    secondLocalKey = 'id',
-  ): HasOneThroughRelation<this, InstanceType<TRelatedClass>> {
+    secondLocalKey?: string,
+  ): HasOneThroughRelation<this, InstanceType<TRelatedClass>>
+  protected hasOneThrough<TName extends RegisteredModelName>(
+    related: TName,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey?: string,
+  ): HasOneThroughRelation<this, RegisteredModelInstance<TName>>
+  protected hasOneThrough(
+    related: RelatedModelClass | RegisteredModelName,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey?: string,
+  ): HasOneThroughRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'hasOneThrough')
 
     return new HasOneThroughRelation(
       this,
-      related,
+      relatedModel,
       throughTable,
       firstKey,
       secondKey,
       localKey ?? constructor.getPrimaryKey(),
-      secondLocalKey,
+      secondLocalKey ?? 'id',
     )
   }
 
@@ -1820,13 +1895,30 @@ export abstract class Model<
     firstKey: string,
     secondKey: string,
     localKey?: string,
+    secondLocalKey?: string,
+  ): HasManyThroughRelation<this, InstanceType<TRelatedClass>>
+  protected hasManyThrough<TName extends RegisteredModelName>(
+    related: TName,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey?: string,
+  ): HasManyThroughRelation<this, RegisteredModelInstance<TName>>
+  protected hasManyThrough(
+    related: RelatedModelClass | RegisteredModelName,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
     secondLocalKey = 'id',
-  ): HasManyThroughRelation<this, InstanceType<TRelatedClass>> {
+  ): HasManyThroughRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'hasManyThrough')
 
     return new HasManyThroughRelation(
       this,
-      related,
+      relatedModel,
       throughTable,
       firstKey,
       secondKey,
@@ -1851,13 +1943,28 @@ export abstract class Model<
     idColumn?: string,
     typeColumn?: string,
     localKey?: string,
-  ): MorphOneRelation<this, InstanceType<TRelatedClass>> {
+  ): MorphOneRelation<this, InstanceType<TRelatedClass>>
+  protected morphOne<TName extends RegisteredModelName>(
+    related: TName,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphOneRelation<this, RegisteredModelInstance<TName>>
+  protected morphOne(
+    related: RelatedModelClass | RegisteredModelName,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphOneRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'morphOne')
     const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
 
     return new MorphOneRelation(
       this,
-      related,
+      relatedModel,
       morphName,
       columns.idColumn,
       columns.typeColumn,
@@ -1881,13 +1988,28 @@ export abstract class Model<
     idColumn?: string,
     typeColumn?: string,
     localKey?: string,
-  ): MorphManyRelation<this, InstanceType<TRelatedClass>> {
+  ): MorphManyRelation<this, InstanceType<TRelatedClass>>
+  protected morphMany<TName extends RegisteredModelName>(
+    related: TName,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphManyRelation<this, RegisteredModelInstance<TName>>
+  protected morphMany(
+    related: RelatedModelClass | RegisteredModelName,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphManyRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
+    const relatedModel = this.resolveRelationshipModel(related, 'morphMany')
     const columns = this.resolveMorphColumns(morphName, idColumn, typeColumn)
 
     return new MorphManyRelation(
       this,
-      related,
+      relatedModel,
       morphName,
       columns.idColumn,
       columns.typeColumn,
@@ -1958,16 +2080,37 @@ export abstract class Model<
     relatedPivotKey?: string,
     parentKey?: string,
     relatedKey?: string,
-  ): MorphToManyRelation<this, InstanceType<TRelatedClass>> {
+  ): MorphToManyRelation<this, InstanceType<TRelatedClass>>
+  protected morphToMany<TName extends RegisteredModelName>(
+    related: TName,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphToManyRelation<this, RegisteredModelInstance<TName>>
+  protected morphToMany(
+    related: RelatedModelClass | RegisteredModelName,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphToManyRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
     const namingCase = Model.getNamingCase()
-    const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
+    const relatedModel = this.resolveRelationshipModel(related, 'morphToMany')
+    const resolvedRelatedKey = relatedKey ?? relatedModel.getPrimaryKey()
     const resolvedTable =
       throughTable ?? this.formatConventionName(`${str(morphName).plural()}`, namingCase)
     const resolvedRelatedPivotKey =
       relatedPivotKey ??
       this.formatConventionName(
-        `${str(related.getTable()).singular()}_${resolvedRelatedKey}`,
+        `${str(relatedModel.getTable()).singular()}_${resolvedRelatedKey}`,
         namingCase,
       )
     const morphIdColumn =
@@ -1977,7 +2120,7 @@ export abstract class Model<
 
     return new MorphToManyRelation(
       this,
-      related,
+      relatedModel,
       resolvedTable,
       morphName,
       morphIdColumn,
@@ -2010,10 +2153,31 @@ export abstract class Model<
     relatedPivotKey?: string,
     parentKey?: string,
     relatedKey?: string,
-  ): MorphedByManyRelation<this, InstanceType<TRelatedClass>> {
+  ): MorphedByManyRelation<this, InstanceType<TRelatedClass>>
+  protected morphedByMany<TName extends RegisteredModelName>(
+    related: TName,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphedByManyRelation<this, RegisteredModelInstance<TName>>
+  protected morphedByMany(
+    related: RelatedModelClass | RegisteredModelName,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphedByManyRelation<this, any> {
     const constructor = this.constructor as unknown as typeof Model
     const namingCase = Model.getNamingCase()
-    const resolvedRelatedKey = relatedKey ?? related.getPrimaryKey()
+    const relatedModel = this.resolveRelationshipModel(related, 'morphedByMany')
+    const resolvedRelatedKey = relatedKey ?? relatedModel.getPrimaryKey()
     const resolvedTable =
       throughTable ?? this.formatConventionName(`${str(morphName).plural()}`, namingCase)
     const resolvedForeignPivotKey =
@@ -2029,7 +2193,7 @@ export abstract class Model<
 
     return new MorphedByManyRelation(
       this,
-      related,
+      relatedModel,
       resolvedTable,
       morphName,
       resolvedForeignPivotKey,
@@ -2037,6 +2201,34 @@ export abstract class Model<
       resolvedRelatedPivotKey,
       parentKey ?? constructor.getPrimaryKey(),
       resolvedRelatedKey,
+    )
+  }
+
+  private resolveRelationshipModel(
+    related: RelatedModelClass | RegisteredModelName,
+    operation: string,
+  ): RelatedModelClass {
+    if (typeof related === 'function') return related
+
+    return resolveRegisteredModel(related, {
+      operation,
+    }) as RelatedModelClass
+  }
+
+  private resolveDefaultHasForeignKey(parent: typeof Model, localKey: string): string {
+    return this.formatConventionName(
+      `${str(parent.getTable()).singular()}_${localKey}`,
+      Model.getNamingCase(),
+    )
+  }
+
+  private resolveDefaultBelongsToForeignKey(
+    related: { getTable: () => string },
+    ownerKey: string,
+  ): string {
+    return this.formatConventionName(
+      `${str(related.getTable()).singular()}_${ownerKey}`,
+      Model.getNamingCase(),
     )
   }
 

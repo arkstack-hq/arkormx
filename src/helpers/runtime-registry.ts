@@ -1,5 +1,7 @@
 import type { MigrationClass } from '../types/migrations'
 import type { SeederConstructor } from '../database/Seeder'
+import type { RelationshipModelStatic } from '../types/ModelStatic'
+import { RelationResolutionException } from '../Exceptions/RelationResolutionException'
 
 export type RuntimePathKey = 'models' | 'seeders' | 'migrations' | 'factories'
 export type RuntimePathInput = string | string[]
@@ -170,6 +172,27 @@ export const getRegisteredSeeders = (): SeederConstructor[] => [...registry.seed
  * @returns
  */
 export const getRegisteredModels = (): RegisteredModel[] => [...registry.models]
+
+export const resolveRegisteredModel = (
+  modelName: string,
+  context: { operation?: string; relation?: string } = {},
+): RelationshipModelStatic => {
+  const normalized = modelName.trim()
+  const model = registry.models.find((registered) => registered.name === normalized)
+
+  if (!model) {
+    throw new RelationResolutionException(
+      `Model [${normalized}] is not registered. Register it with Arkorm.registerModels() or load it through configured model paths.`,
+      {
+        operation: context.operation ?? 'relationship.resolveModel',
+        model: normalized,
+        relation: context.relation,
+      },
+    )
+  }
+
+  return model as unknown as RelationshipModelStatic
+}
 /**
  * Get registered factory constructors or instances.
  *
