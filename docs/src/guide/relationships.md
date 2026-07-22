@@ -18,6 +18,59 @@ class Post extends Model {
 }
 ```
 
+### String model references
+
+Relationship helpers also accept registered model names. This avoids circular
+imports in model graphs such as `User -> Book -> User`:
+
+```ts
+// User.ts
+class User extends Model {
+  books() {
+    return this.hasMany('Book', 'userId', 'id')
+  }
+}
+
+// Book.ts
+class Book extends Model {
+  owner() {
+    return this.belongsTo('User', 'userId', 'id')
+  }
+}
+```
+
+The model name must match a class registered through configured model paths,
+`loadModelsFrom()`, or `registerModels()`:
+
+```ts
+import { registerModels } from 'arkormx'
+import { User } from './models/User'
+import { Book } from './models/Book'
+
+registerModels(User, Book)
+```
+
+For common conventions, `hasOne`, `hasMany`, and `belongsTo` can infer keys
+from the related table and the configured naming case:
+
+```ts
+class User extends Model {
+  books() {
+    return this.hasMany('Book') // userId when naming.case is "camel"
+  }
+}
+
+class Book extends Model {
+  owner() {
+    return this.belongsTo('User') // userId when naming.case is "camel"
+  }
+}
+```
+
+Run `models:sync` to generate `.arkormx/models.d.ts`. That declaration file
+adds the known model-name map used by TypeScript, so string relationships keep
+their related model types and unknown names are rejected.
+
 Supported relationships:
 
 - [`hasOne`](#hasone)

@@ -41,6 +41,7 @@ export class ModelsSyncCommand extends Command<CliApp> {
       ),
       ...(result.schemaPath ? [this.app.splitLogger('Schema', result.schemaPath)] : []),
       this.app.splitLogger('Models', result.modelsDir),
+      ...(result.modelTypesPath ? [this.app.splitLogger('Model Types', result.modelTypesPath)] : []),
       this.app.splitLogger('Processed', String(result.total)),
       ...updatedLines,
       this.app.splitLogger('Skipped', String(result.skipped.length)),

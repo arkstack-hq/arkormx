@@ -23,6 +23,29 @@ import { beforeEach, describe, expect, expectTypeOf, it, vi } from 'vitest'
 
 import { createCoreClient } from './helpers/core-fixtures'
 
+class StringUser extends Model {
+  protected static override table = 'users'
+
+  public books() {
+    return this.hasMany('StringBook')
+  }
+}
+
+class StringBook extends Model {
+  protected static override table = 'posts'
+
+  public owner() {
+    return this.belongsTo('StringUser')
+  }
+}
+
+declare module '../../src/types/model' {
+  interface ArkormModelRegistry {
+    StringBook: typeof StringBook
+    StringUser: typeof StringUser
+  }
+}
+
 describe('Model relationships', () => {
   class MembershipPivot extends PivotModel {
     public getAttribute(key: string): any {
@@ -45,6 +68,22 @@ describe('Model relationships', () => {
     expect(posts).toBeInstanceOf(ArkormCollection)
     expect(Array.isArray(posts)).toBe(false)
     expect((posts as ArkormCollection<Post>).all().length).toBe(2)
+  })
+
+  it('resolves string relationship model names from the runtime registry', async () => {
+    registerModels(StringUser, StringBook)
+
+    const user = await StringUser.query().find(1)
+    expect(user).not.toBeNull()
+    if (!user) throw new Error('Expected user to exist.')
+
+    const books = await user.books().orderBy({ id: 'asc' }).getResults()
+    expect(books.all()).toHaveLength(2)
+    expect(books.all()[0]?.getAttribute('title')).toBe('A')
+
+    const owner = await books.all()[0]?.owner().getResults()
+    expect(owner).toBeInstanceOf(StringUser)
+    expect(owner?.getAttribute('id')).toBe(1)
   })
 
   it('keeps strong typing for relationship collections', async () => {
@@ -1014,7 +1053,7 @@ describe('Model relationships', () => {
     const selectSpy = vi.spyOn(adapter, 'select')
     const loadRelationsSpy = vi.spyOn(adapter, 'loadRelations').mockImplementation(async (spec) => {
       spec.models.forEach((model) => {
-        ;(model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation(
+        ; (model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation(
           'posts',
           new ArkormCollection([]),
         )

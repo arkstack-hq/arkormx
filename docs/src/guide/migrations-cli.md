@@ -374,6 +374,8 @@ compatibility adapter does not support it.
 ## Sync model declarations
 
 `models:sync` updates `declare` attributes inside your Arkorm models from the best available schema source.
+It also generates `.arkormx/models.d.ts` so registered model-name strings used
+in relationships can be checked by TypeScript.
 
 - When the active adapter supports model introspection, Arkorm reads the database structure directly.
 - Otherwise Arkorm falls back to Prisma models from `schema.prisma`.
