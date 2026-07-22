@@ -34,7 +34,7 @@ export const clearRouterPlugin = definePlugin({
         )
 
         if (!binding) {
-          args.push(await container.resolveOrFail(token, request.ctx, true))
+          args.push(await container.resolveOrFail(token, request.ctx, false))
           continue
         }
 

@@ -1,20 +1,16 @@
-import { IModel, RouteBindableModel } from './types'
-
+import { IModel } from './types'
 import { Model } from 'arkormx'
 
 export async function resolveRouteBinding(modelClass: IModel, value: unknown, field?: string) {
-  const instance = new modelClass() as RouteBindableModel
+  if (typeof modelClass.prototype.resolveRouteBinding === 'function') {
+    const instance = new modelClass()
 
-  if (typeof instance.resolveRouteBinding === 'function') {
-    return await instance.resolveRouteBinding(value, field)
+    return await instance.resolveRouteBinding!(value, field)
   }
 
   const resolvedField = field ?? modelClass.getPrimaryKey()
 
-  return await modelClass
-    .query()
-    .where({ [resolvedField]: value as string | number })
-    .firstOrFail()
+  return await modelClass.query().findOrFail(value as string | number, resolvedField)
 }
 
 export const isModel = (cls: any): cls is IModel => {
