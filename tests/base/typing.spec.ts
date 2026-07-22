@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from 'vitest'
 
-import { ArkormCollection, Model, QueryBuilder, registerModels } from '../../src'
+import { ArkormCollection, getModel, Model, QueryBuilder, registerModels } from '../../src'
 import type { Relation } from '../../src/relationship'
 import type { AttributeCreateInput, AttributeUpdateInput, ModelWhereInput } from '../../src/types'
 
@@ -124,6 +124,11 @@ describe('adapter-first typing', () => {
     expectTypeOf(user.getAttribute('posts')).toEqualTypeOf<ArkormCollection<TypedPost>>()
 
     expectTypeOf(DeclaredUserWithInvalidStringRelation).toBeConstructibleWith()
+  })
+
+  it('infers getModel constructor types from registered model names', () => {
+    expectTypeOf(getModel('TypedPost')).toEqualTypeOf<typeof TypedPost>()
+    expectTypeOf(getModel('TypedProfile')).toEqualTypeOf<typeof TypedProfile>()
   })
 
   it('infers eager-load constraint builders from relationship methods', () => {
