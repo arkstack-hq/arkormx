@@ -1,5 +1,10 @@
 import type { DatabaseAdapter, DatabaseRow } from '../types'
 import type { RelationColumnLookupSpec, RelationTableLookupSpec } from '../types/relationship'
+import {
+  getPersistedTableMetadata,
+  resolvePersistedMetadataFeatures,
+} from '../helpers/column-mappings'
+import { getUserConfig } from '../helpers/runtime-config'
 
 /**
  * Utility class responsible for loading data from relation tables, which are used to
@@ -11,9 +16,20 @@ import type { RelationColumnLookupSpec, RelationTableLookupSpec } from '../types
 export class RelationTableLoader {
   public constructor(private readonly adapter: DatabaseAdapter) {}
 
+  private buildTarget(table: string): {
+    table: string
+    columns: Record<string, string>
+  } {
+    const metadata = getPersistedTableMetadata(table, {
+      features: resolvePersistedMetadataFeatures(getUserConfig('features')),
+    })
+
+    return { table, columns: metadata.columns }
+  }
+
   public async selectRows(spec: RelationTableLookupSpec): Promise<DatabaseRow[]> {
     return await this.adapter.select({
-      target: { table: spec.table },
+      target: this.buildTarget(spec.table),
       where: spec.where,
       columns: spec.columns,
       orderBy: spec.orderBy,
@@ -24,7 +40,7 @@ export class RelationTableLoader {
 
   public async selectRow(spec: RelationTableLookupSpec): Promise<DatabaseRow | null> {
     return await this.adapter.selectOne({
-      target: { table: spec.table },
+      target: this.buildTarget(spec.table),
       where: spec.where,
       columns: spec.columns,
       orderBy: spec.orderBy,
