@@ -7,6 +7,7 @@ export class ModelsSyncCommand extends Command<CliApp> {
   protected signature = `models:sync
         {--schema= : Path to prisma schema file used when adapter introspection is unavailable}
         {--models= : Path to models directory}
+        {--r|registry-only : Only sync the generated model registry type augmentation}
     `
 
   protected description = 'Sync model declare attributes from the active adapter when supported'
@@ -20,10 +21,13 @@ export class ModelsSyncCommand extends Command<CliApp> {
     let result
 
     try {
-      result = await this.app.syncModels({
+      const options = {
         schemaPath: this.option('schema') ? resolve(String(this.option('schema'))) : undefined,
         modelsDir: this.option('models') ? resolve(String(this.option('models'))) : undefined,
-      })
+      }
+      result = this.option('registryOnly') || this.option('registry-only') || this.option('r')
+        ? this.app.syncModelRegistry({ modelsDir: options.modelsDir })
+        : await this.app.syncModels(options)
     } catch (error) {
       return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
     }
@@ -37,7 +41,11 @@ export class ModelsSyncCommand extends Command<CliApp> {
     ;[
       this.app.splitLogger(
         'Source',
-        result.source === 'adapter' ? 'adapter introspection' : 'prisma schema',
+        result.source === 'adapter'
+          ? 'adapter introspection'
+          : result.source === 'registry'
+            ? 'model registry'
+            : 'prisma schema',
       ),
       ...(result.schemaPath ? [this.app.splitLogger('Schema', result.schemaPath)] : []),
       this.app.splitLogger('Models', result.modelsDir),
