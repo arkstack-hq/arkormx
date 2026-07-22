@@ -16,6 +16,10 @@ import { Model } from 'src/Model'
 import type { PrismaClient } from '@prisma/client'
 import { QueryBuilder } from 'src'
 
+// Generated `.arkormx/models.d.ts` files augment this interface with known model names.
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface ArkormModelRegistry {}
+
 type LowercaseString<T extends string> = Lowercase<T>
 type Simplify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & {}
 type ConventionalAutoManagedKeys = 'id' | 'createdAt' | 'updatedAt' | 'deletedAt'
@@ -281,6 +285,16 @@ export type RelatedModelClass<TInstance = unknown> = (abstract new (
   attributes?: Record<string, unknown>,
 ) => TInstance) &
   RelationshipModelStatic
+
+export type RegisteredModelName = keyof ArkormModelRegistry & string
+
+export type RegisteredModelClass<TName extends RegisteredModelName> =
+  ArkormModelRegistry[TName] extends RelatedModelClass ? ArkormModelRegistry[TName] : never
+
+export type RegisteredModelInstance<TName extends RegisteredModelName> =
+  RegisteredModelClass<TName> extends abstract new (...args: any[]) => infer TInstance
+    ? TInstance
+    : never
 
 export type GlobalScope = (query: QueryBuilder<any, any>) => QueryBuilder<any, any> | void
 export type ModelEventName =
