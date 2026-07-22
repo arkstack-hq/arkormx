@@ -1053,7 +1053,7 @@ describe('Model relationships', () => {
     const selectSpy = vi.spyOn(adapter, 'select')
     const loadRelationsSpy = vi.spyOn(adapter, 'loadRelations').mockImplementation(async (spec) => {
       spec.models.forEach((model) => {
-        ; (model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation(
+        ;(model as { setLoadedRelation: (name: string, value: unknown) => void }).setLoadedRelation(
           'posts',
           new ArkormCollection([]),
         )

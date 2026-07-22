@@ -887,9 +887,7 @@ export class CliApp {
       .map((file) => join(modelsDir, file))
   }
 
-  private syncModelRegistryTypes(
-    modelFiles: string[],
-  ): { path: string; updated: boolean } {
+  private syncModelRegistryTypes(modelFiles: string[]): { path: string; updated: boolean } {
     const cwd = realpathSync(process.cwd())
     const registryDir = join(cwd, '.arkormx')
     const registryPath = join(registryDir, 'models.d.ts')
