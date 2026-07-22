@@ -225,14 +225,18 @@ describe('@arkorm/plugin-clear-router express', () => {
 
     ClearRouter.get('/unbound', [UnboundController, 'show'])
     setup()
-    app.use((_error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      res.status(500).json({ error: 'unresolved' })
-    })
+    app.use(
+      (
+        _error: unknown,
+        _req: express.Request,
+        res: express.Response,
+        _next: express.NextFunction,
+      ) => {
+        res.status(500).json({ error: 'unresolved' })
+      },
+    )
 
-    await request(app)
-      .get('/unbound')
-      .expect(500)
-      .expect({ error: 'unresolved' })
+    await request(app).get('/unbound').expect(500).expect({ error: 'unresolved' })
 
     expect(constructions).toBe(0)
   })
