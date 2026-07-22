@@ -62,7 +62,7 @@ describe('persisted column mappings', () => {
 
         return []
       },
-    } as DatabaseAdapter
+    } as unknown as DatabaseAdapter
 
     await new RelationTableLoader(adapter).selectRows({
       table: 'role_permissions',

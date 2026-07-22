@@ -22,6 +22,7 @@ const sidebar: SidebarType = [
       { text: 'Casting', link: '/guide/casting' },
       { text: 'Query Builder', link: '/guide/query-builder' },
       { text: 'Expressions & Aggregation', link: '/guide/expressions' },
+      { text: 'Helpers', link: '/guide/helpers' },
       { text: 'Collections', link: '/guide/collections' },
       { text: 'Transactions', link: '/guide/transactions' },
       { text: 'Pagination', link: '/guide/pagination' },
