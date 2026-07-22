@@ -167,6 +167,10 @@ import {
 } from 'arkormx'
 ```
 
+`models:sync` generates `.arkormx/models.d.ts` from discovered model files. That
+file augments Arkorm's model registry type so string relationship references
+such as `this.belongsTo('User')` remain type-safe.
+
 The `Arkorm` class exposes the same registration and discovery helpers as
 static and instance methods:
 
