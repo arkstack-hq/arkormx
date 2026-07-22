@@ -135,7 +135,11 @@ export function getModel<TModel extends RelatedModelClass = RelatedModelClass>(
 ): TModel
 export function getModel(modelName: string): RelatedModelClass {
   const normalized = modelName.trim()
-  const exportName = normalized.replace(/\\/g, '/').split('/').pop()?.replace(/\.[^.]+$/, '')
+  const exportName = normalized
+    .replace(/\\/g, '/')
+    .split('/')
+    .pop()
+    ?.replace(/\.[^.]+$/, '')
 
   if (!normalized || !exportName) throw new Error('Model name is required.')
 
