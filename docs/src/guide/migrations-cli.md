@@ -392,7 +392,13 @@ in relationships can be checked by TypeScript.
 ```sh
 npx arkorm models:sync
 npx arkorm models:sync --schema ./prisma/schema.prisma --models ./src/models
+npx arkorm models:sync --registry-only
+npx arkorm models:sync -r
 ```
+
+Use `--registry-only` (`-r`) when you only want to regenerate
+`.arkormx/models.d.ts` for string relationship typing and do not want to update
+model `declare` attributes.
 
 ## Run migrations
 
@@ -410,6 +416,7 @@ npx arkorm models:sync --schema ./prisma/schema.prisma --models ./src/models
 - `--create-database`: for adapters that support database creation, create the configured database when missing instead of prompting.
 - `--state-file=<path>`: use a custom applied-migration state file instead of the default.
 - `--schema=<path>`: override the `schema.prisma` path (Prisma/file-backed flows).
+- `--registry` / `-r`: regenerate `.arkormx/models.d.ts` after a successful migration.
 
 ```sh
 npx arkorm migrate --all
@@ -417,6 +424,7 @@ npx arkorm migrate CreateUsersMigration
 npx arkorm migrate --all --skip-generate --skip-migrate
 npx arkorm migrate --all --deploy
 npx arkorm migrate --all --create-database
+npx arkorm migrate --all --registry
 ```
 
 ### Rebuild the schema from scratch

@@ -1,5 +1,4 @@
 import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
-import { PrismaDatabaseAdapter } from '../adapters/PrismaDatabaseAdapter'
 import {
   PRISMA_ENUM_REGEX,
   applyCreateTableOperation,
@@ -25,6 +24,7 @@ import {
 
 import { Command } from '@h3ravel/musket'
 import { Logger } from '@h3ravel/shared'
+import { PrismaDatabaseAdapter } from '../adapters/PrismaDatabaseAdapter'
 import { createRequire } from 'module'
 import { str } from '@h3ravel/support'
 
@@ -46,7 +46,7 @@ type SyncedModelSource = {
 }
 
 type SyncedModelsResult = {
-  source: 'adapter' | 'prisma'
+  source: 'adapter' | 'prisma' | 'registry'
   schemaPath?: string
   modelsDir: string
   modelTypesPath?: string
@@ -879,6 +879,14 @@ export class CliApp {
     return { updated, skipped }
   }
 
+  private resolveModelFiles(modelsDir: string): string[] {
+    if (!existsSync(modelsDir)) throw new Error(`Models directory not found: ${modelsDir}`)
+
+    return readdirSync(modelsDir)
+      .filter((file: string) => file.endsWith('.ts'))
+      .map((file) => join(modelsDir, file))
+  }
+
   private syncModelRegistryTypes(
     modelFiles: string[],
   ): { path: string; updated: boolean } {
@@ -1197,11 +1205,7 @@ export class CliApp {
   ): Promise<SyncedModelsResult> {
     const modelsDir =
       options.modelsDir ?? this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
-    if (!existsSync(modelsDir)) throw new Error(`Models directory not found: ${modelsDir}`)
-
-    const modelFiles = readdirSync(modelsDir)
-      .filter((file: string) => file.endsWith('.ts'))
-      .map((file) => join(modelsDir, file))
+    const modelFiles = this.resolveModelFiles(modelsDir)
 
     const adapter = this.getConfig('adapter')
     if (adapter && typeof adapter.introspectModels === 'function') {
@@ -1249,6 +1253,25 @@ export class CliApp {
       ...prismaResult,
     }
   }
+  public syncModelRegistry(
+    options: {
+      modelsDir?: string
+    } = {},
+  ): SyncedModelsResult {
+    const modelsDir =
+      options.modelsDir ?? this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
+    const modelFiles = this.resolveModelFiles(modelsDir)
+    const modelTypes = this.syncModelRegistryTypes(modelFiles)
+
+    return {
+      source: 'registry',
+      modelsDir,
+      modelTypesPath: modelTypes.path,
+      total: modelFiles.length,
+      updated: modelTypes.updated ? [modelTypes.path] : [],
+      skipped: [],
+    }
+  }
 
   /**
    * Sync model attribute declarations in model files based on the Prisma schema.
@@ -1279,15 +1302,12 @@ export class CliApp {
       options.modelsDir ?? this.resolveConfigPath('models', join(process.cwd(), 'src', 'models'))
 
     if (!existsSync(schemaPath)) throw new Error(`Prisma schema file not found: ${schemaPath}`)
-    if (!existsSync(modelsDir)) throw new Error(`Models directory not found: ${modelsDir}`)
 
     const schema = readFileSync(schemaPath, 'utf-8')
     const prismaEnums = this.parsePrismaEnums(schema)
     const prismaModels = this.parsePrismaModels(schema)
 
-    const modelFiles = readdirSync(modelsDir)
-      .filter((file: string) => file.endsWith('.ts'))
-      .map((file) => join(modelsDir, file))
+    const modelFiles = this.resolveModelFiles(modelsDir)
 
     const result = this.syncModelFiles(
       modelFiles,

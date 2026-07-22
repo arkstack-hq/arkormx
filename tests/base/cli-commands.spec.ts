@@ -407,6 +407,58 @@ describe('CLI command classes', () => {
     expect(successLines.some((line) => line.includes('Processed'))).toBe(true)
   })
 
+  it('ModelsSyncCommand can sync only the generated model registry types', async () => {
+    const workspace = makeTempDir('arkormx-cmd-models-sync-registry-only-')
+    process.chdir(workspace)
+
+    const schemaPath = writeBaseSchema(workspace)
+    const modelsDir = join(workspace, 'src', 'models')
+    mkdirSync(modelsDir, { recursive: true })
+
+    writeFileSync(
+      schemaPath,
+      readFileSync(schemaPath, 'utf-8') +
+        [
+          'model User {',
+          '  id Int @id @default(autoincrement())',
+          '  email String @unique',
+          '  @@map("users")',
+          '}',
+          '',
+        ].join('\n'),
+    )
+
+    const userModelPath = join(modelsDir, 'User.ts')
+    const originalSource = [
+      "import { Model } from 'arkormx'",
+      '',
+      'export class User extends Model {}',
+      '',
+    ].join('\n')
+    writeFileSync(userModelPath, originalSource)
+
+    const app = new CliApp()
+    const command = new ModelsSyncCommand(app, new Kernel(app))
+    ;(command as unknown as { app: CliApp }).app = app
+    const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
+      schema: schemaPath,
+      models: modelsDir,
+      'registry-only': true,
+    })
+
+    await command.handle()
+
+    const modelTypesPath = join(workspace, '.arkormx', 'models.d.ts')
+    const modelTypesSource = readFileSync(modelTypesPath, 'utf-8')
+
+    expect(readFileSync(userModelPath, 'utf-8')).toBe(originalSource)
+    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
+    expect(modelTypesSource).toContain('User: typeof User')
+    expect(errorLines).toHaveLength(0)
+    expect(successLines.some((line) => line.includes('model registry'))).toBe(true)
+    expect(successLines.some((line) => line.includes('Model Types'))).toBe(true)
+  })
+
   it('ModelsSyncCommand includes json, enum imports, and list declarations', async () => {
     const workspace = makeTempDir('arkormx-cmd-models-sync-json-enum-')
     process.chdir(workspace)
@@ -767,7 +819,14 @@ describe('CLI command classes', () => {
 
     const schemaPath = writeBaseSchema(workspace)
     const migrationsDir = join(workspace, 'database', 'migrations')
+    const modelsDir = join(workspace, 'src', 'models')
     mkdirSync(migrationsDir, { recursive: true })
+    mkdirSync(modelsDir, { recursive: true })
+
+    writeFileSync(
+      join(modelsDir, 'User.ts'),
+      ["import { Model } from 'arkormx'", '', 'export class User extends Model {}', ''].join('\n'),
+    )
 
     const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
     writeFileSync(
@@ -789,6 +848,7 @@ describe('CLI command classes', () => {
     configureArkormRuntime(() => ({}), {
       paths: {
         migrations: migrationsDir,
+        models: modelsDir,
       },
     })
 
@@ -799,14 +859,19 @@ describe('CLI command classes', () => {
       all: true,
       'skip-generate': true,
       'skip-migrate': true,
+      registry: true,
       schema: schemaPath,
     })
 
     await command.handle()
 
     expect(errorLines).toHaveLength(0)
+    expect(readFileSync(join(workspace, '.arkormx', 'models.d.ts'), 'utf-8')).toContain(
+      'User: typeof User',
+    )
     expect(successLines.some((line) => line.includes('Applied 1 migration(s).'))).toBe(true)
     expect(successLines.some((line) => line.includes('Migrated'))).toBe(true)
+    expect(successLines.some((line) => line.includes('Model Types'))).toBe(true)
   })
 
   it('MigrationHistoryCommand shows and resets tracked migration state', async () => {
