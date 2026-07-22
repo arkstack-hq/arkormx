@@ -160,6 +160,7 @@ The corresponding getters return the constructors currently registered:
 
 ```ts
 import {
+  getModel,
   getRegisteredFactories,
   getRegisteredMigrations,
   getRegisteredModels,
@@ -171,6 +172,20 @@ import {
 file augments Arkorm's model registry type so string relationship references
 such as `this.belongsTo('User')` remain type-safe.
 
+Use `getModel()` when you need to resolve a model constructor by name without
+importing it directly:
+
+```ts
+import { getModel } from 'arkormx'
+
+const User = getModel('User')
+const users = await User.query().get()
+```
+
+`getModel()` is synchronous. It returns already registered models first, then
+loads from the configured model paths and registers the loaded constructor.
+After running `models:sync`, registered names infer the exact constructor type.
+
 The `Arkorm` class exposes the same registration and discovery helpers as
 static and instance methods:
 
@@ -179,6 +194,7 @@ import { Arkorm } from 'arkormx'
 
 Arkorm.loadModelsFrom('./packages/billing/src/models')
 Arkorm.registerModels(AuditLog)
+const User = Arkorm.getModel('User')
 
 const arkorm = new Arkorm()
 arkorm.loadSeedersFrom('./database/seeders')
