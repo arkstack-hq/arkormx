@@ -453,6 +453,7 @@ describe('CLI command classes', () => {
 
     expect(readFileSync(userModelPath, 'utf-8')).toBe(originalSource)
     expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
+    expect(modelTypesSource).toContain("declare module 'arkormx'")
     expect(modelTypesSource).toContain('User: typeof User')
     expect(errorLines).toHaveLength(0)
     expect(successLines.some((line) => line.includes('model registry'))).toBe(true)
