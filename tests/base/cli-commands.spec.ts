@@ -399,9 +399,8 @@ describe('CLI command classes', () => {
     expect(updatedSource).toContain('declare email: string')
     expect(updatedSource).toContain('declare nickname: string | null')
     expect(updatedSource).toContain('declare isActive: boolean')
-    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
     expect(modelTypesSource).toContain("declare module 'arkormx'")
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
     expect(errorLines).toHaveLength(0)
     expect(successLines.some((line) => line.includes('SUCCESS: Model sync completed'))).toBe(true)
     expect(successLines.some((line) => line.includes('Processed'))).toBe(true)
@@ -411,28 +410,17 @@ describe('CLI command classes', () => {
     const workspace = makeTempDir('arkormx-cmd-models-sync-registry-only-')
     process.chdir(workspace)
 
-    const schemaPath = writeBaseSchema(workspace)
     const modelsDir = join(workspace, 'src', 'models')
     mkdirSync(modelsDir, { recursive: true })
-
-    writeFileSync(
-      schemaPath,
-      readFileSync(schemaPath, 'utf-8') +
-        [
-          'model User {',
-          '  id Int @id @default(autoincrement())',
-          '  email String @unique',
-          '  @@map("users")',
-          '}',
-          '',
-        ].join('\n'),
-    )
 
     const userModelPath = join(modelsDir, 'User.ts')
     const originalSource = [
       "import { Model } from 'arkormx'",
       '',
-      'export class User extends Model {}',
+      'export class User extends Model {',
+      '  declare id: number',
+      '  declare email: string',
+      '}',
       '',
     ].join('\n')
     writeFileSync(userModelPath, originalSource)
@@ -441,7 +429,6 @@ describe('CLI command classes', () => {
     const command = new ModelsSyncCommand(app, new Kernel(app))
     ;(command as unknown as { app: CliApp }).app = app
     const { successLines, errorLines } = attachCommandIo(command as unknown as any, {
-      schema: schemaPath,
       models: modelsDir,
       'registry-only': true,
     })
@@ -452,9 +439,9 @@ describe('CLI command classes', () => {
     const modelTypesSource = readFileSync(modelTypesPath, 'utf-8')
 
     expect(readFileSync(userModelPath, 'utf-8')).toBe(originalSource)
-    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
+    expect(modelTypesSource).not.toContain("import type { User } from '../src/models/User'")
     expect(modelTypesSource).toContain("declare module 'arkormx'")
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
     expect(errorLines).toHaveLength(0)
     expect(successLines.some((line) => line.includes('model registry'))).toBe(true)
     expect(successLines.some((line) => line.includes('Model Types'))).toBe(true)
@@ -868,7 +855,7 @@ describe('CLI command classes', () => {
 
     expect(errorLines).toHaveLength(0)
     expect(readFileSync(join(workspace, '.arkormx', 'models.d.ts'), 'utf-8')).toContain(
-      'User: typeof User',
+      "User: typeof import('../src/models/User')['User']",
     )
     expect(successLines.some((line) => line.includes('Applied 1 migration(s).'))).toBe(true)
     expect(successLines.some((line) => line.includes('Migrated'))).toBe(true)

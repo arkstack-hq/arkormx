@@ -181,7 +181,8 @@ const users = await User.query().get()
 
 `getModel()` is synchronous. It returns already registered models first, then
 loads from the configured model paths and registers the loaded constructor.
-After running `models:sync`, registered names infer the exact constructor type.
+After running `models:sync`, registered names infer the same relationship type
+as passing the model constructor directly.
 
 The `Arkorm` class exposes the same registration and discovery helpers as
 static and instance methods:

@@ -279,8 +279,8 @@ describe('CLI application', () => {
     expect(updatedSource).toContain('declare email: string')
     expect(updatedSource).toContain('declare nickname: string | null')
     expect(updatedSource).toContain('declare isActive: boolean')
-    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).not.toContain("import type { User } from '../src/models/User'")
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
   })
 
   it('syncs registry types for mixin-composed and inherited model classes', () => {
@@ -335,12 +335,9 @@ describe('CLI application', () => {
     const modelTypesSource = readFileSync(join(workspace, '.arkormx', 'models.d.ts'), 'utf-8')
 
     expect(result.total).toBe(3)
-    expect(modelTypesSource).toContain("import type { Post } from '../src/models/Post'")
-    expect(modelTypesSource).toContain("import type { Story } from '../src/models/Story'")
-    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
-    expect(modelTypesSource).toContain('Post: typeof Post')
-    expect(modelTypesSource).toContain('Story: typeof Story')
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).toContain("Post: typeof import('../src/models/Post')['Post']")
+    expect(modelTypesSource).toContain("Story: typeof import('../src/models/Story')['Story']")
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
   })
 
   it('syncs json, enum imports, and list declarations from prisma schema', () => {
@@ -402,7 +399,7 @@ describe('CLI application', () => {
     expect(updatedSource).toContain('declare snapshots: Array<Record<string, unknown> | unknown[]>')
     expect(updatedSource).toContain('declare status: UserStatus')
     expect(updatedSource).toContain('declare tags: Array<UserStatus>')
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
   })
 
   it('preserves compatible manual declaration overrides', () => {
@@ -463,7 +460,7 @@ describe('CLI application', () => {
     expect(updatedSource).toContain('declare metadata: string[]')
     expect(updatedSource).toContain("declare status: 'ACTIVE'")
     expect(updatedSource).not.toContain("import type { UserStatus } from '@prisma/client'")
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
   })
 
   it('syncs model declarations from adapter introspection when available', async () => {
@@ -513,6 +510,6 @@ describe('CLI application', () => {
     expect(updatedSource).toContain('declare id: number')
     expect(updatedSource).toContain('declare email: string')
     expect(updatedSource).toContain('declare isActive: boolean')
-    expect(modelTypesSource).toContain('User: typeof User')
+    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
   })
 })
