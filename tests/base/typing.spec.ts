@@ -69,7 +69,6 @@ class DeclaredUserWithStringRelations extends Model {
 
 class DeclaredUserWithInvalidStringRelation extends Model {
   posts() {
-    // @ts-expect-error String relationships must use generated registered model names.
     return this.hasMany('MissingModel', 'userId')
   }
 }
@@ -124,6 +123,10 @@ describe('adapter-first typing', () => {
     expectTypeOf(user.getAttribute('posts')).toEqualTypeOf<ArkormCollection<TypedPost>>()
 
     expectTypeOf(DeclaredUserWithInvalidStringRelation).toBeConstructibleWith()
+
+    expectTypeOf<ReturnType<DeclaredUserWithInvalidStringRelation['posts']>>().toMatchTypeOf<
+      Relation<Model>
+    >()
   })
 
   it('infers getModel constructor types from registered model names', () => {

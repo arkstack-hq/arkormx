@@ -283,6 +283,66 @@ describe('CLI application', () => {
     expect(modelTypesSource).toContain('User: typeof User')
   })
 
+  it('syncs registry types for mixin-composed and inherited model classes', () => {
+    const tempWorkspace = makeTempDir('arkormx-cli-model-sync-mixin-registry-')
+    process.chdir(tempWorkspace)
+    const workspace = process.cwd()
+    const modelsDir = join(workspace, 'src', 'models')
+
+    mkdirSync(modelsDir, { recursive: true })
+    writeFileSync(
+      join(modelsDir, 'Story.ts'),
+      [
+        "import { Model } from 'arkormx'",
+        "import { use } from '@arkstack/common/utils'",
+        "import { HasMedia } from './traits/HasMedia'",
+        '',
+        'export class Story extends use(HasMedia, Model) {}',
+        '',
+      ].join('\n'),
+    )
+    writeFileSync(
+      join(modelsDir, 'User.ts'),
+      [
+        "import { User as BaseUser } from '@arkstack/auth'",
+        '',
+        'export class User extends BaseUser {}',
+        '',
+      ].join('\n'),
+    )
+    writeFileSync(
+      join(modelsDir, 'Post.ts'),
+      [
+        "import { Model } from 'arkormx'",
+        "import { use } from '@arkstack/common/utils'",
+        "import { Reactable } from './traits/Reactable'",
+        "import { Votable } from './traits/Votable'",
+        '',
+        'export class Post extends use(Votable, Reactable, Model) {',
+        "  protected static table = 'posts'",
+        '}',
+        '',
+      ].join('\n'),
+    )
+
+    const app = createCliApp({
+      paths: {
+        models: modelsDir,
+      },
+    })
+
+    const result = app.syncModelRegistry({ modelsDir })
+    const modelTypesSource = readFileSync(join(workspace, '.arkormx', 'models.d.ts'), 'utf-8')
+
+    expect(result.total).toBe(3)
+    expect(modelTypesSource).toContain("import type { Post } from '../src/models/Post'")
+    expect(modelTypesSource).toContain("import type { Story } from '../src/models/Story'")
+    expect(modelTypesSource).toContain("import type { User } from '../src/models/User'")
+    expect(modelTypesSource).toContain('Post: typeof Post')
+    expect(modelTypesSource).toContain('Story: typeof Story')
+    expect(modelTypesSource).toContain('User: typeof User')
+  })
+
   it('syncs json, enum imports, and list declarations from prisma schema', () => {
     const tempWorkspace = makeTempDir('arkormx-cli-model-sync-json-enum-')
     process.chdir(tempWorkspace)

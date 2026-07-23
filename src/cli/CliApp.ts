@@ -825,9 +825,7 @@ export class CliApp {
   }
 
   private parseModelSyncSource(modelSource: string): SyncedModelSource | null {
-    const classMatch = modelSource.match(
-      /export\s+class\s+(\w+)\s+extends\s+Model(?:<[^\n]+>)?\s*\{/,
-    )
+    const classMatch = modelSource.match(/export\s+(?:abstract\s+)?class\s+(\w+)\s+extends\s+/)
     if (!classMatch) return null
 
     const className = classMatch[1]
