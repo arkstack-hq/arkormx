@@ -25,7 +25,7 @@ type ProductAttributes = {
   metadata: Record<string, unknown> | null
 }
 
-class Product extends Model<ProductAttributes> { }
+class Product extends Model<ProductAttributes> {}
 
 class DeclaredUser extends Model {
   declare id: number

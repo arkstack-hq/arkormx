@@ -19,15 +19,15 @@ const makeTempDir = (prefix: string): string => {
 const createCliApp = (config: Partial<ArkormConfig>): CliApp => {
   const app = new CliApp()
 
-    ; (app as unknown as { getConfig: (key?: keyof ArkormConfig) => unknown }).getConfig = <
-      K extends keyof ArkormConfig,
-    >(
-      key?: K,
-    ): Partial<ArkormConfig>[K] | Partial<ArkormConfig> => {
-      if (!key) return config
+  ;(app as unknown as { getConfig: (key?: keyof ArkormConfig) => unknown }).getConfig = <
+    K extends keyof ArkormConfig,
+  >(
+    key?: K,
+  ): Partial<ArkormConfig>[K] | Partial<ArkormConfig> => {
+    if (!key) return config
 
-      return config[key]
-    }
+    return config[key]
+  }
 
   return app
 }
@@ -78,8 +78,8 @@ describe('CLI application', () => {
         migrations: join(workspace, 'database', 'migrations'),
       },
     })
-      ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
-        true
+    ;(app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
+      true
 
     const created = app.makeModel('User', { all: true })
 
@@ -111,8 +111,8 @@ describe('CLI application', () => {
         models: join(workspace, 'src', 'models'),
       },
     })
-      ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
-        true
+    ;(app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
+      true
 
     const created = app.makeModel('User')
 
@@ -135,8 +135,8 @@ describe('CLI application', () => {
         models: join(workspace, 'src', 'models'),
       },
     })
-      ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
-        true
+    ;(app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
+      true
 
     const before = readFileSync(schemaPath, 'utf-8')
     const created = app.makeModel('User')
@@ -161,8 +161,8 @@ describe('CLI application', () => {
         migrations: join(workspace, 'database', 'migrations'),
       },
     })
-      ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
-        false
+    ;(app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
+      false
 
     const factory = app.makeFactory('User')
     const seeder = app.makeSeeder('Database')
@@ -196,8 +196,8 @@ describe('CLI application', () => {
         factories: join(workspace, 'database', 'factories'),
       },
     })
-      ; (app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
-        true
+    ;(app as unknown as { hasTypeScriptInstalled: () => boolean }).hasTypeScriptInstalled = () =>
+      true
 
     const created = app.makeFactory('User')
     const source = readFileSync(created.path, 'utf-8')
@@ -242,16 +242,16 @@ describe('CLI application', () => {
     writeFileSync(
       schemaPath,
       readFileSync(schemaPath, 'utf-8') +
-      [
-        'model User {',
-        '  id Int @id @default(autoincrement())',
-        '  email String @unique',
-        '  nickname String?',
-        '  isActive Boolean',
-        '  @@map("users")',
-        '}',
-        '',
-      ].join('\n'),
+        [
+          'model User {',
+          '  id Int @id @default(autoincrement())',
+          '  email String @unique',
+          '  nickname String?',
+          '  isActive Boolean',
+          '  @@map("users")',
+          '}',
+          '',
+        ].join('\n'),
     )
 
     const modelPath = join(modelsDir, 'User.ts')
@@ -363,24 +363,24 @@ describe('CLI application', () => {
     writeFileSync(
       schemaPath,
       readFileSync(schemaPath, 'utf-8') +
-      [
-        'enum UserStatus {',
-        '  ACTIVE @map("active")',
-        '  SUSPENDED @map("suspended")',
-        '  @@map("user_status")',
-        '}',
-        '',
-        'model User {',
-        '  id Int @id @default(autoincrement())',
-        '  metadata Json',
-        '  preferences Json?',
-        '  snapshots Json[]',
-        '  status UserStatus',
-        '  tags UserStatus[]',
-        '  @@map("users")',
-        '}',
-        '',
-      ].join('\n'),
+        [
+          'enum UserStatus {',
+          '  ACTIVE @map("active")',
+          '  SUSPENDED @map("suspended")',
+          '  @@map("user_status")',
+          '}',
+          '',
+          'model User {',
+          '  id Int @id @default(autoincrement())',
+          '  metadata Json',
+          '  preferences Json?',
+          '  snapshots Json[]',
+          '  status UserStatus',
+          '  tags UserStatus[]',
+          '  @@map("users")',
+          '}',
+          '',
+        ].join('\n'),
     )
 
     const modelPath = join(modelsDir, 'User.ts')
@@ -425,19 +425,19 @@ describe('CLI application', () => {
     writeFileSync(
       schemaPath,
       readFileSync(schemaPath, 'utf-8') +
-      [
-        'enum UserStatus {',
-        '  ACTIVE',
-        '  SUSPENDED',
-        '}',
-        '',
-        'model User {',
-        '  metadata Json',
-        '  status UserStatus',
-        '  @@map("users")',
-        '}',
-        '',
-      ].join('\n'),
+        [
+          'enum UserStatus {',
+          '  ACTIVE',
+          '  SUSPENDED',
+          '}',
+          '',
+          'model User {',
+          '  metadata Json',
+          '  status UserStatus',
+          '  @@map("users")',
+          '}',
+          '',
+        ].join('\n'),
     )
 
     const modelPath = join(modelsDir, 'User.ts')
