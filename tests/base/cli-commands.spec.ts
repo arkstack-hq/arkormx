@@ -400,7 +400,9 @@ describe('CLI command classes', () => {
     expect(updatedSource).toContain('declare nickname: string | null')
     expect(updatedSource).toContain('declare isActive: boolean')
     expect(modelTypesSource).toContain("declare module 'arkormx'")
-    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
+    expect(modelTypesSource).toContain('interface ArkormModelNameRegistry')
+    expect(modelTypesSource).toContain('User: true')
+    expect(modelTypesSource).toContain("modelName: 'User'")
     expect(errorLines).toHaveLength(0)
     expect(successLines.some((line) => line.includes('SUCCESS: Model sync completed'))).toBe(true)
     expect(successLines.some((line) => line.includes('Processed'))).toBe(true)
@@ -441,7 +443,9 @@ describe('CLI command classes', () => {
     expect(readFileSync(userModelPath, 'utf-8')).toBe(originalSource)
     expect(modelTypesSource).not.toContain("import type { User } from '../src/models/User'")
     expect(modelTypesSource).toContain("declare module 'arkormx'")
-    expect(modelTypesSource).toContain("User: typeof import('../src/models/User')['User']")
+    expect(modelTypesSource).toContain('interface ArkormModelNameRegistry')
+    expect(modelTypesSource).toContain('User: true')
+    expect(modelTypesSource).toContain("modelName: 'User'")
     expect(errorLines).toHaveLength(0)
     expect(successLines.some((line) => line.includes('model registry'))).toBe(true)
     expect(successLines.some((line) => line.includes('Model Types'))).toBe(true)
@@ -855,7 +859,7 @@ describe('CLI command classes', () => {
 
     expect(errorLines).toHaveLength(0)
     expect(readFileSync(join(workspace, '.arkormx', 'models.d.ts'), 'utf-8')).toContain(
-      "User: typeof import('../src/models/User')['User']",
+      "modelName: 'User'",
     )
     expect(successLines.some((line) => line.includes('Applied 1 migration(s).'))).toBe(true)
     expect(successLines.some((line) => line.includes('Migrated'))).toBe(true)

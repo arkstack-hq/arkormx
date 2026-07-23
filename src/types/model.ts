@@ -19,6 +19,8 @@ import { QueryBuilder } from 'src'
 // Generated `.arkormx/models.d.ts` files augment this interface with known model names.
 // eslint-disable-next-line @typescript-eslint/no-empty-object-type
 export interface ArkormModelRegistry {}
+// eslint-disable-next-line @typescript-eslint/no-empty-object-type
+export interface ArkormModelNameRegistry {}
 
 type LowercaseString<T extends string> = Lowercase<T>
 type Simplify<TValue> = { [TKey in keyof TValue]: TValue[TKey] } & {}
@@ -286,10 +288,16 @@ export type RelatedModelClass<TInstance = unknown> = (abstract new (
 ) => TInstance) &
   RelationshipModelStatic
 
-export type RegisteredModelName = keyof ArkormModelRegistry & string
+export type RegisteredModelName =
+  | (keyof ArkormModelRegistry & string)
+  | (keyof ArkormModelNameRegistry & string)
 
 export type RegisteredModelClass<TName extends RegisteredModelName> =
-  ArkormModelRegistry[TName] extends RelatedModelClass ? ArkormModelRegistry[TName] : never
+  TName extends keyof ArkormModelRegistry
+    ? ArkormModelRegistry[TName] extends RelatedModelClass
+      ? ArkormModelRegistry[TName]
+      : typeof Model
+    : typeof Model
 
 export type RegisteredModelInstance<TName extends RegisteredModelName> =
   RegisteredModelClass<TName> extends abstract new (...args: any[]) => infer TInstance

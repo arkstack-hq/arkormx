@@ -166,8 +166,15 @@ import {
 ```
 
 `models:sync` generates `.arkormx/models.d.ts` from discovered model files. That
-file augments Arkorm's model registry type so string relationship references
-such as `this.belongsTo('User')` remain type-safe.
+file augments Arkorm's known model names for string relationship completion and
+adds exact `getModel()` overloads. Use a type-only import and an explicit
+related-model generic when defining a fully typed string relationship:
+
+```ts
+import type { User } from './User'
+
+return this.belongsTo<User>('User')
+```
 
 Use `getModel()` when you need to resolve a model constructor by name without
 importing it directly:
@@ -181,8 +188,8 @@ const users = await User.query().get()
 
 `getModel()` is synchronous. It returns already registered models first, then
 loads from the configured model paths and registers the loaded constructor.
-After running `models:sync`, registered names infer the same relationship type
-as passing the model constructor directly.
+After running `models:sync`, literal registered names return their exact model
+constructor type.
 
 The `Arkorm` class exposes the same registration and discovery helpers as
 static and instance methods:

@@ -64,20 +64,24 @@ For static TypeScript field completion on direct properties, sync declarations w
 npx arkorm models:sync
 ```
 
-The sync command also writes `.arkormx/models.d.ts`, which maps registered model
-class names to their constructors. Arkorm uses that generated declaration to
-type string-based relationships:
+The sync command also writes `.arkormx/models.d.ts`, which registers known
+model names for completion and adds exact `getModel()` overloads. For a fully
+typed string relationship, provide the related instance type explicitly:
 
 ```ts
+import type { User } from './User'
+
 class Book extends Model {
   owner() {
-    return this.belongsTo('User')
+    return this.belongsTo<User>('User')
   }
 }
 ```
 
-With the generated registry in place, `owner()` is typed as a relation to
-`User`, while unknown model-name strings are rejected.
+The type-only import is removed from emitted JavaScript, so it does not create a
+runtime circular dependency. `owner()` is typed as a relation to the complete
+`User` class, including its custom methods and relationships. Without the
+generic, string relationships use the base `Model` instance type.
 
 When the active adapter supports schema introspection, `models:sync` reads the
 database structure directly. Otherwise it falls back to the Prisma schema.

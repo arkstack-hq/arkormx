@@ -25,19 +25,29 @@ imports in model graphs such as `User -> Book -> User`:
 
 ```ts
 // User.ts
+import type { Book } from './Book'
+
 class User extends Model {
   books() {
-    return this.hasMany('Book', 'userId', 'id')
+    return this.hasMany<Book>('Book', 'userId', 'id')
   }
 }
 
 // Book.ts
+import type { User } from './User'
+
 class Book extends Model {
   owner() {
-    return this.belongsTo('User', 'userId', 'id')
+    return this.belongsTo<User>('User', 'userId', 'id')
   }
 }
 ```
+
+The explicit generic is the related model instance type. Because the import is
+type-only, it is erased from the emitted JavaScript and does not create a
+runtime circular dependency. It also preserves the complete related type,
+including custom methods and relationships. Omitting the generic is supported,
+but the related instance is typed as the base `Model`.
 
 The model name must match a class registered through configured model paths,
 `loadModelsFrom()`, or `registerModels()`:
@@ -56,22 +66,23 @@ from the related table and the configured naming case:
 ```ts
 class User extends Model {
   books() {
-    return this.hasMany('Book') // userId when naming.case is "camel"
+    return this.hasMany<Book>('Book') // userId when naming.case is "camel"
   }
 }
 
 class Book extends Model {
   owner() {
-    return this.belongsTo('User') // userId when naming.case is "camel"
+    return this.belongsTo<User>('User') // userId when naming.case is "camel"
   }
 }
 ```
 
 Run `models:sync` to generate `.arkormx/models.d.ts`. That declaration file
-adds the known model-name map used by TypeScript, so string relationships infer
-the same related model type as constructor relationships. Unknown string names
-compile as generic `Model` relationships, but must resolve to registered models
-at runtime.
+adds known model names for TypeScript completion and generates exact
+`getModel()` overloads. Relationship instance types come from the explicit
+generic rather than generated copies of application model methods. Arbitrary
+string names compile as generic `Model` relationships, but must resolve to
+registered models at runtime.
 
 Supported relationships:
 
