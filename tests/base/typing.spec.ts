@@ -9,6 +9,10 @@ declare module '../../src/types/model' {
     TypedPost: typeof TypedPost
     TypedProfile: typeof TypedProfile
   }
+
+  interface ArkormModelNameRegistry {
+    LazyUser: true
+  }
 }
 
 type IsAny<TValue> = 0 extends 1 & TValue ? true : false
@@ -21,7 +25,7 @@ type ProductAttributes = {
   metadata: Record<string, unknown> | null
 }
 
-class Product extends Model<ProductAttributes> {}
+class Product extends Model<ProductAttributes> { }
 
 class DeclaredUser extends Model {
   declare id: number
@@ -39,6 +43,63 @@ class TypedPost extends Model {
   declare authorId: number
   declare title: string
   declare createdAt: Date
+}
+
+class LazyUser extends Model {
+  declare id: number
+  declare name: string
+}
+
+class LazyBuyer extends Model {
+  user() {
+    return this.belongsTo<LazyUser>('LazyUser', 'userId', 'id')
+  }
+}
+
+class ExplicitStringRelationModel extends Model {
+  one() {
+    return this.hasOne<LazyUser>('LazyUser', 'ownerId')
+  }
+
+  externalOne() {
+    return this.hasOne<LazyUser>('ExternalUser', 'ownerId')
+  }
+
+  many() {
+    return this.hasMany<LazyUser>('LazyUser', 'ownerId')
+  }
+
+  owner() {
+    return this.belongsTo<LazyUser>('LazyUser', 'ownerId')
+  }
+
+  manyToMany() {
+    return this.belongsToMany<LazyUser>('LazyUser', 'model_users', 'modelId', 'userId')
+  }
+
+  oneThrough() {
+    return this.hasOneThrough<LazyUser>('LazyUser', 'memberships', 'modelId', 'membershipId')
+  }
+
+  manyThrough() {
+    return this.hasManyThrough<LazyUser>('LazyUser', 'memberships', 'modelId', 'membershipId')
+  }
+
+  image() {
+    return this.morphOne<LazyUser>('LazyUser', 'imageable')
+  }
+
+  images() {
+    return this.morphMany<LazyUser>('LazyUser', 'imageable')
+  }
+
+  tags() {
+    return this.morphToMany<LazyUser>('LazyUser', 'taggable')
+  }
+
+  taggedModels() {
+    return this.morphedByMany<LazyUser>('LazyUser', 'taggable')
+  }
 }
 
 class DeclaredUserWithRelations extends Model {
@@ -117,16 +178,48 @@ describe('adapter-first typing', () => {
 
     const user = new DeclaredUserWithStringRelations()
 
-    expectTypeOf(user.profile()).toMatchTypeOf<Relation<TypedProfile>>()
-    expectTypeOf(user.posts()).toMatchTypeOf<Relation<TypedPost>>()
+    expectTypeOf(user.profile()).toExtend<Relation<TypedProfile>>()
+    expectTypeOf(user.posts()).toExtend<Relation<TypedPost>>()
     expectTypeOf(user.getAttribute('profile')).toEqualTypeOf<TypedProfile | null>()
     expectTypeOf(user.getAttribute('posts')).toEqualTypeOf<ArkormCollection<TypedPost>>()
 
     expectTypeOf(DeclaredUserWithInvalidStringRelation).toBeConstructibleWith()
 
-    expectTypeOf<ReturnType<DeclaredUserWithInvalidStringRelation['posts']>>().toMatchTypeOf<
+    expectTypeOf<ReturnType<DeclaredUserWithInvalidStringRelation['posts']>>().toExtend<
       Relation<Model>
     >()
+  })
+
+  it('keeps lazy generated registry instances assignable to the real model class', () => {
+    registerModels(LazyUser)
+
+    const buyer = new LazyBuyer()
+
+    expectTypeOf(buyer.user()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(buyer.getAttribute('user')).toEqualTypeOf<LazyUser | null>()
+
+    const pay = (user: LazyUser): string => user.name
+    const relatedUser = buyer.getAttribute('user')
+
+    if (relatedUser) pay(relatedUser)
+  })
+
+  it('accepts explicit instance types for every string relationship helper', () => {
+    const model = new ExplicitStringRelationModel()
+
+    expectTypeOf(model.one()).toExtend<Relation<LazyUser>>()
+    expectTypeOf<ReturnType<ExplicitStringRelationModel['externalOne']>>().toExtend<
+      Relation<LazyUser>
+    >()
+    expectTypeOf(model.many()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.owner()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.manyToMany()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.oneThrough()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.manyThrough()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.image()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.images()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.tags()).toExtend<Relation<LazyUser>>()
+    expectTypeOf(model.taggedModels()).toExtend<Relation<LazyUser>>()
   })
 
   it('infers getModel constructor types from registered model names', () => {
@@ -170,8 +263,8 @@ describe('adapter-first typing', () => {
       },
     }
 
-    expectTypeOf(loadRelations).toMatchTypeOf<LoadInput>()
-    expectTypeOf(missingRelations).toMatchTypeOf<LoadMissingInput>()
+    expectTypeOf(loadRelations).toExtend<LoadInput>()
+    expectTypeOf(missingRelations).toExtend<LoadMissingInput>()
   })
 
   it('uses a permissive query builder when a relationship loses its related model type', () => {
@@ -270,8 +363,8 @@ describe('adapter-first typing', () => {
       price: 109,
     } satisfies UpdatePayload
 
-    expectTypeOf(validCreateInput).toMatchTypeOf<AttributeCreateInput<ProductAttributes>>()
-    expectTypeOf(validUpdateInput).toMatchTypeOf<AttributeUpdateInput<ProductAttributes>>()
+    expectTypeOf(validCreateInput).toExtend<AttributeCreateInput<ProductAttributes>>()
+    expectTypeOf(validUpdateInput).toExtend<AttributeUpdateInput<ProductAttributes>>()
   })
 
   it('types positional and object where clauses against the model attributes', () => {
@@ -290,7 +383,7 @@ describe('adapter-first typing', () => {
     query.where({ id: 1, name: 'Ada' })
 
     // Attribute-shaped where inputs are assignable to the object overload.
-    expectTypeOf<{ id: number }>().toMatchTypeOf<ModelWhereInput<DeclaredUser>>()
+    expectTypeOf<{ id: number }>().toExtend<ModelWhereInput<DeclaredUser>>()
 
     // @ts-expect-error unknown positional columns are rejected
     query.where('missing', 1)
