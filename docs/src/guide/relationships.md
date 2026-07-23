@@ -69,7 +69,8 @@ class Book extends Model {
 
 Run `models:sync` to generate `.arkormx/models.d.ts`. That declaration file
 adds the known model-name map used by TypeScript, so string relationships keep
-their related model types and unknown names are rejected.
+their related model types. Unknown string names will compile as generic
+`Model` relationships, but they must resolve to registered models at runtime.
 
 Supported relationships:
 
