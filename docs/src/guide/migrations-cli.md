@@ -375,7 +375,8 @@ compatibility adapter does not support it.
 
 `models:sync` updates `declare` attributes inside your Arkorm models from the best available schema source.
 It also generates `.arkormx/models.d.ts` so registered model-name strings used
-in relationships can be checked by TypeScript.
+in relationships have TypeScript completion and `getModel()` calls receive
+exact constructor overloads.
 
 - When the active adapter supports model introspection, Arkorm reads the database structure directly.
 - Otherwise Arkorm falls back to Prisma models from `schema.prisma`.
@@ -397,8 +398,8 @@ npx arkorm models:sync -r
 ```
 
 Use `--registry-only` (`-r`) when you only want to regenerate
-`.arkormx/models.d.ts` for string relationship typing and do not want to update
-model `declare` attributes.
+`.arkormx/models.d.ts` for model-name completion and `getModel()` overloads
+without updating model `declare` attributes.
 
 ## Run migrations
 

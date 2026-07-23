@@ -1693,6 +1693,11 @@ export abstract class Model<
     foreignKey?: string,
     localKey?: string,
   ): HasOneRelation<this, RegisteredModelInstance<TName>>
+  protected hasOne<TRelated extends Model = Model>(
+    related: string,
+    foreignKey?: string,
+    localKey?: string,
+  ): HasOneRelation<this, TRelated>
   protected hasOne(
     related: string,
     foreignKey?: string,
@@ -1733,6 +1738,11 @@ export abstract class Model<
     foreignKey?: string,
     localKey?: string,
   ): HasManyRelation<this, RegisteredModelInstance<TName>>
+  protected hasMany<TRelated extends Model = Model>(
+    related: string,
+    foreignKey?: string,
+    localKey?: string,
+  ): HasManyRelation<this, TRelated>
   protected hasMany(
     related: string,
     foreignKey?: string,
@@ -1773,6 +1783,11 @@ export abstract class Model<
     foreignKey?: string,
     ownerKey?: string,
   ): BelongsToRelation<this, RegisteredModelInstance<TName>>
+  protected belongsTo<TRelated extends Model = Model>(
+    related: string,
+    foreignKey?: string,
+    ownerKey?: string,
+  ): BelongsToRelation<this, TRelated>
   protected belongsTo(
     related: string,
     foreignKey?: string,
@@ -1821,6 +1836,14 @@ export abstract class Model<
     parentKey?: string,
     relatedKey?: string,
   ): BelongsToManyRelation<this, RegisteredModelInstance<TName>>
+  protected belongsToMany<TRelated extends Model = Model>(
+    related: string,
+    throughTable: string,
+    foreignPivotKey: string,
+    relatedPivotKey: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): BelongsToManyRelation<this, TRelated>
   protected belongsToMany(
     related: string,
     throughTable: string,
@@ -1879,6 +1902,14 @@ export abstract class Model<
     localKey?: string,
     secondLocalKey?: string,
   ): HasOneThroughRelation<this, RegisteredModelInstance<TName>>
+  protected hasOneThrough<TRelated extends Model = Model>(
+    related: string,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey?: string,
+  ): HasOneThroughRelation<this, TRelated>
   protected hasOneThrough(
     related: string,
     throughTable: string,
@@ -1936,6 +1967,14 @@ export abstract class Model<
     localKey?: string,
     secondLocalKey?: string,
   ): HasManyThroughRelation<this, RegisteredModelInstance<TName>>
+  protected hasManyThrough<TRelated extends Model = Model>(
+    related: string,
+    throughTable: string,
+    firstKey: string,
+    secondKey: string,
+    localKey?: string,
+    secondLocalKey?: string,
+  ): HasManyThroughRelation<this, TRelated>
   protected hasManyThrough(
     related: string,
     throughTable: string,
@@ -1990,6 +2029,13 @@ export abstract class Model<
     typeColumn?: string,
     localKey?: string,
   ): MorphOneRelation<this, RegisteredModelInstance<TName>>
+  protected morphOne<TRelated extends Model = Model>(
+    related: string,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphOneRelation<this, TRelated>
   protected morphOne(
     related: string,
     morphName: string,
@@ -2042,6 +2088,13 @@ export abstract class Model<
     typeColumn?: string,
     localKey?: string,
   ): MorphManyRelation<this, RegisteredModelInstance<TName>>
+  protected morphMany<TRelated extends Model = Model>(
+    related: string,
+    morphName: string,
+    idColumn?: string,
+    typeColumn?: string,
+    localKey?: string,
+  ): MorphManyRelation<this, TRelated>
   protected morphMany(
     related: string,
     morphName: string,
@@ -2144,6 +2197,16 @@ export abstract class Model<
     parentKey?: string,
     relatedKey?: string,
   ): MorphToManyRelation<this, RegisteredModelInstance<TName>>
+  protected morphToMany<TRelated extends Model = Model>(
+    related: string,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphToManyRelation<this, TRelated>
   protected morphToMany(
     related: string,
     morphName: string,
@@ -2227,6 +2290,16 @@ export abstract class Model<
     parentKey?: string,
     relatedKey?: string,
   ): MorphedByManyRelation<this, RegisteredModelInstance<TName>>
+  protected morphedByMany<TRelated extends Model = Model>(
+    related: string,
+    morphName: string,
+    throughTable?: string,
+    foreignPivotKey?: string,
+    morphTypeColumn?: string,
+    relatedPivotKey?: string,
+    parentKey?: string,
+    relatedKey?: string,
+  ): MorphedByManyRelation<this, TRelated>
   protected morphedByMany(
     related: string,
     morphName: string,
