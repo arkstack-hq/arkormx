@@ -4,6 +4,7 @@ import {
   getPersistedTableMetadata,
   resolvePersistedMetadataFeatures,
 } from '../helpers/column-mappings'
+
 import { getUserConfig } from '../helpers/runtime-config'
 
 /**
@@ -27,8 +28,29 @@ export class RelationTableLoader {
     return { table, columns: metadata.columns }
   }
 
+  /**
+   * Restore raw column keys on rows the adapter returned.
+   *
+   * @param table
+   * @param rows
+   * @returns
+   */
+  private restoreRawColumns(table: string, rows: DatabaseRow[]): DatabaseRow[] {
+    const entries = Object.entries(this.buildTarget(table).columns ?? {})
+    if (entries.length === 0) return rows
+
+    return rows.map((row) => {
+      const restored: DatabaseRow = { ...row }
+      for (const [attribute, column] of entries) {
+        if (column !== attribute && attribute in restored) restored[column] = restored[attribute]
+      }
+
+      return restored
+    })
+  }
+
   public async selectRows(spec: RelationTableLookupSpec): Promise<DatabaseRow[]> {
-    return await this.adapter.select({
+    const rows = await this.adapter.select({
       target: this.buildTarget(spec.table),
       where: spec.where,
       columns: spec.columns,
@@ -36,10 +58,12 @@ export class RelationTableLoader {
       limit: spec.limit,
       offset: spec.offset,
     })
+
+    return this.restoreRawColumns(spec.table, rows)
   }
 
   public async selectRow(spec: RelationTableLookupSpec): Promise<DatabaseRow | null> {
-    return await this.adapter.selectOne({
+    const row = await this.adapter.selectOne({
       target: this.buildTarget(spec.table),
       where: spec.where,
       columns: spec.columns,
@@ -47,6 +71,8 @@ export class RelationTableLoader {
       limit: spec.limit ?? 1,
       offset: spec.offset,
     })
+
+    return row ? (this.restoreRawColumns(spec.table, [row])[0] ?? null) : null
   }
 
   public async selectColumnValues(spec: RelationColumnLookupSpec): Promise<unknown[]> {
