@@ -32,6 +32,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
   private pivotModel: PivotModelStatic | undefined
   private shouldAttachPivot = false
   private readonly pivotValues = new Map<string, unknown>()
+  private pivotColumnAliasCache: Map<string, string> | undefined
 
   public constructor(
     private readonly parent: TParent & { getAttribute: (key: string) => unknown },
@@ -406,6 +407,42 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
     return this.parent.getAttribute(this.parentKey)
   }
 
+  /**
+   * `column -> attribute` for the pivot table, memoized.
+   *
+   * The query adapter maps result rows back to attribute names via
+   * `reverseColumnMap`, so a pivot column such as `permission_id` is returned
+   * under `permissionId` whenever the pivot table has a registered column map.
+   */
+  private pivotColumnAliases(): Map<string, string> {
+    if (!this.pivotColumnAliasCache) {
+      this.pivotColumnAliasCache = new Map<string, string>()
+      for (const [attribute, column] of Object.entries(this.buildPivotTarget().columns ?? {})) {
+        this.pivotColumnAliasCache.set(column, attribute)
+      }
+    }
+
+    return this.pivotColumnAliasCache
+  }
+
+  /**
+   * Read a pivot column from a selected row under whichever key it is stored.
+   *
+   * Rows read through the query adapter are keyed by attribute name, while
+   * rows from the lightweight table loader keep their raw column names.
+   * Indexing only by the raw column made `sync` (and pivot attachment during
+   * eager loads) treat every existing row as absent, so `sync` re-inserted
+   * rows that already existed and tripped the pivot's unique constraint. Try
+   * the raw column first, then its attribute alias.
+   */
+  private readPivotColumn(row: Record<string, unknown>, column: string): unknown {
+    if (row[column] != null) return row[column]
+
+    const alias = this.pivotColumnAliases().get(column)
+
+    return alias != null ? row[alias] : undefined
+  }
+
   private resolveRelatedPivotValue(related: TRelated | unknown): unknown {
     if (
       related &&
@@ -719,7 +756,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
 
       const existingKeys = new Set<string>()
       for (const row of existingRows) {
-        const relatedValue = row[this.relatedPivotKey]
+        const relatedValue = this.readPivotColumn(row, this.relatedPivotKey)
         if (relatedValue == null) continue
 
         const relatedKey = String(relatedValue)
@@ -807,7 +844,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
 
     const pivotByRelatedKey = new Map<string, Record<string, unknown>>()
     pivotRows.forEach((row) => {
-      const relatedValue = row[this.relatedPivotKey]
+      const relatedValue = this.readPivotColumn(row, this.relatedPivotKey)
       if (relatedValue == null) return
 
       pivotByRelatedKey.set(String(relatedValue), row)
@@ -922,7 +959,7 @@ export class BelongsToManyRelation<TParent, TRelated> extends Relation<TRelated>
    */
   public async getQuery(): Promise<QueryBuilder<TRelated>> {
     const pivotRows = await this.loadPivotRowsForParent()
-    const ids = pivotRows.map((row) => row[this.relatedPivotKey])
+    const ids = pivotRows.map((row) => this.readPivotColumn(row, this.relatedPivotKey))
 
     return this.decorateQueryBuilder(
       this.applyConstraint(this.related.query().where({ [this.relatedKey]: { in: ids } })),
