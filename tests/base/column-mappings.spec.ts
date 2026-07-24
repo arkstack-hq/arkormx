@@ -84,6 +84,53 @@ describe('persisted column mappings', () => {
     })
   })
 
+  it('restores raw column keys on relation-table rows the adapter mapped', async () => {
+    const workspace = makeTempDir('arkormx-relation-table-raw-keys-')
+    process.chdir(workspace)
+
+    mkdirSync(join(workspace, '.arkormx'), { recursive: true })
+    writeFileSync(
+      join(workspace, '.arkormx', 'column-mappings.json'),
+      JSON.stringify({
+        version: 1,
+        tables: {
+          role_permissions: {
+            columns: {
+              roleId: 'role_id',
+              permissionId: 'permission_id',
+            },
+            enums: {},
+          },
+        },
+      }),
+    )
+
+    // The real adapter reverse-maps result keys to attribute names, so a raw
+    // read of `role_id` on the returned row found nothing and belongsToMany
+    // eager loads came back empty. The loader must re-add the raw column key.
+    const adapter = {
+      select: async () => [{ roleId: 'role-1', permissionId: 'permission-1' }],
+      selectOne: async () => ({ roleId: 'role-1', permissionId: 'permission-1' }),
+    } as unknown as DatabaseAdapter
+
+    const loader = new RelationTableLoader(adapter)
+    const [row] = await loader.selectRows({
+      table: 'role_permissions',
+      columns: [{ column: 'role_id' }, { column: 'permission_id' }],
+    })
+
+    expect(row?.role_id).toBe('role-1')
+    expect(row?.permission_id).toBe('permission-1')
+
+    const single = await loader.selectRow({
+      table: 'role_permissions',
+      columns: [{ column: 'role_id' }, { column: 'permission_id' }],
+    })
+
+    expect(single?.role_id).toBe('role-1')
+    expect(single?.permission_id).toBe('permission-1')
+  })
+
   it('merges persisted mappings into model metadata for adapter-backed queries', async () => {
     const workspace = makeTempDir('arkormx-column-mappings-')
     process.chdir(workspace)
