@@ -5081,6 +5081,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     const condition = this.buildQueryWhereCondition(softDeleteOnly)
     const relationFilters = this.tryBuildRelationFilterSpecs()
     const relationAggregates = this.tryBuildRelationAggregateSpecs()
+    const adapterRelationAggregates = this.canExecuteRelationAggregatesInAdapter()
+      ? (relationAggregates ?? undefined)
+      : this.tryBuildOrderedRelationAggregateSpecs()
 
     if (columns === null || orderBy === null || condition === null) return null
 
@@ -5113,9 +5116,10 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       relationFilters: this.canExecuteRelationFiltersInAdapter()
         ? (relationFilters ?? undefined)
         : undefined,
-      relationAggregates: this.canExecuteRelationAggregatesInAdapter()
-        ? (relationAggregates ?? undefined)
-        : undefined,
+      relationAggregates:
+        adapterRelationAggregates && adapterRelationAggregates.length > 0
+          ? adapterRelationAggregates
+          : undefined,
     })
   }
 
@@ -5862,19 +5866,54 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return this.relationAggregates.reduce<RelationAggregateSpec[] | null>((specs, aggregate) => {
       if (!specs) return null
 
-      const metadata = this.model.getRelationMetadata(aggregate.relation)
-      if (!this.isSqlRelationFeatureMetadata(metadata)) return null
+      const spec = this.tryBuildRelationAggregateSpec(aggregate)
+      if (!spec) return null
 
-      const where = this.tryBuildRelationConstraintWhere(aggregate.relation, aggregate.callback)
-      if (where === null) return null
+      specs.push(spec)
 
-      specs.push({
-        relation: aggregate.relation,
-        type: aggregate.type,
-        column: aggregate.column,
-        alias: this.buildAggregateAttributeKey(aggregate),
-        where,
-      })
+      return specs
+    }, [])
+  }
+
+  private tryBuildRelationAggregateSpec(
+    aggregate: (typeof this.relationAggregates)[number],
+  ): RelationAggregateSpec | null {
+    const metadata = this.model.getRelationMetadata(aggregate.relation)
+    if (!this.isSqlRelationFeatureMetadata(metadata)) return null
+
+    const where = this.tryBuildRelationConstraintWhere(aggregate.relation, aggregate.callback)
+    if (where === null) return null
+
+    return {
+      relation: aggregate.relation,
+      type: aggregate.type,
+      column: aggregate.column,
+      alias: this.buildAggregateAttributeKey(aggregate),
+      where,
+    }
+  }
+
+  /**
+   * Compatibility hydration may be required for one aggregate while another,
+   * SQL-compilable aggregate alias is still needed by the database order clause.
+   */
+  private tryBuildOrderedRelationAggregateSpecs(): RelationAggregateSpec[] {
+    if (this.adapter?.capabilities?.relationAggregates !== true) return []
+
+    const orderedAliases = new Set(
+      (this.queryOrderBy ?? []).flatMap((clause) => {
+        if (!clause.expression) return [clause.column]
+        if (clause.expression.kind === 'column') return [clause.expression.name]
+
+        return []
+      }),
+    )
+
+    return this.relationAggregates.reduce<RelationAggregateSpec[]>((specs, aggregate) => {
+      if (!orderedAliases.has(this.buildAggregateAttributeKey(aggregate))) return specs
+
+      const spec = this.tryBuildRelationAggregateSpec(aggregate)
+      if (spec) specs.push(spec)
 
       return specs
     }, [])
