@@ -20,8 +20,10 @@ import {
   Model,
   QueryExecutionException,
   QueryBuilder,
+  col,
   createKyselyAdapter,
   createPrismaDatabaseAdapter,
+  raw,
   registerModels,
 } from '../../src'
 
@@ -638,6 +640,27 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(normalizedSql).toContain('and "title" = $1')
     expect(normalizedSql).toContain('sum("posts"."id")::double precision')
     expect(normalizedSql).toContain('avg("posts"."id")::double precision')
+  })
+
+  it('orders paginated queries by a constrained relation aggregate alias', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const users = await DbPost.query()
+      .addSelect({ position: raw('1') })
+      .with('user')
+      .withCount({
+        'comments as commentsCount': true,
+      })
+      .withExists({
+        'user as activeAuthor': (user) => user.where({ isActive: 1 }),
+      })
+      .orderByRaw('"posts"."id"', [], 'asc')
+      .orderBy(col('activeAuthor'), 'desc')
+      .paginate(100)
+
+    expect(users.data.all()).toHaveLength(3)
+    expect(users.data.all()[0]?.getAttribute('activeAuthor')).toBe(true)
+    expect(users.data.all()[2]?.getAttribute('activeAuthor')).toBe(false)
   })
 
   it('executes eager loading through the Kysely adapter relationLoads path', async () => {
