@@ -435,6 +435,29 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
+   * Adds an OR null check for a key.
+   *
+   * The OR counterpart of {@link whereNull}, so a null check can be combined
+   * inside a grouped `where` callback, e.g. `q.whereFuture('expiresAt').orWhereNull('expiresAt')`.
+   *
+   * @param key
+   * @returns
+   */
+  public orWhereNull<TKey extends keyof ModelAttributes<TModel> & string>(key: TKey): this {
+    return this.orWhere({ [key]: null } as QuerySchemaWhere<TDelegate>)
+  }
+
+  /**
+   * Adds an OR not-null check for a key. The OR counterpart of {@link whereNotNull}.
+   *
+   * @param key
+   * @returns
+   */
+  public orWhereNotNull<TKey extends keyof ModelAttributes<TModel> & string>(key: TKey): this {
+    return this.orWhere({ [key]: { not: null } } as QuerySchemaWhere<TDelegate>)
+  }
+
+  /**
    * Adds a between range clause for a key.
    *
    * @param key
