@@ -574,6 +574,8 @@ export const getRuntimeAdapter = (): DatabaseAdapter | undefined => {
  * processes (the CLI) so the Node event loop drains and the process exits
  * promptly instead of hanging on pool idle timeouts. Teardown failures are
  * swallowed because the process is shutting down anyway.
+ *
+ * @returns
  */
 export const disposeArkormRuntime = async (): Promise<void> => {
   let adapterDisposed = false

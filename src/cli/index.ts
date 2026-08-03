@@ -14,35 +14,28 @@ import { MigrateRollbackCommand } from './commands/MigrateRollbackCommand'
 import { MigrationHistoryCommand } from './commands/MigrationHistoryCommand'
 import { ModelsSyncCommand } from './commands/ModelsSyncCommand'
 import { SeedCommand } from './commands/SeedCommand'
-import { disposeArkormRuntime } from '../helpers/runtime-config'
 import logo from './logo'
 
 const app = new CliApp()
 
-try {
-  await Kernel.init(app, {
-    logo,
-    name: 'Arkormˣ CLI',
-    baseCommands: [
-      DbCommand,
-      InitCommand,
-      MakeModelCommand,
-      MakeFactoryCommand,
-      MakeSeederCommand,
-      MakeMigrationCommand,
-      ModelsSyncCommand,
-      SeedCommand,
-      MigrateCommand,
-      MigrateFreshCommand,
-      MigrateRollbackCommand,
-      MigrationHistoryCommand,
-    ],
-    exceptionHandler(exception) {
-      throw exception
-    },
-  })
-} finally {
-  // Release database connections so the CLI exits promptly instead of hanging on
-  // the connection pool's idle timeout after migrate/seed/etc. finish.
-  await disposeArkormRuntime()
-}
+await Kernel.init(app, {
+  logo,
+  name: 'Arkormˣ CLI',
+  baseCommands: [
+    DbCommand,
+    InitCommand,
+    MakeModelCommand,
+    MakeFactoryCommand,
+    MakeSeederCommand,
+    MakeMigrationCommand,
+    ModelsSyncCommand,
+    SeedCommand,
+    MigrateCommand,
+    MigrateFreshCommand,
+    MigrateRollbackCommand,
+    MigrationHistoryCommand,
+  ],
+  exceptionHandler(exception) {
+    throw exception
+  },
+})
