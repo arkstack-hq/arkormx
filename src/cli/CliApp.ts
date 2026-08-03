@@ -1,4 +1,13 @@
 import { AdapterModelStructure, ArkormConfig, GetUserConfig } from 'src/types'
+import { Application, Command, Musket } from '@h3ravel/musket'
+import {
+  ExistingDeclaration,
+  ParsedDeclarationNode,
+  SyncedModelSource,
+  SyncedModelsResult,
+  SyncedPrismaModel,
+  SyncedPrismaModelField,
+} from 'src/types/cli'
 import {
   PRISMA_ENUM_REGEX,
   applyCreateTableOperation,
@@ -6,6 +15,7 @@ import {
   generateMigrationFile,
 } from '../helpers/migrations'
 import { dirname, extname, join, relative } from 'path'
+import { disposeArkormRuntime, getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
 import {
   existsSync,
   mkdirSync,
@@ -15,58 +25,16 @@ import {
   rmSync,
   writeFileSync,
 } from 'fs'
-import { getDefaultStubsPath, getUserConfig } from '../helpers/runtime-config'
 import {
   getPersistedEnumTsType,
   getPersistedTableMetadata,
   resolvePersistedMetadataFeatures,
 } from '../helpers/column-mappings'
 
-import { Command } from '@h3ravel/musket'
 import { Logger } from '@h3ravel/shared'
 import { PrismaDatabaseAdapter } from '../adapters/PrismaDatabaseAdapter'
 import { createRequire } from 'module'
 import { str } from '@h3ravel/support'
-
-type SyncedPrismaModelField = {
-  name: string
-  type: string
-  nullable: boolean
-}
-
-type SyncedPrismaModel = {
-  name: string
-  table: string
-  fields: SyncedPrismaModelField[]
-}
-
-type SyncedModelSource = {
-  className: string
-  table: string
-}
-
-type SyncedModelsResult = {
-  source: 'adapter' | 'prisma' | 'registry'
-  schemaPath?: string
-  modelsDir: string
-  modelTypesPath?: string
-  total: number
-  updated: string[]
-  skipped: string[]
-}
-
-type ParsedDeclarationNode =
-  | { kind: 'array'; element: ParsedDeclarationNode }
-  | { kind: 'named'; name: string }
-  | { kind: 'null' }
-  | { kind: 'string-literal'; value: string }
-  | { kind: 'union'; types: ParsedDeclarationNode[] }
-
-type ExistingDeclaration = {
-  name: string
-  raw: string
-  type: string
-}
 
 /**
  * Main application class for the Arkormˣ CLI.
@@ -74,11 +42,12 @@ type ExistingDeclaration = {
  * @author Legacy (3m1n3nc3)
  * @since 0.1.0
  */
-export class CliApp {
+export class CliApp extends Application {
   public command!: Command
   protected config: Partial<ArkormConfig> = {}
 
   constructor() {
+    super()
     this.config = getUserConfig()
   }
 
@@ -89,6 +58,14 @@ export class CliApp {
    * @returns The entire configuration object or the value of the specified key
    */
   getConfig: GetUserConfig = getUserConfig
+
+  registerMusketListeners(musket: Musket<this>): void {
+    musket.afterHandle.on(async () => {
+      // Release database connections so the CLI exits promptly instead of hanging on
+      // the connection pool's idle timeout after migrate/seed/etc. finish.
+      await disposeArkormRuntime()
+    })
+  }
 
   private isUsingPrismaAdapter(): boolean {
     const adapter = this.getConfig('adapter')
