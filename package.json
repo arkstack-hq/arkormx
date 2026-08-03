@@ -102,7 +102,7 @@
     "vitest": "^4.1.8"
   },
   "engines": {
-    "node": ">=20.0.0"
+    "node": ">=22.0.0"
   },
   "dependencies": {
     "@h3ravel/collect.js": "^5.4.0",
