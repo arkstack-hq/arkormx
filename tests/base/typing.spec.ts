@@ -294,6 +294,8 @@ describe('adapter-first typing', () => {
 
     relation
       .where({ title: { contains: 'ArkORM' } })
+      .where('title', 'ArkORM')
+      .where((query) => query.whereKey('authorId', 1))
       .orWhere({ authorId: 1 })
       .whereNot({ title: 'Draft' })
       .whereNull('title')
@@ -317,6 +319,9 @@ describe('adapter-first typing', () => {
       .offset(5)
       .limit(10)
       .forPage(2, 10)
+      .when(true, (query) => query.whereHas('comments'))
+      .unless(false, (query) => query.whereDoesntHave('comments'))
+      .tap((query) => query.orWhereHas('comments'))
 
     expectTypeOf(relation.withCount('comments')).toEqualTypeOf<typeof relation>()
 
