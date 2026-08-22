@@ -206,6 +206,21 @@ describe('Model relationships', () => {
     expect(posts.all()[0]?.getAttribute('title')).toBe('A')
   })
 
+  it('forwards conditional and nested relationship constraints through morph-many relations', async () => {
+    const user = await User.query().findOrFail(1)
+    const tapped = vi.fn()
+    const comments = await user
+      .comments()
+      .when(true, (relation) => relation.where('body', 'Hi user'))
+      .unless(false, (relation) => relation.whereNotNull('id'))
+      .tap(tapped)
+      .whereHas('user', (query) => query.where({ email: 'jane@example.com' }))
+      .getResults()
+
+    expect(tapped).toHaveBeenCalledOnce()
+    expect(comments.pluck('id').all()).toEqual([1000])
+  })
+
   it('accepts a model constructor for morph-to resolution', async () => {
     const comment = await Comment.query().find(1000)
     expect(comment).not.toBeNull()

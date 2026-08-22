@@ -11,6 +11,7 @@ import type {
   QuerySchemaSelect,
   RelationAggregateInput,
   RelationMetadata,
+  RelationshipModelStatic,
 } from '../types'
 import type { LengthAwarePaginator, Paginator } from '../Paginator'
 
@@ -168,8 +169,22 @@ export abstract class Relation<TModel> {
    * @param where
    * @returns
    */
-  public where(where: ModelWhereInput<TModel>): this {
-    return this.constrain((query) => query.where(where as never))
+  public where(where: ModelWhereInput<TModel>): this
+  public where(callback: (query: QueryBuilder<TModel>) => unknown): this
+  public where<TKey extends keyof ModelAttributes<TModel> & string>(
+    column: TKey,
+    value: DatabaseValue,
+  ): this
+  public where(
+    whereOrColumn: ModelWhereInput<TModel> | ((query: QueryBuilder<TModel>) => unknown) | string,
+    value?: DatabaseValue,
+  ): this {
+    return this.constrain((query) => {
+      if (typeof whereOrColumn === 'function') return query.where(whereOrColumn as never)
+      if (value !== undefined) return query.where(whereOrColumn as never, value)
+
+      return query.where(whereOrColumn as never)
+    })
   }
 
   /**
@@ -178,8 +193,22 @@ export abstract class Relation<TModel> {
    * @param where
    * @returns
    */
-  public orWhere(where: ModelWhereInput<TModel>): this {
-    return this.constrain((query) => query.orWhere(where as never))
+  public orWhere(where: ModelWhereInput<TModel>): this
+  public orWhere(callback: (query: QueryBuilder<TModel>) => unknown): this
+  public orWhere<TKey extends keyof ModelAttributes<TModel> & string>(
+    column: TKey,
+    value: DatabaseValue,
+  ): this
+  public orWhere(
+    whereOrColumn: ModelWhereInput<TModel> | ((query: QueryBuilder<TModel>) => unknown) | string,
+    value?: DatabaseValue,
+  ): this {
+    return this.constrain((query) => {
+      if (typeof whereOrColumn === 'function') return query.orWhere(whereOrColumn as never)
+      if (value !== undefined) return query.orWhere(whereOrColumn as never, value)
+
+      return query.orWhere(whereOrColumn as never)
+    })
   }
 
   /**
@@ -203,6 +232,68 @@ export abstract class Relation<TModel> {
   }
 
   /**
+   * Apply a callback when the supplied value is truthy.
+   *
+   * Keeping this on the relation avoids forcing callers to await `getQuery()`
+   * merely to compose optional constraints.
+   *
+   * @param value
+   * @param callback
+   * @param defaultCallback
+   * @returns
+   */
+  public when<TValue>(
+    value: TValue | (() => TValue),
+    callback: (relation: this, value: TValue) => unknown,
+    defaultCallback?: (relation: this, value: TValue) => unknown,
+  ): this {
+    const resolved = typeof value === 'function' ? (value as () => TValue)() : value
+
+    if (resolved) callback(this, resolved)
+    else defaultCallback?.(this, resolved)
+
+    return this
+  }
+
+  /**
+   * Apply a callback when the supplied value is falsy.
+   *
+   * @param value
+   * @param callback
+   * @param defaultCallback
+   * @returns
+   */
+  public unless<TValue>(
+    value: TValue | (() => TValue),
+    callback: (relation: this, value: TValue) => unknown,
+    defaultCallback?: (relation: this, value: TValue) => unknown,
+  ): this {
+    const resolved = typeof value === 'function' ? (value as () => TValue)() : value
+
+    if (!resolved) callback(this, resolved)
+    else defaultCallback?.(this, resolved)
+
+    return this
+  }
+
+  /**
+   * Pass the relation through a callback and preserve the chain.
+   *
+   * @param callback
+   * @returns
+   */
+  public tap(callback: (relation: this) => unknown): this {
+    callback(this)
+
+    return this
+  }
+
+  /** Pass the relation into a callback and return its result. */
+  public pipe<TResult>(callback: (relation: this) => TResult): TResult {
+    return callback(this)
+  }
+
+  /**
    * Adds a null check for a key.
    *
    * @param key
@@ -220,6 +311,26 @@ export abstract class Relation<TModel> {
    */
   public whereNotNull<TKey extends keyof ModelAttributes<TModel> & string>(key: TKey): this {
     return this.constrain((query) => query.whereNotNull(key))
+  }
+
+  /**
+   * Adds an OR null check for a key.
+   *
+   * @param key
+   * @returns
+   */
+  public orWhereNull<TKey extends keyof ModelAttributes<TModel> & string>(key: TKey): this {
+    return this.constrain((query) => query.orWhereNull(key))
+  }
+
+  /**
+   * Adds an OR not-null check for a key.
+   *
+   * @param key
+   * @returns
+   */
+  public orWhereNotNull<TKey extends keyof ModelAttributes<TModel> & string>(key: TKey): this {
+    return this.constrain((query) => query.orWhereNotNull(key))
   }
 
   /**
@@ -955,6 +1066,201 @@ export abstract class Relation<TModel> {
    */
   public with(relations: string | string[] | EagerLoadRelations<TModel>): this {
     return this.constrain((query) => query.with(relations))
+  }
+
+  /**
+   * Add a relationship count/existence constraint to the related query.
+   *
+   * @param relation
+   * @param operator
+   * @param count
+   * @param callback
+   * @returns
+   */
+  public has(
+    relation: string,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+    callback?: (query: QueryBuilder<any, any>) => unknown,
+  ): this {
+    return this.constrain((query) => query.has(relation, operator, count, callback))
+  }
+
+  /**
+   * Add an OR relationship count/existence constraint to the related query.
+   *
+   * @param relation
+   * @param operator
+   * @param count
+   * @returns
+   */
+  public orHas(
+    relation: string,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+  ): this {
+    return this.constrain((query) => query.orHas(relation, operator, count))
+  }
+
+  /**
+   * Require the related query's model to have a nested relationship.
+   *
+   * @param relation
+   * @param callback
+   * @param operator
+   * @param count
+   * @returns
+   */
+  public whereHas(
+    relation: string,
+    callback?: (query: QueryBuilder<any, any>) => unknown,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+  ): this {
+    return this.constrain((query) => query.whereHas(relation, callback, operator, count))
+  }
+
+  /**
+   * Add an OR nested relationship constraint to the related query.
+   *
+   * @param relation
+   * @param callback
+   * @param operator
+   * @param count
+   * @returns
+   */
+  public orWhereHas(
+    relation: string,
+    callback?: (query: QueryBuilder<any, any>) => unknown,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+  ): this {
+    return this.constrain((query) => query.orWhereHas(relation, callback, operator, count))
+  }
+
+  /**
+   * Require the related query's model not to have a nested relationship.
+   *
+   * @param relation
+   * @param callback
+   * @returns
+   */
+  public doesntHave(relation: string, callback?: (query: QueryBuilder<any, any>) => unknown): this {
+    return this.constrain((query) => query.doesntHave(relation, callback))
+  }
+
+  /**
+   * Add an OR nested relationship absence constraint.
+   *
+   * @param relation
+   * @returns
+   */
+  public orDoesntHave(relation: string): this {
+    return this.constrain((query) => query.orDoesntHave(relation))
+  }
+
+  /**
+   * Require a constrained nested relationship to be absent.
+   *
+   * @param relation
+   * @param callback
+   * @returns
+   */
+  public whereDoesntHave(
+    relation: string,
+    callback?: (query: QueryBuilder<any, any>) => unknown,
+  ): this {
+    return this.constrain((query) => query.whereDoesntHave(relation, callback))
+  }
+
+  /**
+   * Add an OR constrained nested relationship absence clause.
+   *
+   * @param relation
+   * @param callback
+   * @returns
+   */
+  public orWhereDoesntHave(
+    relation: string,
+    callback?: (query: QueryBuilder<any, any>) => unknown,
+  ): this {
+    return this.constrain((query) => query.orWhereDoesntHave(relation, callback))
+  }
+
+  /**
+   * Add a constrained polymorphic nested relationship clause.
+   *
+   * @param relation
+   * @param types
+   * @param callback
+   * @param operator
+   * @param count
+   * @returns
+   */
+  public whereHasMorph<TRelated = any>(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+  ): this {
+    return this.constrain((query) =>
+      query.whereHasMorph(relation, types, callback, operator, count),
+    )
+  }
+
+  /**
+   * Add an OR constrained polymorphic nested relationship clause.
+   *
+   * @param relation
+   * @param types
+   * @param callback
+   * @param operator
+   * @param count
+   * @returns
+   */
+  public orWhereHasMorph<TRelated = any>(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
+    operator: '>=' | '>' | '=' | '!=' | '<=' | '<' = '>=',
+    count = 1,
+  ): this {
+    return this.constrain((query) =>
+      query.orWhereHasMorph(relation, types, callback, operator, count),
+    )
+  }
+
+  /**
+   * Require a constrained polymorphic nested relationship to be absent.
+   *
+   * @param relation
+   * @param types
+   * @param callback
+   * @returns
+   */
+  public whereDoesntHaveMorph<TRelated = any>(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
+  ): this {
+    return this.constrain((query) => query.whereDoesntHaveMorph(relation, types, callback))
+  }
+
+  /**
+   * Add an OR polymorphic nested relationship absence clause.
+   *
+   * @param relation
+   * @param types
+   * @param callback
+   * @returns
+   */
+  public orWhereDoesntHaveMorph<TRelated = any>(
+    relation: string,
+    types: string | RelationshipModelStatic | Array<string | RelationshipModelStatic>,
+    callback?: (query: QueryBuilder<TRelated, any>, type: string) => unknown,
+  ): this {
+    return this.constrain((query) => query.orWhereDoesntHaveMorph(relation, types, callback))
   }
 
   /**
