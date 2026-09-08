@@ -1,4 +1,5 @@
 import type {
+  AppliedMigrationEntry,
   AppliedMigrationsState,
   MigrationClass,
   PrimaryKeyGeneration,
@@ -589,6 +590,40 @@ export const applyOperationsToPersistedColumnMappingsState = (
   }
 }
 
+/**
+ * Replays an applied migration's `up()` from the current file to recover its
+ * schema plan.
+ *
+ * Only used for entries recorded before the plan was stored alongside them; the
+ * result reflects the file as it stands now, which is why a recorded plan always
+ * wins over this.
+ *
+ * @param migration
+ * @param availableByIdentity
+ * @returns
+ */
+const replayAppliedMigrationPlan = async (
+  migration: AppliedMigrationEntry,
+  availableByIdentity: Map<string, MigrationClass>,
+): Promise<SchemaOperation[]> => {
+  const migrationClass = availableByIdentity.get(migration.id)
+  if (!migrationClass) {
+    throw new ArkormException(
+      `Unable to rebuild persisted column mappings because migration [${migration.id}] could not be resolved from the current migration files.`,
+      {
+        operation: 'migration.columnMappings',
+        meta: {
+          migrationId: migration.id,
+          file: migration.file,
+          className: migration.className,
+        },
+      },
+    )
+  }
+
+  return await getMigrationPlan(migrationClass, 'up', { inert: true })
+}
+
 export const rebuildPersistedColumnMappingsState = async (
   state: AppliedMigrationsState,
   availableMigrations: [MigrationClass, string][],
@@ -612,22 +647,12 @@ export const rebuildPersistedColumnMappingsState = async (
     })
 
   for (const { migration } of orderedMigrations) {
-    const migrationClass = availableByIdentity.get(migration.id)
-    if (!migrationClass) {
-      throw new ArkormException(
-        `Unable to rebuild persisted column mappings because migration [${migration.id}] could not be resolved from the current migration files.`,
-        {
-          operation: 'migration.columnMappings',
-          meta: {
-            migrationId: migration.id,
-            file: migration.file,
-            className: migration.className,
-          },
-        },
-      )
-    }
+    // Prefer the plan recorded when the migration ran. Replaying the file would
+    // fold in edits made after it was applied, so the mappings would describe a
+    // schema the database never got — the migration is not re-run to match.
+    const operations =
+      migration.operations ?? (await replayAppliedMigrationPlan(migration, availableByIdentity))
 
-    const operations = await getMigrationPlan(migrationClass, 'up', { inert: true })
     nextState = applyOperationsToPersistedColumnMappingsState(nextState, operations, features)
   }
 

@@ -26,7 +26,7 @@ export class MigrationHistoryCommand extends Command<CliApp> {
         {--state-file= : Path to applied migration state file}
         {--reset : Clear tracked migration history file}
         {--delete : Delete tracked migration history file}
-        {--json : Print raw JSON output}
+        {--json : Print JSON output (without each migration's recorded schema plan)}
     `
 
   protected description = 'Inspect or reset tracked migration history'
@@ -89,6 +89,13 @@ export class MigrationHistoryCommand extends Command<CliApp> {
           {
             path: usesDatabaseState ? 'database' : stateFilePath,
             ...state,
+            // Each entry also carries the schema plan it executed, which exists to
+            // rebuild persisted metadata and would bury the history it is printed
+            // alongside. Read the state file or table directly to inspect it.
+            migrations: state.migrations.map(({ operations: _operations, ...migration }) => ({
+              ...migration,
+              hasRecordedPlan: Array.isArray(_operations),
+            })),
           },
           null,
           2,

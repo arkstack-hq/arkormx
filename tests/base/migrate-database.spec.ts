@@ -254,6 +254,300 @@ describe('database-backed migration command fallback', () => {
     expect(existsSync(join(workspace, '.arkormx', 'column-mappings.json'))).toBe(false)
   })
 
+  it('never re-runs an adapter-backed migration whose file changed after it was applied', async () => {
+    const workspace = makeTempDir('arkormx-db-migrate-changed-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    const migrationFile = join(migrationsDir, 'CreateUsersMigration.ts')
+    const writeMigration = (columns: string[]): void => {
+      writeFileSync(
+        migrationFile,
+        [
+          `import { Migration } from '${migrationBaseImport}'`,
+          '',
+          'export class CreateUsersMigration extends Migration {',
+          '  async up (schema) {',
+          "    schema.createTable('users', (table) => {",
+          '      table.id()',
+          ...columns.map((column) => `      table.string('${column}')`),
+          '    })',
+          '  }',
+          '',
+          '  async down (schema) {',
+          "    schema.dropTable('users')",
+          '  }',
+          '}',
+          '',
+        ].join('\n'),
+      )
+    }
+
+    writeMigration(['email'])
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    configureArkormRuntime(() => ({}), {
+      adapter,
+      paths: {
+        migrations: migrationsDir,
+      },
+    })
+
+    const app = new CliApp()
+    const firstCommand = new MigrateCommand(app, new Kernel(app))
+    ;(firstCommand as unknown as { app: CliApp }).app = app
+    const firstIo = attachCommandIo(firstCommand as unknown as any, { all: true })
+
+    await firstCommand.handle()
+
+    expect(firstIo.errorLines).toHaveLength(0)
+    expect(adapter.executed).toHaveLength(1)
+    expect(adapter.state.migrations).toHaveLength(1)
+
+    // Editing an applied migration must NOT make it pending again: the state
+    // store, not the file's checksum, decides what has run.
+    writeMigration(['email', 'nickname'])
+
+    const secondCommand = new MigrateCommand(app, new Kernel(app))
+    ;(secondCommand as unknown as { app: CliApp }).app = app
+    const secondIo = attachCommandIo(secondCommand as unknown as any, { all: true })
+
+    await secondCommand.handle()
+
+    expect(secondIo.errorLines).toHaveLength(0)
+    expect(
+      secondIo.successLines.some((line) => line.includes('No pending migration classes to apply.')),
+    ).toBe(true)
+    expect(secondIo.successLines.some((line) => line.includes('Changed'))).toBe(false)
+    expect(
+      secondIo.successLines.some(
+        (line) => line.includes('Skipped') && line.includes('changed since applied'),
+      ),
+    ).toBe(true)
+    // No second createTable: the already-applied migration stayed applied.
+    expect(adapter.executed).toHaveLength(1)
+    expect(adapter.state.migrations).toHaveLength(1)
+  })
+
+  it('records the executed plan on the applied migration entry', async () => {
+    const workspace = makeTempDir('arkormx-db-record-plan-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    writeFileSync(
+      join(migrationsDir, 'CreateUsersMigration.ts'),
+      [
+        `import { Migration } from '${migrationBaseImport}'`,
+        '',
+        'export class CreateUsersMigration extends Migration {',
+        '  async up (schema) {',
+        "    schema.createTable('users', (table) => {",
+        '      table.id()',
+        "      table.string('emailVerificationCode').map('email_verification_code')",
+        '    })',
+        '  }',
+        '',
+        '  async down (schema) {',
+        "    schema.dropTable('users')",
+        '  }',
+        '}',
+        '',
+      ].join('\n'),
+    )
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    configureArkormRuntime(() => ({}), {
+      adapter,
+      paths: {
+        migrations: migrationsDir,
+      },
+    })
+
+    const app = new CliApp()
+    const command = new MigrateCommand(app, new Kernel(app))
+    ;(command as unknown as { app: CliApp }).app = app
+    const io = attachCommandIo(command as unknown as any, { all: true })
+
+    await command.handle()
+
+    expect(io.errorLines).toHaveLength(0)
+    // The plan is stored on the entry so later rebuilds do not have to trust the
+    // file, which may have been edited since.
+    expect(adapter.state.migrations[0]?.operations).toEqual(adapter.executed[0])
+    expect(adapter.state.migrations[0]?.operations?.[0]).toMatchObject({
+      type: 'createTable',
+      table: 'users',
+    })
+  })
+
+  it('pins persisted column mappings to the recorded plan over the current file', async () => {
+    const workspace = makeTempDir('arkormx-db-mappings-pinned-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    const migrationFile = join(migrationsDir, 'CreateUsersMigration.ts')
+    // The file now maps two columns...
+    writeFileSync(
+      migrationFile,
+      [
+        `import { Migration } from '${migrationBaseImport}'`,
+        '',
+        'export class CreateUsersMigration extends Migration {',
+        '  async up (schema) {',
+        "    schema.createTable('users', (table) => {",
+        '      table.id()',
+        "      table.string('emailVerificationCode').map('email_verification_code')",
+        "      table.string('nickname').map('nick_name')",
+        '    })',
+        '  }',
+        '',
+        '  async down (schema) {',
+        "    schema.dropTable('users')",
+        '  }',
+        '}',
+        '',
+      ].join('\n'),
+    )
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    // ...but it was applied back when it only mapped one, and it is never re-run,
+    // so `nick_name` does not exist in the database.
+    adapter.state.migrations.push({
+      id: 'CreateUsersMigration:CreateUsersMigration',
+      file: migrationFile,
+      className: 'CreateUsersMigration',
+      appliedAt: '2026-04-07T00:00:00.000Z',
+      checksum: 'applied-before-the-edit',
+      operations: [
+        {
+          type: 'createTable',
+          table: 'users',
+          columns: [
+            { name: 'id', type: 'id', primary: true, autoIncrement: true },
+            {
+              name: 'emailVerificationCode',
+              type: 'string',
+              map: 'email_verification_code',
+            },
+          ],
+          indexes: [],
+          foreignKeys: [],
+        },
+      ],
+    })
+
+    configureArkormRuntime(() => ({}), {
+      adapter,
+      paths: {
+        migrations: migrationsDir,
+      },
+    })
+
+    const app = new CliApp()
+    const command = new MigrateCommand(app, new Kernel(app))
+    ;(command as unknown as { app: CliApp }).app = app
+    const io = attachCommandIo(command as unknown as any, { all: true })
+
+    await command.handle()
+
+    expect(io.errorLines).toHaveLength(0)
+    expect(adapter.executed).toHaveLength(0)
+    // `nickname` is only in the file, never in the database, so it must not reach
+    // the mappings the runtime reads.
+    expect(
+      JSON.parse(readFileSync(join(workspace, '.arkormx', 'column-mappings.json'), 'utf-8')).tables
+        .users.columns,
+    ).toEqual({ emailVerificationCode: 'email_verification_code' })
+  })
+
+  it('rebuilds column mappings by replaying files for entries recorded without a plan', async () => {
+    const workspace = makeTempDir('arkormx-db-mappings-legacy-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    writeFileSync(
+      join(migrationsDir, 'CreateUsersMigration.ts'),
+      [
+        `import { Migration } from '${migrationBaseImport}'`,
+        '',
+        'export class CreateUsersMigration extends Migration {',
+        '  async up (schema) {',
+        "    schema.createTable('users', (table) => {",
+        '      table.id()',
+        "      table.string('emailVerificationCode').map('email_verification_code')",
+        '    })',
+        '  }',
+        '',
+        '  async down (schema) {',
+        "    schema.dropTable('users')",
+        '  }',
+        '}',
+        '',
+      ].join('\n'),
+    )
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    // State written before plans were recorded: no `operations` on the entry.
+    adapter.state.migrations.push({
+      id: 'CreateUsersMigration:CreateUsersMigration',
+      file: join(migrationsDir, 'CreateUsersMigration.ts'),
+      className: 'CreateUsersMigration',
+      appliedAt: '2026-04-07T00:00:00.000Z',
+    })
+
+    configureArkormRuntime(() => ({}), {
+      adapter,
+      paths: {
+        migrations: migrationsDir,
+      },
+    })
+
+    const app = new CliApp()
+    const command = new MigrateCommand(app, new Kernel(app))
+    ;(command as unknown as { app: CliApp }).app = app
+    const io = attachCommandIo(command as unknown as any, { all: true })
+
+    await command.handle()
+
+    expect(io.errorLines).toHaveLength(0)
+    expect(
+      io.successLines.some((line) => line.includes('No pending migration classes to apply.')),
+    ).toBe(true)
+    expect(adapter.executed).toHaveLength(0)
+    expect(
+      JSON.parse(readFileSync(join(workspace, '.arkormx', 'column-mappings.json'), 'utf-8')).tables
+        .users.columns,
+    ).toEqual({ emailVerificationCode: 'email_verification_code' })
+  })
+
   it('rolls back a batch in the exact reverse of the order it was applied', async () => {
     const workspace = makeTempDir('arkormx-db-rollback-order-')
     process.chdir(workspace)

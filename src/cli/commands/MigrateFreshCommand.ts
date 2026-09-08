@@ -1,4 +1,4 @@
-import { MigrationClass, MigrationInstanceLike } from 'src/types'
+import { MigrationClass, MigrationInstanceLike, SchemaOperation } from 'src/types'
 import {
   applyMigrationToDatabase,
   applyMigrationToPrismaSchema,
@@ -108,26 +108,40 @@ export class MigrateFreshCommand extends Command<CliApp> {
     )
     if (!wroteEmptyState.ok) return
 
-    for (const [MigrationClassItem] of migrations) {
+    // The plan each migration actually executed, keyed by identity, so the
+    // applied-state entry records what ran instead of what the file says later.
+    const executedPlans = new Map<string, SchemaOperation[]>()
+
+    for (const [MigrationClassItem, file] of migrations) {
+      const identity = buildMigrationIdentity(file, MigrationClassItem.name)
+
       if (useDatabaseMigrations) {
         const applied = await this.runWithDatabaseCreationRetry(adapter, () =>
           applyMigrationToDatabase(adapter, MigrationClassItem),
         )
         if (!applied.ok) return
 
+        executedPlans.set(identity, applied.value.operations)
+
         continue
       }
 
-      await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
+      const applied = await applyMigrationToPrismaSchema(MigrationClassItem, {
+        schemaPath,
+        write: true,
+      })
+      executedPlans.set(identity, applied.operations)
     }
 
     for (const [migrationClass, file] of migrations) {
+      const identity = buildMigrationIdentity(file, migrationClass.name)
       appliedState = markMigrationApplied(appliedState, {
-        id: buildMigrationIdentity(file, migrationClass.name),
+        id: identity,
         file,
         className: migrationClass.name,
         appliedAt: new Date().toISOString(),
         checksum: computeMigrationChecksum(file),
+        operations: executedPlans.get(identity),
       })
     }
 

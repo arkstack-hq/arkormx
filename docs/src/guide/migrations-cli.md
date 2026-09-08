@@ -409,6 +409,23 @@ without updating model `declare` attributes.
 - Adapter-backed flows execute schema operations directly against the database when the adapter supports them.
 - In adapter-backed flows, Arkorm also rebuilds `.arkormx/column-mappings.json` from the applied migration set so mapped columns and enum definitions remain available at runtime.
 
+In adapter-backed flows the **migration state store is the only authority on what
+has already run**. A migration whose identity is recorded there is never re-run,
+even if you edit its file afterwards — `migrate` reports it as
+`Skipped … [changed since applied]` and moves on. To change a schema that is
+already applied, add a new migration (or use `migrate:rollback` / `migrate:fresh`
+in development). Prisma/file-backed flows keep the older checksum behaviour and
+re-apply an edited migration, because there re-applying only rewrites the
+generated `schema.prisma` rather than replaying SQL against a live database.
+
+Because an applied migration is never replayed, Arkorm records the schema plan
+each migration executed alongside its history entry, and rebuilds
+`.arkormx/column-mappings.json` from those recorded plans. Mapped columns and
+enums therefore describe the schema the database actually received, not the
+current contents of the migration files. Entries tracked before this was recorded
+fall back to replaying their file, so run `migrate:fresh` (or roll back and
+re-apply) if you want older history pinned too.
+
 - `--all`: run all migration class files in the migrations directory.
 - `<name>`: run one migration class/file by name.
 - `--skip-generate`: skip `prisma generate`.

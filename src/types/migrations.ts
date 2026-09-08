@@ -152,6 +152,16 @@ export interface AppliedMigrationEntry {
   className: string
   appliedAt: string
   checksum?: string
+  /**
+   * The schema plan this migration actually executed when it was applied.
+   *
+   * Recorded so derived metadata (persisted column mappings, enums) can be
+   * rebuilt from what ran rather than from the migration file's current
+   * contents, which may have been edited since. Absent on entries written
+   * before this was recorded, and on migrations applied through a backend that
+   * does not produce a plan; consumers fall back to replaying the file.
+   */
+  operations?: SchemaOperation[]
 }
 
 export interface AppliedMigrationRun {

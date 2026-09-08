@@ -53,15 +53,24 @@ export const readAppliedMigrationsState = (stateFilePath: string): AppliedMigrat
 
     return {
       version: 1,
-      migrations: parsed.migrations.filter((migration): migration is AppliedMigrationEntry => {
-        return (
-          typeof migration?.id === 'string' &&
-          typeof migration?.file === 'string' &&
-          typeof migration?.className === 'string' &&
-          typeof migration?.appliedAt === 'string' &&
-          (migration?.checksum === undefined || typeof migration?.checksum === 'string')
-        )
-      }),
+      migrations: parsed.migrations
+        .filter((migration): migration is AppliedMigrationEntry => {
+          return (
+            typeof migration?.id === 'string' &&
+            typeof migration?.file === 'string' &&
+            typeof migration?.className === 'string' &&
+            typeof migration?.appliedAt === 'string' &&
+            (migration?.checksum === undefined || typeof migration?.checksum === 'string')
+          )
+        })
+        // A malformed recorded plan drops back to replaying the file rather than
+        // discarding the entry: losing the applied record would re-run the
+        // migration, which is far worse than losing its pinned metadata.
+        .map((migration) =>
+          migration.operations === undefined || Array.isArray(migration.operations)
+            ? migration
+            : { ...migration, operations: undefined },
+        ),
       runs: Array.isArray(parsed.runs)
         ? parsed.runs.filter((run): run is AppliedMigrationRun => {
             return (
@@ -128,6 +137,20 @@ export const deleteAppliedMigrationsStateFromStore = async (
   return 'file'
 }
 
+/**
+ * Whether `identity` counts as applied in `state`.
+ *
+ * Passing a `checksum` makes an edited migration file count as *not* applied so
+ * it is re-run. That only suits the Prisma/file-backed flow, where re-applying a
+ * migration just rewrites the generated schema. Adapter-backed runtimes must
+ * omit the checksum and let the state store alone decide, since replaying an
+ * already-applied `up()` would run its SQL a second time.
+ *
+ * @param state
+ * @param identity
+ * @param checksum
+ * @returns
+ */
 export const isMigrationApplied = (
   state: AppliedMigrationsState,
   identity: string,
