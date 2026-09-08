@@ -1,4 +1,4 @@
-import { MigrationClass, MigrationInstanceLike } from 'src/types'
+import { MigrationClass, MigrationInstanceLike, SchemaOperation } from 'src/types'
 import {
   applyMigrationToDatabase,
   applyMigrationToPrismaSchema,
@@ -118,23 +118,39 @@ export class MigrateCommand extends Command<CliApp> {
 
     let appliedMigrationState = appliedState.value
 
-    const skipped: [MigrationClass, string][] = []
+    // Adapter-backed runtimes treat the migration state store as the only
+    // authority on what has run: an identity recorded there is applied, full
+    // stop.
+    const skipped: [MigrationClass, string, boolean][] = []
     const changed: [MigrationClass, string][] = []
     const pending = classes.filter(([migrationClass, file]) => {
       if (!appliedMigrationState) return true
 
       const identity = buildMigrationIdentity(file, migrationClass.name)
       const checksum = computeMigrationChecksum(file)
-      const alreadyApplied = isMigrationApplied(appliedMigrationState, identity, checksum)
-      if (alreadyApplied) skipped.push([migrationClass, file])
-      else if (findAppliedMigration(appliedMigrationState, identity))
-        changed.push([migrationClass, file])
+      const recorded = findAppliedMigration(appliedMigrationState, identity)
+      const alreadyApplied = useDatabaseMigrations
+        ? Boolean(recorded)
+        : isMigrationApplied(appliedMigrationState, identity, checksum)
+
+      if (alreadyApplied)
+        skipped.push([
+          migrationClass,
+          file,
+          Boolean(recorded?.checksum) && recorded?.checksum !== checksum,
+        ])
+      else if (recorded) changed.push([migrationClass, file])
 
       return !alreadyApplied
     })
 
-    skipped.forEach(([migrationClass, file]) => {
-      this.success(this.app.splitLogger('Skipped', `${file} (${migrationClass.name})`))
+    skipped.forEach(([migrationClass, file, drifted]) => {
+      this.success(
+        this.app.splitLogger(
+          'Skipped',
+          `${file} (${migrationClass.name})${drifted ? ' [changed since applied]' : ''}`,
+        ),
+      )
     })
     changed.forEach(([migrationClass, file]) => {
       this.success(this.app.splitLogger('Changed', `${file} (${migrationClass.name})`))
@@ -168,8 +184,13 @@ export class MigrateCommand extends Command<CliApp> {
     // table exists, breaking a from-zero migrate. Per-migration validation still
     // aborts before applying a migration that uses a disabled feature.
     let columnMappingsState = createEmptyPersistedColumnMappingsState()
+    // The plan each migration actually executed, keyed by identity, so the
+    // applied-state entry records what ran instead of what the file says later.
+    const executedPlans = new Map<string, SchemaOperation[]>()
 
-    for (const [MigrationClassItem] of pending) {
+    for (const [MigrationClassItem, file] of pending) {
+      const identity = buildMigrationIdentity(file, MigrationClassItem.name)
+
       if (useDatabaseMigrations) {
         // Planning-only: collect the migration's operations for column mappings
         // without replaying its direct DB side effects (e.g. DB.raw). The actual
@@ -194,10 +215,16 @@ export class MigrateCommand extends Command<CliApp> {
         )
         if (!applied.ok) return
 
+        executedPlans.set(identity, applied.value.operations)
+
         continue
       }
 
-      await applyMigrationToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
+      const applied = await applyMigrationToPrismaSchema(MigrationClassItem, {
+        schemaPath,
+        write: true,
+      })
+      executedPlans.set(identity, applied.operations)
     }
 
     if (appliedMigrationState) {
@@ -211,6 +238,7 @@ export class MigrateCommand extends Command<CliApp> {
           className: migrationClass.name,
           appliedAt: new Date().toISOString(),
           checksum: computeMigrationChecksum(file),
+          operations: executedPlans.get(identity),
         })
         runAppliedIds.push(identity)
       }

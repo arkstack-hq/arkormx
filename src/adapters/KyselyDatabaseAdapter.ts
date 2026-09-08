@@ -91,6 +91,31 @@ type EagerLoadableModel = {
 }
 
 /**
+ * Reads back the schema plan recorded against an applied migration.
+ *
+ * The driver hands `jsonb` back already parsed, but a `json`/`text` column (or
+ * an older pg driver) yields a string, so both are accepted. Anything else
+ * including rows written before the column existed resolves to `undefined`,
+ * which makes the consumer fall back to replaying the migration file.
+ *
+ * @param value
+ * @returns
+ */
+const parseRecordedMigrationOperations = (value: unknown): SchemaOperation[] | undefined => {
+  if (Array.isArray(value)) return value as SchemaOperation[]
+
+  if (typeof value !== 'string') return undefined
+
+  try {
+    const parsed = JSON.parse(value) as unknown
+
+    return Array.isArray(parsed) ? (parsed as SchemaOperation[]) : undefined
+  } catch {
+    return undefined
+  }
+}
+
+/**
  * Database adapter implementation for Kysely, allowing Arkorm to execute queries using Kysely
  * as the underlying query builder and executor.
  *
@@ -879,8 +904,19 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
                 file text not null,
                 class_name text not null,
                 applied_at timestamptz not null,
-                checksum text null
+                checksum text null,
+                operations jsonb null
             )
+        `,
+      executor,
+    )
+
+    // Added after the table shipped, so bring existing installs forward. Entries
+    // written before this stay null and fall back to replaying their file.
+    await this.executeRawStatement(
+      `
+            alter table ${this.quoteIdentifier(KyselyDatabaseAdapter.migrationStateTable)}
+            add column if not exists operations jsonb null
         `,
       executor,
     )
@@ -913,8 +949,8 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
 
     for (const migration of state.migrations) {
       await sql`
-                insert into ${sql.table(KyselyDatabaseAdapter.migrationStateTable)} (id, file, class_name, applied_at, checksum)
-                values (${migration.id}, ${migration.file}, ${migration.className}, ${migration.appliedAt}, ${migration.checksum ?? null})
+                insert into ${sql.table(KyselyDatabaseAdapter.migrationStateTable)} (id, file, class_name, applied_at, checksum, operations)
+                values (${migration.id}, ${migration.file}, ${migration.className}, ${migration.appliedAt}, ${migration.checksum ?? null}, cast(${migration.operations ? JSON.stringify(migration.operations) : null} as jsonb))
             `.execute(executor)
     }
 
@@ -2997,8 +3033,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       class_name: string
       applied_at: string | Date
       checksum: string | null
+      operations: unknown
     }>`
-            select id, file, class_name, applied_at, checksum
+            select id, file, class_name, applied_at, checksum, operations
             from ${sql.table(KyselyDatabaseAdapter.migrationStateTable)}
             order by applied_at asc, id asc
         `.execute(this.db)
@@ -3022,6 +3059,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
         appliedAt:
           row.applied_at instanceof Date ? row.applied_at.toISOString() : String(row.applied_at),
         checksum: row.checksum ?? undefined,
+        operations: parseRecordedMigrationOperations(row.operations),
       })),
       runs: runsResult.rows.map((row) => ({
         id: row.id,
