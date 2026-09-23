@@ -65,6 +65,11 @@ export class DbPost extends Model {
   public comments() {
     return this.morphMany(DbComment, 'commentable')
   }
+
+  /** Self-referential: every post sharing this post's author, itself included. */
+  public siblings() {
+    return this.hasMany(DbPost, 'userId', 'userId')
+  }
 }
 
 export class DbRole extends Model {

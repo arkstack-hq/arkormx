@@ -55,6 +55,8 @@ import type {
   HasOneRelationMetadata,
   HasOneThroughRelationMetadata,
   ModelStatic,
+  MorphManyRelationMetadata,
+  MorphOneRelationMetadata,
 } from '../types'
 import type {
   AppliedMigrationsState,
@@ -79,12 +81,14 @@ import { str } from '@h3ravel/support'
 type KyselyExecutor = Kysely<any> | Transaction<any>
 type KyselyTableMapping = Record<string, string>
 type ThroughRelationMetadata = HasOneThroughRelationMetadata | HasManyThroughRelationMetadata
+type MorphChildRelationMetadata = MorphOneRelationMetadata | MorphManyRelationMetadata
 type SqlRelationMetadata =
   | HasManyRelationMetadata
   | HasOneRelationMetadata
   | BelongsToRelationMetadata
   | BelongsToManyRelationMetadata
   | ThroughRelationMetadata
+  | MorphChildRelationMetadata
 type EagerLoadableModel = {
   getAttribute: (key: string) => unknown
   setLoadedRelation: (name: string, value: unknown) => void
@@ -1783,12 +1787,28 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     return sql`${sql.table(table)}.${sql.id(column)}`
   }
 
+  /**
+   * Renders the relation's source table, aliasing it when a self-referential
+   * relation would otherwise put the same name on both sides of a correlated
+   * subquery.
+   *
+   * @param sourceTable
+   * @param table
+   * @returns
+   */
+  private buildTableSource(sourceTable: string, table: string): RawBuilder<unknown> {
+    if (sourceTable === table) return sql`${sql.table(table)}`
+
+    return sql`${sql.table(sourceTable)} as ${sql.table(table)}`
+  }
+
   private buildRelatedTargetFromRelation(
     target: QueryTarget<any>,
     relation: string,
   ): {
     metadata: SqlRelationMetadata
     relatedTarget: QueryTarget<any>
+    sourceTable: string
   } {
     const metadata = target.model?.getRelationMetadata(relation)
     if (!metadata)
@@ -1807,7 +1827,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       metadata.type !== 'belongsTo' &&
       metadata.type !== 'belongsToMany' &&
       metadata.type !== 'hasOneThrough' &&
-      metadata.type !== 'hasManyThrough'
+      metadata.type !== 'hasManyThrough' &&
+      metadata.type !== 'morphOne' &&
+      metadata.type !== 'morphMany'
     ) {
       throw new UnsupportedAdapterFeatureException(
         `Relation [${relation}] is not supported for SQL-backed relation execution by the Kysely adapter yet.`,
@@ -1824,13 +1846,19 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     }
 
     const relatedMetadata = metadata.relatedModel.getModelMetadata()
+    const sourceTable = this.resolveMappedTable(relatedMetadata.table)
+    // A relation onto the model's own table reads the outer row's columns
+    // unless the inner side is given a name of its own.
+    const selfReferential = sourceTable === this.resolveTable(target)
+    const table = selfReferential ? `${sourceTable}_arkorm_self` : relatedMetadata.table
 
     return {
       metadata,
+      sourceTable,
       relatedTarget: {
         model: metadata.relatedModel as unknown as ModelStatic<any, any>,
         modelName: metadata.relatedModel.name,
-        table: relatedMetadata.table,
+        table,
         primaryKey: relatedMetadata.primaryKey,
         columns: relatedMetadata.columns,
         softDelete: relatedMetadata.softDelete,
@@ -1846,13 +1874,14 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     outerTarget: QueryTarget<any>,
     relatedTarget: QueryTarget<any>,
     metadata: BelongsToManyRelationMetadata,
+    sourceTable: string,
   ): { from: RawBuilder<unknown>; condition: RawBuilder<boolean> } {
     const outerTable = this.resolveTable(outerTarget)
     const relatedTable = this.resolveTable(relatedTarget)
     const pivotTable = this.resolveMappedTable(metadata.throughTable)
 
     return {
-      from: sql`${sql.table(relatedTable)} inner join ${sql.table(pivotTable)} on ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.relatedKey))} = ${this.buildColumnReference(pivotTable, metadata.relatedPivotKey)}`,
+      from: sql`${this.buildTableSource(sourceTable, relatedTable)} inner join ${sql.table(pivotTable)} on ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.relatedKey))} = ${this.buildColumnReference(pivotTable, metadata.relatedPivotKey)}`,
       condition: sql<boolean>`
                 ${this.buildColumnReference(pivotTable, metadata.foreignPivotKey)}
                 =
@@ -1865,19 +1894,49 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     outerTarget: QueryTarget<any>,
     relatedTarget: QueryTarget<any>,
     metadata: ThroughRelationMetadata,
+    sourceTable: string,
   ): { from: RawBuilder<unknown>; condition: RawBuilder<boolean> } {
     const outerTable = this.resolveTable(outerTarget)
     const relatedTable = this.resolveTable(relatedTarget)
     const throughTable = this.resolveMappedTable(metadata.throughTable)
 
     return {
-      from: sql`${sql.table(relatedTable)} inner join ${sql.table(throughTable)} on ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.secondKey))} = ${this.buildColumnReference(throughTable, metadata.secondLocalKey)}`,
+      from: sql`${this.buildTableSource(sourceTable, relatedTable)} inner join ${sql.table(throughTable)} on ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.secondKey))} = ${this.buildColumnReference(throughTable, metadata.secondLocalKey)}`,
       condition: sql<boolean>`
                 ${this.buildColumnReference(throughTable, metadata.firstKey)}
                 =
                 ${this.buildColumnReference(outerTable, this.mapColumn(outerTarget, metadata.localKey))}
             `,
     }
+  }
+
+  /**
+   * The value a polymorphic child stores in its type column for this parent: the
+   * parent model's class name, matching what the relationship writes on create
+   * and what the set-based eager loader groups parents by.
+   *
+   * @param target
+   * @param relation
+   * @returns
+   */
+  private resolveMorphType(target: QueryTarget<any>, relation: string): string {
+    const morphType = target.modelName ?? target.model?.name
+
+    if (!morphType)
+      throw new UnsupportedAdapterFeatureException(
+        `Relation [${relation}] needs a named parent model to resolve its polymorphic type.`,
+        {
+          operation: 'adapter.relation.metadata',
+          model: target.modelName,
+          relation,
+          meta: {
+            feature: 'relationFilters',
+            relationType: 'morph',
+          },
+        },
+      )
+
+    return morphType
   }
 
   private buildRelatedJoinCondition(
@@ -1888,12 +1947,21 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     from: RawBuilder<unknown>
     condition: RawBuilder<boolean>
   } {
-    const { metadata, relatedTarget } = this.buildRelatedTargetFromRelation(outerTarget, relation)
+    const { metadata, relatedTarget, sourceTable } = this.buildRelatedTargetFromRelation(
+      outerTarget,
+      relation,
+    )
     const outerTable = this.resolveTable(outerTarget)
     const relatedTable = this.resolveTable(relatedTarget)
+    const relatedFrom = this.buildTableSource(sourceTable, relatedTable)
 
     if (metadata.type === 'belongsToMany') {
-      const joinSource = this.buildBelongsToManyJoinSource(outerTarget, relatedTarget, metadata)
+      const joinSource = this.buildBelongsToManyJoinSource(
+        outerTarget,
+        relatedTarget,
+        metadata,
+        sourceTable,
+      )
 
       return {
         relatedTarget,
@@ -1903,7 +1971,12 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     }
 
     if (metadata.type === 'hasOneThrough' || metadata.type === 'hasManyThrough') {
-      const joinSource = this.buildThroughJoinSource(outerTarget, relatedTarget, metadata)
+      const joinSource = this.buildThroughJoinSource(
+        outerTarget,
+        relatedTarget,
+        metadata,
+        sourceTable,
+      )
 
       return {
         relatedTarget,
@@ -1915,7 +1988,7 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (metadata.type === 'hasMany' || metadata.type === 'hasOne') {
       return {
         relatedTarget,
-        from: sql`${sql.table(relatedTable)}`,
+        from: relatedFrom,
         condition: sql<boolean>`
                     ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.foreignKey))}
                     =
@@ -1924,9 +1997,25 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       }
     }
 
+    if (metadata.type === 'morphOne' || metadata.type === 'morphMany') {
+      return {
+        relatedTarget,
+        from: relatedFrom,
+        condition: sql<boolean>`
+                    ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.morphIdColumn))}
+                    =
+                    ${this.buildColumnReference(outerTable, this.mapColumn(outerTarget, metadata.localKey))}
+                    and
+                    ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.morphTypeColumn))}
+                    =
+                    ${this.resolveMorphType(outerTarget, relation)}
+                `,
+      }
+    }
+
     return {
       relatedTarget,
-      from: sql`${sql.table(relatedTable)}`,
+      from: relatedFrom,
       condition: sql<boolean>`
                 ${this.buildColumnReference(relatedTable, this.mapColumn(relatedTarget, metadata.ownerKey))}
                 =

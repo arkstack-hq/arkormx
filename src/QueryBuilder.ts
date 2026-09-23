@@ -5997,7 +5997,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       metadata.type === 'belongsTo' ||
       metadata.type === 'belongsToMany' ||
       metadata.type === 'hasOneThrough' ||
-      metadata.type === 'hasManyThrough'
+      metadata.type === 'hasManyThrough' ||
+      metadata.type === 'morphOne' ||
+      metadata.type === 'morphMany'
     )
   }
 
