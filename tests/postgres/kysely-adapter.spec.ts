@@ -740,10 +740,7 @@ describe('PostgreSQL Kysely adapter', () => {
     const counted = await DbPost.query().withCount('siblings').orderBy({ id: 'asc' }).get()
     expect(counted.all().map((post) => post.getAttribute('siblingsCount'))).toEqual([2, 2, 1])
 
-    const filtered = await DbPost.query()
-      .has('siblings', '>=', 2)
-      .orderBy({ id: 'asc' })
-      .get()
+    const filtered = await DbPost.query().has('siblings', '>=', 2).orderBy({ id: 'asc' }).get()
     expect(filtered.all().map((post) => post.getAttribute('id'))).toEqual([1, 2])
 
     const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
