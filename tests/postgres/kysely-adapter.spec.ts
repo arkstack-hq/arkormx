@@ -663,6 +663,90 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(users.data.all()[2]?.getAttribute('activeAuthor')).toBe(false)
   })
 
+  it('compiles polymorphic relation filters and aggregates into SQL', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    executedQueries.length = 0
+
+    // Both seeded comments carry commentableId 1 and differ only by type, so a
+    // missing discriminator would attribute each one to both parents.
+    const commentedUsers = await DbUser.query().whereHas('comments').orderBy({ id: 'asc' }).get()
+    expect(commentedUsers.all().map((user) => user.getAttribute('id'))).toEqual([1])
+
+    const commentedPosts = await DbPost.query().whereHas('comments').orderBy({ id: 'asc' }).get()
+    expect(commentedPosts.all().map((post) => post.getAttribute('id'))).toEqual([1])
+
+    const postCounts = await DbPost.query().withCount('comments').orderBy({ id: 'asc' }).get()
+    expect(postCounts.all().map((post) => post.getAttribute('commentsCount'))).toEqual([1, 0, 0])
+
+    const userCounts = await DbUser.query().withCount('comments').orderBy({ id: 'asc' }).get()
+    expect(userCounts.all().map((user) => user.getAttribute('commentsCount'))).toEqual([1, 0])
+
+    const morphOneExists = await DbUser.query()
+      .withExists('primaryComment')
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(morphOneExists.all().map((user) => user.getAttribute('primaryCommentExists'))).toEqual([
+      true,
+      false,
+    ])
+
+    const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+    expect(normalizedSql).toContain('"comments"."commentableType" = $')
+    expect(normalizedSql).not.toContain('select * from "comments" where "commentableId" = $')
+  })
+
+  it('constrains polymorphic relation filters with their callback', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const matching = await DbPost.query()
+      .whereHas('comments', (query) => query.where({ body: 'Hi post' }))
+      .get()
+    expect(matching.all().map((post) => post.getAttribute('id'))).toEqual([1])
+
+    // The body belongs to the DbPost comment, so no user may match it.
+    const mismatched = await DbUser.query()
+      .whereHas('comments', (query) => query.where({ body: 'Hi post' }))
+      .get()
+    expect(mismatched.all()).toHaveLength(0)
+
+    const counted = await DbPost.query()
+      .withCount({ 'comments as postComments': (query) => query.where({ body: 'Hi user' }) })
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(counted.all().map((post) => post.getAttribute('postComments'))).toEqual([0, 0, 0])
+  })
+
+  it('paginates polymorphic relation filters in the database', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    executedQueries.length = 0
+
+    const page = await DbPost.query().withCount('comments').orderBy({ id: 'asc' }).paginate(2, 1)
+
+    expect(page.meta.total).toBe(3)
+    expect(page.data.all().map((post) => post.getAttribute('id'))).toEqual([1, 2])
+
+    const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+    expect(normalizedSql).toContain('limit $')
+    expect(normalizedSql).toContain('offset $')
+    expect(normalizedSql).toContain('select count(*)::int as count from "posts"')
+  })
+
+  it('aliases self-referential relations so the inner rows stay distinct', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    executedQueries.length = 0
+
+    // Posts 1 and 2 share an author, post 3 stands alone. Without an alias the
+    // correlated subquery compares the inner row to itself and counts every row.
+    const counted = await DbPost.query().withCount('siblings').orderBy({ id: 'asc' }).get()
+    expect(counted.all().map((post) => post.getAttribute('siblingsCount'))).toEqual([2, 2, 1])
+
+    const filtered = await DbPost.query().has('siblings', '>=', 2).orderBy({ id: 'asc' }).get()
+    expect(filtered.all().map((post) => post.getAttribute('id'))).toEqual([1, 2])
+
+    const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+    expect(normalizedSql).toContain('from "posts" as "posts_arkorm_self"')
+  })
+
   it('executes eager loading through the Kysely adapter relationLoads path', async () => {
     setPostgresModelAdapter(kyselyAdapter)
 
