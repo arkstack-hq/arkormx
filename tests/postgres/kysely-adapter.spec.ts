@@ -642,6 +642,56 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(normalizedSql).toContain('avg("posts"."id")::double precision')
   })
 
+  it('keeps relation filters placed inside a where group', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    // Without the group's relation filter this would match user 2.
+    const none = await DbUser.query()
+      .where({ id: 2 })
+      .where((query) => query.whereHas('posts', (posts) => posts.where({ title: 'A' })))
+      .get()
+    expect(none.all()).toHaveLength(0)
+
+    const either = await DbUser.query()
+      .where((query) =>
+        query.where({ id: 2 }).orWhereHas('posts', (posts) => posts.where({ title: 'A' })),
+      )
+      .orderBy({ id: 'asc' })
+      .get()
+    expect(either.all().map((user) => user.getAttribute('id'))).toEqual([1, 2])
+  })
+
+  it('compiles relation filters nested inside a relation constraint into SQL', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    executedQueries.length = 0
+
+    const commentedAuthors = await DbUser.query()
+      .whereHas('posts', (posts) =>
+        posts.whereHas('comments', (comments) => comments.where({ body: 'Hi post' })),
+      )
+      .get()
+    expect(commentedAuthors.all().map((user) => user.getAttribute('id'))).toEqual([1])
+
+    const nobody = await DbUser.query()
+      .whereHas('posts', (posts) =>
+        posts.whereHas('comments', (comments) => comments.where({ body: 'missing' })),
+      )
+      .get()
+    expect(nobody.all()).toHaveLength(0)
+
+    // One statement per query: the nested filter runs in the database, not by
+    // loading users and filtering them in memory.
+    const normalizedSql = executedQueries.join('\n').replace(/\s+/g, ' ')
+    expect(executedQueries).toHaveLength(2)
+    expect(normalizedSql).toContain('from "comments"')
+    expect(
+      DbUser.query()
+        .whereHas('posts', (posts) => posts.whereHas('comments'))
+        .toSql()
+        .replace(/\s+/g, ' '),
+    ).toContain('from "comments"')
+  })
+
   it('orders paginated queries by a constrained relation aggregate alias', async () => {
     setPostgresModelAdapter(kyselyAdapter)
 

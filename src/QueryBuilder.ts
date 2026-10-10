@@ -334,6 +334,10 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   /**
    * Appends a pre-built structured condition, first flushing any Prisma-like
    * legacy where into the structured representation so the two combine correctly.
+   *
+   * @param boolean
+   * @param condition
+   * @returns
    */
   private appendStructuredWhere(boolean: 'AND' | 'OR', condition: QueryCondition): this {
     if (this.legacyWhere) {
@@ -351,6 +355,10 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * Appends a boolean {@link Expression} as a where predicate. When the query is
    * using the Prisma-like legacy where representation, the expression is merged in
    * as a structured condition alongside it.
+   *
+   * @param boolean
+   * @param expression
+   * @returns
    */
   private appendExpressionCondition(boolean: 'AND' | 'OR', expression: Expression): this {
     const condition: QueryExpressionCondition = {
@@ -363,6 +371,10 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
   /**
    * Resolve a callback into a parenthesized group condition and append it.
+   *
+   * @param boolean
+   * @param callback
+   * @returns
    */
   private appendNestedWhere(
     boolean: 'AND' | 'OR',
@@ -371,7 +383,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     const nested = new QueryBuilder<TModel, TDelegate>(this.model, this.adapter)
     callback(nested)
 
-    const condition = nested.getNestedWhereCondition()
+    const condition = nested.withRelationConditions(nested.getNestedWhereCondition(), 'query.where')
     if (!condition) return this
 
     const grouped: QueryCondition =
@@ -382,6 +394,42 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     this.appendQueryCondition(boolean, grouped)
 
     return this
+  }
+
+  /**
+   * Fold this builder's relation filters into `condition`, in the order and
+   * with the and/or they were added with, so they can be carried inside a
+   * where group or another relation's constraint.
+   *
+   * @param condition
+   * @param operation  Names the caller in the exception raised when a filter
+   *                   cannot be expressed as a condition.
+   * @returns
+   */
+  private withRelationConditions(
+    condition: QueryCondition | undefined,
+    operation: string,
+  ): QueryCondition | undefined {
+    if (!this.hasRelationFilters()) return condition
+
+    const specs = this.tryBuildRelationFilterSpecs()
+    if (!specs) {
+      throw new UnsupportedAdapterFeatureException(
+        'Relation filters inside a where group or relation constraint could not be compiled into conditions.',
+        { operation, model: this.model.name, meta: { feature: 'relationFilters' } },
+      )
+    }
+
+    return specs.reduce<QueryCondition | undefined>((combined, spec) => {
+      const relation: QueryCondition = { type: 'relation', filter: { ...spec, boolean: undefined } }
+      if (!combined) return relation
+
+      return {
+        type: 'group',
+        operator: spec.boolean === 'OR' ? 'or' : 'and',
+        conditions: [combined, relation],
+      }
+    }, condition)
   }
 
   /**
@@ -3571,8 +3619,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
-   * Updates records matching the current query constraints with the
-   * specified data and returns the updated record(s) as model instance(s).
+   * Updates the first record matching the current query constraints and
+   * returns it as a model. Use {@link updateFrom} to update every match.
    *
    * @param data
    * @returns
@@ -3615,7 +3663,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
-   * Update records using update-many semantics when available.
+   * Update every record matching the current query constraints and return
+   * the number of affected rows.
    *
    * @param data
    * @returns
@@ -5969,7 +6018,6 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     relatedQuery: QueryBuilder<any, any>,
   ): QueryCondition | undefined | null {
     if (
-      relatedQuery.hasRelationFilters() ||
       relatedQuery.hasRelationAggregates() ||
       relatedQuery.queryRelationLoads ||
       relatedQuery.querySelect ||
@@ -5983,7 +6031,13 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       return null
     }
 
-    return relatedQuery.buildQueryWhereCondition(false)
+    const where = relatedQuery.buildQueryWhereCondition(false)
+    if (where === null || !relatedQuery.hasRelationFilters()) return where
+
+    // Nested relation filters become conditions on the related table.
+    if (!relatedQuery.tryBuildRelationFilterSpecs()) return null
+
+    return relatedQuery.withRelationConditions(where, 'query.relations')
   }
 
   private isSqlRelationFeatureMetadata(
