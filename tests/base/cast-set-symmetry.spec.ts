@@ -25,6 +25,10 @@ class Product extends Model<'user'> {
   protected override casts = { unitPrice: AsMoney } as unknown as Record<string, never>
 }
 
+/** Raw stored attributes; the borrowed `user` schema has no `unitPrice`. */
+const raw = (product: Product | null | undefined) =>
+  product?.getRawAttributes() as Record<string, unknown> | undefined
+
 describe('non-idempotent set-cast round-trips through save()', () => {
   beforeEach(() => {
     configureArkormRuntime(createCoreClient(), { naming: { case: 'camel' } })
@@ -35,13 +39,13 @@ describe('non-idempotent set-cast round-trips through save()', () => {
     product.fill({ unitPrice: 100 } as never)
 
     // Before save: stored as minor units, read back as major units.
-    expect(product.getRawAttributes().unitPrice).toBe(10000)
+    expect(raw(product)?.unitPrice).toBe(10000)
     expect(product.getAttribute('unitPrice')).toBe(100)
 
     await product.save()
 
     // After save: the set-cast must not be applied a second time.
-    expect(product.getRawAttributes().unitPrice).toBe(10000)
+    expect(raw(product)?.unitPrice).toBe(10000)
     expect(product.getAttribute('unitPrice')).toBe(100)
   })
 
@@ -54,7 +58,7 @@ describe('non-idempotent set-cast round-trips through save()', () => {
       .where({ id: product.getAttribute('id') } as never)
       .first()
 
-    expect(fresh?.getRawAttributes().unitPrice).toBe(10000)
+    expect(raw(fresh)?.unitPrice).toBe(10000)
     expect(fresh?.getAttribute('unitPrice')).toBe(100)
   })
 
@@ -66,7 +70,7 @@ describe('non-idempotent set-cast round-trips through save()', () => {
     product.setAttribute('unitPrice', 250)
     await product.save()
 
-    expect(product.getRawAttributes().unitPrice).toBe(25000)
+    expect(raw(product)?.unitPrice).toBe(25000)
     expect(product.getAttribute('unitPrice')).toBe(250)
   })
 })
