@@ -14,6 +14,7 @@ import type {
   DeleteSpec,
   InsertManySpec,
   InsertSpec,
+  PartitionedSelectSpec,
   QueryColumnComparisonCondition,
   QueryComparisonCondition,
   QueryCondition,
@@ -28,7 +29,6 @@ import type {
   QueryJsonCondition,
   QueryNotCondition,
   QueryOrderBy,
-  PartitionedSelectSpec,
   QueryRawCondition,
   QuerySelectColumn,
   QueryTarget,
@@ -43,7 +43,6 @@ import type {
   UpdateSpec,
   UpsertSpec,
 } from '../types/adapter'
-import type { ExpressionNode, JsonExpressionNode } from '../types/expression'
 import type {
   AdapterQueryInspection,
   BelongsToManyRelationMetadata,
@@ -67,6 +66,7 @@ import type {
   SchemaPrimaryKey,
   SchemaUniqueConstraint,
 } from '../types/migrations'
+import type { ExpressionNode, JsonExpressionNode } from '../types/expression'
 
 import { ArkormException } from '../Exceptions/ArkormException'
 import { Pool } from 'pg'
@@ -1730,6 +1730,9 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
     if (condition.type === 'day') return this.buildDayCondition(target, condition)
 
     if (condition.type === 'exists') return this.buildExistsCondition(condition)
+
+    if (condition.type === 'relation')
+      return this.buildRelationFilterExpression(target, condition.filter)
 
     if (condition.type === 'full-text') return this.buildFullTextCondition(target, condition)
 
