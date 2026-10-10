@@ -151,6 +151,15 @@ export interface QueryExistsCondition {
   query: SelectSpec
 }
 
+/**
+ * A relation filter (`whereHas` and friends) placed inside a where tree, so it
+ * can sit in a group or inside another relation's constraint.
+ */
+export interface QueryRelationCondition {
+  type: 'relation'
+  filter: RelationFilterSpec
+}
+
 export interface QueryFullTextCondition {
   type: 'full-text'
   columns: string[]
@@ -191,6 +200,7 @@ export type QueryCondition =
   | QueryTimeCondition
   | QueryDayCondition
   | QueryExistsCondition
+  | QueryRelationCondition
   | QueryFullTextCondition
   | QueryJsonCondition
   | QueryExpressionCondition

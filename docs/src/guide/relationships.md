@@ -648,6 +648,30 @@ await Activity.query()
   .get()
 ```
 
+Relation filters can be nested and grouped. A `whereHas(...)` inside another
+relation's callback constrains the related rows, and `whereHas(...)` /
+`orWhereHas(...)` inside a `where(...)` group stay in that group. On SQL-backed
+adapters both compile to correlated subqueries:
+
+```ts
+// Users with a post that has an approved comment
+await User.query()
+  .whereHas('posts', (posts) =>
+    posts.whereHas('comments', (comments) => comments.whereKey('approved', true)),
+  )
+  .get()
+
+// Active users who are admins or own a published post
+await User.query()
+  .where({ isActive: true })
+  .where((query) =>
+    query
+      .where({ role: 'admin' })
+      .orWhereHas('posts', (posts) => posts.whereKey('published', true)),
+  )
+  .get()
+```
+
 Use `loadCount(...)` when you already have a model instance and want to attach
 relationship counts without reloading the related records. Count attributes use
 the same names as `withCount(...)`, such as `postsCount`.
