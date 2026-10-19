@@ -332,20 +332,13 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   /**
-   * Appends a pre-built structured condition, first flushing any Prisma-like
-   * legacy where into the structured representation so the two combine correctly.
+   * Appends a pre-built structured condition.
    *
    * @param boolean
    * @param condition
    * @returns
    */
   private appendStructuredWhere(boolean: 'AND' | 'OR', condition: QueryCondition): this {
-    if (this.legacyWhere) {
-      const existing = this.tryBuildQueryCondition(this.legacyWhere)
-      this.legacyWhere = undefined
-      if (existing) this.queryWhere = existing
-    }
-
     this.appendQueryCondition(boolean, condition)
 
     return this
@@ -1311,6 +1304,15 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
 
       return this
     }
+
+    if (!this.legacyWhere && this.queryWhere && !this.isSchemaWhereRepresentable(this.queryWhere))
+      throw new UnsupportedAdapterFeatureException(
+        'This where clause cannot be combined with the raw, JSON, relation, or expression constraints already on the query.',
+        {
+          operation: 'query.where',
+          model: this.model.name,
+        },
+      )
 
     const existingWhere = this.legacyWhere ?? this.toQuerySchemaWhere(this.queryWhere)
     this.queryWhere = undefined
@@ -3626,21 +3628,15 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @returns
    */
   public async update(data: ModelUpdateData<TModel, TDelegate>): Promise<TModel> {
-    const where = this.buildWhere()
-    if (!where)
-      throw new QueryConstraintException('Update requires a where clause.', {
-        operation: 'update',
-        model: this.model.name,
-      })
-
-    const directSpec = this.tryBuildUpdateSpec(where, data as QuerySchemaUpdateData<TDelegate>)
+    const condition = this.buildWriteCondition('update', 'Update')
+    const uniqueWhere = this.uniqueWhereFor(condition)
     const adapter = this.requireAdapter()
-    if (
-      !this.isUniqueWhere(where as Record<string, unknown>) &&
-      directSpec &&
-      typeof adapter.updateFirst === 'function'
-    ) {
-      const updated = await adapter.updateFirst(directSpec)
+    if (!uniqueWhere && typeof adapter.updateFirst === 'function') {
+      const updated = await adapter.updateFirst({
+        target: this.buildQueryTarget(),
+        where: condition,
+        values: data as DatabaseRow,
+      })
       if (!updated)
         throw new ModelNotFoundException(
           this.model.name,
@@ -3653,9 +3649,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       return this.model.hydrate(updated as Parameters<ModelStatic<TModel, TDelegate>['hydrate']>[0])
     }
 
-    const uniqueWhere = await this.resolveUniqueWhere(where)
     const updated = await this.executeUpdateRow(
-      uniqueWhere!,
+      uniqueWhere ?? (await this.resolveUniqueWhere(condition))!,
       data as QuerySchemaUpdateData<TDelegate>,
     )
 
@@ -3670,14 +3665,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @returns
    */
   public async updateFrom(data: ModelUpdateData<TModel, TDelegate>): Promise<number> {
-    const where = this.buildWhere()
-    if (!where)
-      throw new QueryConstraintException('Update requires a where clause.', {
-        operation: 'updateFrom',
-        model: this.model.name,
-      })
+    const condition = this.buildWriteCondition('updateFrom', 'Update')
 
-    return await this.executeUpdateManyRows(where, data as QuerySchemaUpdateData<TDelegate>)
+    return await this.executeUpdateManyRows(condition, data as QuerySchemaUpdateData<TDelegate>)
   }
 
   /**
@@ -3834,14 +3824,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
    * @returns the count of deleted rows (0 when nothing matched)
    */
   public async delete(): Promise<number> {
-    const where = this.buildWhere()
-    if (!where)
-      throw new QueryConstraintException('Delete requires a where clause.', {
-        operation: 'delete',
-        model: this.model.name,
-      })
-
-    return this.executeDeleteManyRows(where)
+    return this.executeDeleteManyRows(this.buildWriteCondition('delete', 'Delete'))
   }
 
   /**
@@ -3912,12 +3895,9 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   private tryBuildUpdateManySpec(
-    where: QuerySchemaWhere<TDelegate> | undefined,
+    condition: QueryCondition,
     values: QuerySchemaUpdateData<TDelegate>,
-  ): UpdateManySpec<TModel> | null {
-    const condition = this.tryBuildQueryCondition(where)
-    if (condition === null) return null
-
+  ): UpdateManySpec<TModel> {
     return {
       target: this.buildQueryTarget(),
       where: condition,
@@ -4867,7 +4847,29 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return plans
   }
 
+  /**
+   * Appends a structured condition, first flushing any Prisma-like legacy
+   * where into the structured representation so that neither is lost.
+   *
+   * @param operator
+   * @param condition
+   */
   private appendQueryCondition(operator: 'AND' | 'OR', condition: QueryCondition): void {
+    if (this.legacyWhere) {
+      const existing = this.tryBuildQueryCondition(this.legacyWhere)
+      if (existing === null)
+        throw new UnsupportedAdapterFeatureException(
+          'This constraint cannot be combined with the where clause already on the query.',
+          {
+            operation: 'query.where',
+            model: this.model.name,
+          },
+        )
+
+      this.legacyWhere = undefined
+      if (existing) this.queryWhere = existing
+    }
+
     if (!this.queryWhere) {
       this.queryWhere = condition
 
@@ -4879,6 +4881,22 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
       operator: operator === 'AND' ? 'and' : 'or',
       conditions: [this.queryWhere, condition],
     }
+  }
+
+  /**
+   * Whether a condition survives conversion to the Prisma-like where shape;
+   * only comparisons and groups or negations of them do.
+   *
+   * @param condition
+   * @returns
+   */
+  private isSchemaWhereRepresentable(condition: QueryCondition): boolean {
+    if (condition.type === 'comparison') return true
+    if (condition.type === 'group')
+      return condition.conditions.every((entry) => this.isSchemaWhereRepresentable(entry))
+    if (condition.type === 'not') return this.isSchemaWhereRepresentable(condition.condition)
+
+    return false
   }
 
   private toQuerySchemaWhere(condition?: QueryCondition): QuerySchemaWhere<TDelegate> | undefined {
@@ -5519,20 +5537,12 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   }
 
   private async executeUpdateManyRows(
-    where: QuerySchemaWhere<TDelegate> | undefined,
+    condition: QueryCondition,
     values: QuerySchemaUpdateData<TDelegate>,
   ): Promise<number> {
     const adapter = this.requireAdapter()
     const normalizedValues = this.normalizeUpdatePayload(values)
-    const spec = this.tryBuildUpdateManySpec(where, normalizedValues)
-    if (!spec)
-      throw new UnsupportedAdapterFeatureException(
-        'Update-many could not be compiled into an Arkorm update specification.',
-        {
-          operation: 'query.updateMany',
-          model: this.model.name,
-        },
-      )
+    const spec = this.tryBuildUpdateManySpec(condition, normalizedValues)
 
     if (typeof adapter.updateMany === 'function') return await adapter.updateMany(spec)
 
@@ -5557,20 +5567,8 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     return updated
   }
 
-  private async executeDeleteManyRows(
-    where: QuerySchemaWhere<TDelegate> | QuerySchemaUniqueWhere<TDelegate>,
-  ): Promise<number> {
+  private async executeDeleteManyRows(condition: QueryCondition): Promise<number> {
     const adapter = this.requireAdapter()
-    const condition = this.tryBuildQueryCondition(where)
-    if (condition === null)
-      throw new UnsupportedAdapterFeatureException(
-        'Delete could not be compiled into an Arkorm delete specification.',
-        {
-          operation: 'query.delete',
-          model: this.model.name,
-        },
-      )
-
     const spec: DeleteManySpec<TModel> = {
       target: this.buildQueryTarget(),
       where: condition,
@@ -5597,6 +5595,57 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
     }
 
     return deleted
+  }
+
+  /**
+   * The complete where condition for a write, built the same way reads build
+   * theirs so that every constraint (raw, JSON, relation, expression, and the
+   * rest) narrows the write. A write without constraints is refused.
+   *
+   * @param operation
+   * @param label
+   * @returns
+   */
+  private buildWriteCondition(operation: string, label: string): QueryCondition {
+    const condition = this.buildQueryWhereCondition()
+
+    if (condition === null)
+      throw new UnsupportedAdapterFeatureException(
+        `${label} could not be compiled into an Arkorm ${label.toLowerCase()} specification.`,
+        {
+          operation: `query.${operation}`,
+          model: this.model.name,
+        },
+      )
+
+    if (!condition)
+      throw new QueryConstraintException(`${label} requires a where clause.`, {
+        operation,
+        model: this.model.name,
+      })
+
+    return condition
+  }
+
+  /**
+   * The primary-key lookup a condition amounts to, when it is nothing more
+   * than an equality on the primary key.
+   *
+   * @param condition
+   * @returns
+   */
+  private uniqueWhereFor(condition: QueryCondition): QuerySchemaUniqueWhere<TDelegate> | null {
+    const primaryKey = this.model.getPrimaryKey()
+
+    if (
+      condition.type !== 'comparison' ||
+      condition.column !== primaryKey ||
+      condition.operator !== '=' ||
+      condition.value == null
+    )
+      return null
+
+    return { [primaryKey]: condition.value } as unknown as QuerySchemaUniqueWhere<TDelegate>
   }
 
   /**
@@ -5631,28 +5680,15 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
   /**
    * Resolves a unique where clause for update and delete operations.
    *
-   * @param where
+   * @param condition
    * @returns
    */
   private async resolveUniqueWhere(
-    where: QuerySchemaWhere<TDelegate>,
+    condition: QueryCondition,
     failIfMissing = true,
   ): Promise<QuerySchemaUniqueWhere<TDelegate> | null> {
-    if (this.isUniqueWhere(where as Record<string, unknown>))
-      return where as unknown as QuerySchemaUniqueWhere<TDelegate>
-
-    const condition = this.tryBuildQueryCondition(where)
-    if (!condition)
-      throw new UniqueConstraintResolutionException(
-        'Unable to resolve a unique identifier for update/delete operation from the current query shape.',
-        {
-          operation: 'resolveUniqueWhere',
-          model: this.model.name,
-          meta: {
-            where: where as Record<string, unknown>,
-          },
-        },
-      )
+    const unique = this.uniqueWhereFor(condition)
+    if (unique) return unique
 
     const row = (await this.requireAdapter().selectOne({
       target: this.buildQueryTarget(),
@@ -5670,7 +5706,7 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
               {
                 operation: 'resolveUniqueWhere',
                 meta: {
-                  where: where as Record<string, unknown>,
+                  condition,
                 },
               },
             )
@@ -5686,27 +5722,12 @@ export class QueryBuilder<TModel, TDelegate extends ModelQuerySchemaLike = Model
           operation: 'resolveUniqueWhere',
           model: this.model.name,
           meta: {
-            where: where as Record<string, unknown>,
+            condition,
           },
         },
       )
 
     return { [primaryKey]: row[primaryKey] } as unknown as QuerySchemaUniqueWhere<TDelegate>
-  }
-
-  /**
-   * Checks if the provided where clause is already a unique
-   * identifier (i.e., contains only an 'id' field).
-   *
-   * @param where
-   * @returns
-   */
-  private isUniqueWhere(where: Record<string, unknown>): boolean {
-    const primaryKey = this.model.getPrimaryKey()
-
-    return (
-      Object.keys(where).length === 1 && Object.prototype.hasOwnProperty.call(where, primaryKey)
-    )
   }
 
   private shuffleRows<TRow>(rows: TRow[]): TRow[] {
