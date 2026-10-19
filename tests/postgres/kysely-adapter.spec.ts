@@ -380,6 +380,72 @@ describe('PostgreSQL Kysely adapter', () => {
     expect(normalizedSql).toContain('LOWER("email") = $1 OR LOWER("email") LIKE $2')
   })
 
+  it('keeps raw where clauses when deleting', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const deleted = await DbUser.query()
+      .where({ email: { contains: '@example.com' } })
+      .whereRaw('LOWER("email") = ?', ['jane@example.com'])
+      .delete()
+
+    expect(deleted).toBe(1)
+    const remaining = await DbUser.query().orderBy({ id: 'asc' }).get()
+    expect(remaining.all().map((user) => user.getAttribute('email'))).toEqual(['john@example.com'])
+  })
+
+  it('keeps raw where clauses when updating every match', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const updated = await DbUser.query()
+      .where({ email: { contains: '@example.com' } })
+      .whereRaw('LOWER("email") = ?', ['jane@example.com'])
+      .updateFrom({ name: 'Renamed' })
+
+    expect(updated).toBe(1)
+    const users = await DbUser.query().orderBy({ id: 'asc' }).get()
+    expect(users.all().map((user) => user.getAttribute('name'))).toEqual(['Renamed', 'John'])
+  })
+
+  it('keeps raw where clauses when updating the first match', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+
+    const updated = await DbUser.query()
+      .where({ email: { contains: '@example.com' } })
+      .whereRaw('LOWER("email") = ?', ['john@example.com'])
+      .update({ name: 'Renamed' })
+
+    expect(updated.getAttribute('email')).toBe('john@example.com')
+    const users = await DbUser.query().orderBy({ id: 'asc' }).get()
+    expect(users.all().map((user) => user.getAttribute('name'))).toEqual(['Jane', 'Renamed'])
+  })
+
+  it('keeps raw where clauses when updating by primary key', async () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    const jane = await DbUser.query().where({ email: 'jane@example.com' }).firstOrFail()
+
+    await expect(
+      DbUser.query()
+        .where({ id: jane.getAttribute('id') })
+        .whereRaw('1 = 0')
+        .update({ name: 'Renamed' }),
+    ).rejects.toThrow('Record not found')
+
+    const users = await DbUser.query().orderBy({ id: 'asc' }).get()
+    expect(users.all().map((user) => user.getAttribute('name'))).toEqual(['Jane', 'John'])
+  })
+
+  it('refuses to drop constraints that cannot be combined', () => {
+    setPostgresModelAdapter(kyselyAdapter)
+    const unconvertible = { email: { mode: 'insensitive' } } as never
+
+    expect(() => DbUser.query().whereRaw('1 = 1').where(unconvertible)).toThrow(
+      'cannot be combined',
+    )
+    expect(() => DbUser.query().where(unconvertible).whereRaw('1 = 1')).toThrow(
+      'cannot be combined',
+    )
+  })
+
   it('compiles a where callback into a parenthesized group', () => {
     setPostgresModelAdapter(kyselyAdapter)
 
