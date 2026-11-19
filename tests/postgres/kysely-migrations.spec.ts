@@ -475,7 +475,9 @@ describe('PostgreSQL Kysely migration backend', () => {
     await sql.raw(`create schema if not exists "${schemaName}"`).execute(db)
     await sql.raw(`create table "${schemaName}"."${extensionTable}" (id integer)`).execute(db)
     await sql.raw(`create table "${schemaName}"."${appTable}" (id integer)`).execute(db)
-    await sql.raw(`alter extension plpgsql add table "${schemaName}"."${extensionTable}"`).execute(db)
+    await sql
+      .raw(`alter extension plpgsql add table "${schemaName}"."${extensionTable}"`)
+      .execute(db)
 
     const isolatedPool = new Pool({
       connectionString: connectionString.toString(),
@@ -498,7 +500,9 @@ describe('PostgreSQL Kysely migration backend', () => {
       expect(tableResult.rows.map((row) => row.table_name)).toEqual([extensionTable])
     } finally {
       await isolatedDb.destroy()
-      await sql.raw(`alter extension plpgsql drop table "${schemaName}"."${extensionTable}"`).execute(db)
+      await sql
+        .raw(`alter extension plpgsql drop table "${schemaName}"."${extensionTable}"`)
+        .execute(db)
       await sql.raw(`drop schema if exists "${schemaName}" cascade`).execute(db)
     }
   })
