@@ -464,4 +464,46 @@ describe('PostgreSQL Kysely migration backend', () => {
       await sql.raw(`drop schema if exists "${schemaName}" cascade`).execute(db)
     }
   })
+  it('keeps extension-owned tables when resetting the database', async () => {
+    const suffix = `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
+    const schemaName = `arkorm_reset_ext_${suffix}`
+    const extensionTable = `arkorm_extension_owned_${suffix}`
+    const appTable = `arkorm_app_owned_${suffix}`
+    const connectionString = new URL(process.env.DATABASE_URL as string)
+    connectionString.searchParams.set('options', `-c search_path=${schemaName}`)
+
+    await sql.raw(`create schema if not exists "${schemaName}"`).execute(db)
+    await sql.raw(`create table "${schemaName}"."${extensionTable}" (id integer)`).execute(db)
+    await sql.raw(`create table "${schemaName}"."${appTable}" (id integer)`).execute(db)
+    await sql
+      .raw(`alter extension plpgsql add table "${schemaName}"."${extensionTable}"`)
+      .execute(db)
+
+    const isolatedPool = new Pool({
+      connectionString: connectionString.toString(),
+    })
+    const isolatedDb = new Kysely<Record<string, never>>({
+      dialect: new PostgresDialect({ pool: isolatedPool }),
+    })
+    const isolatedAdapter = createKyselyAdapter(isolatedDb)
+
+    try {
+      await isolatedAdapter.resetDatabase?.()
+
+      const tableResult = await sql<{ table_name: string }>`
+                select table_name
+                from information_schema.tables
+                where table_schema = ${schemaName}
+                order by table_name asc
+            `.execute(isolatedDb)
+
+      expect(tableResult.rows.map((row) => row.table_name)).toEqual([extensionTable])
+    } finally {
+      await isolatedDb.destroy()
+      await sql
+        .raw(`alter extension plpgsql drop table "${schemaName}"."${extensionTable}"`)
+        .execute(db)
+      await sql.raw(`drop schema if exists "${schemaName}" cascade`).execute(db)
+    }
+  })
 })
