@@ -971,11 +971,19 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
       table_name: string
       table_schema: string
     }>`
-            select table_name, table_schema
-            from information_schema.tables
-            where table_schema = current_schema()
-              and table_type = 'BASE TABLE'
-            order by table_name asc
+            select c.relname as table_name, n.nspname as table_schema
+            from pg_class c
+            inner join pg_namespace n on n.oid = c.relnamespace
+            where n.nspname = current_schema()
+              and c.relkind in ('r', 'p')
+              and not exists (
+                select 1
+                from pg_depend d
+                where d.classid = 'pg_class'::regclass
+                  and d.objid = c.oid
+                  and d.deptype = 'e'
+              )
+            order by c.relname asc
         `.execute(executor)
 
     for (const row of tablesResult.rows) {
@@ -994,6 +1002,13 @@ export class KyselyDatabaseAdapter implements DatabaseAdapter {
             inner join pg_namespace n on n.oid = t.typnamespace
             where t.typtype = 'e'
               and n.nspname = current_schema()
+              and not exists (
+                select 1
+                from pg_depend d
+                where d.classid = 'pg_type'::regclass
+                  and d.objid = t.oid
+                  and d.deptype = 'e'
+              )
             order by t.typname asc
         `.execute(executor)
 
