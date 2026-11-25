@@ -671,6 +671,84 @@ describe('database-backed migration command fallback', () => {
     expect(adapter.state.migrations).toHaveLength(0)
   })
 
+  it('falls back to the class name for a renamed file only when the name is unique', async () => {
+    const workspace = makeTempDir('arkormx-db-rollback-fallback-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    const writeMigration = (fileName: string, declaration: string, table: string) =>
+      writeFileSync(
+        join(migrationsDir, fileName),
+        [
+          `import { Migration } from '${migrationBaseImport}'`,
+          '',
+          `${declaration} extends Migration {`,
+          '  async up (schema) {',
+          `    schema.createTable('${table}', (table) => { table.id() })`,
+          '  }',
+          '',
+          '  async down (schema) {',
+          `    schema.dropTable('${table}')`,
+          '  }',
+          '}',
+          '',
+        ].join('\n'),
+      )
+
+    writeMigration('CreateAlpha.ts', 'export class CreateAlpha', 'alpha')
+    writeMigration('2026_01_02_create_bravo.ts', 'export default class', 'bravo')
+    writeMigration('2026_01_03_create_charlie.ts', 'export default class', 'charlie')
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    // Both entries were recorded under file names that no longer exist.
+    adapter.state.migrations.push(
+      {
+        id: 'OldCreateAlpha:CreateAlpha',
+        file: '/old/OldCreateAlpha.ts',
+        className: 'CreateAlpha',
+        appliedAt: '2026-04-07T00:00:00.000Z',
+      },
+      {
+        id: 'old_create_bravo:_default',
+        file: '/old/old_create_bravo.ts',
+        className: '_default',
+        appliedAt: '2026-04-07T00:00:00.000Z',
+        operations: [],
+      },
+    )
+    adapter.state.runs = [
+      {
+        id: 'run-1',
+        appliedAt: '2026-04-07T00:00:00.000Z',
+        migrationIds: ['OldCreateAlpha:CreateAlpha', 'old_create_bravo:_default'],
+      },
+    ]
+
+    configureArkormRuntime(() => ({}), { adapter, paths: { migrations: migrationsDir } })
+
+    const app = new CliApp()
+    const rollback = new MigrateRollbackCommand(app, new Kernel(app))
+    ;(rollback as unknown as { app: CliApp }).app = app
+    const rollbackIo = attachCommandIo(rollback as unknown as any, {})
+    await rollback.handle()
+
+    expect(rollbackIo.errorLines).toEqual([])
+    // `_default` is shared by two files, so that entry is left alone.
+    expect(
+      adapter.executed.map((operations) => (operations[0] as { table: string }).table),
+    ).toEqual(['alpha'])
+    expect(adapter.state.migrations.map((migration) => migration.id)).toEqual([
+      'old_create_bravo:_default',
+    ])
+  })
+
   it('treats an empty --step string as the default last batch (regression)', async () => {
     // musket yields '' for a declared-but-unpassed value option like `--step=`;
     // the command must not read that as step 0.
