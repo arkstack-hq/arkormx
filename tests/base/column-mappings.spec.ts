@@ -9,7 +9,12 @@ import type {
 
 import { Model, configureArkormRuntime, resetArkormRuntimeForTests } from '../../src'
 import { afterEach, describe, expect, it } from 'vitest'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import {
+  getPersistedColumnMap,
+  readPersistedColumnMappingsState,
+  stagePersistedColumnMappingsState,
+} from '../../src/helpers/column-mappings'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { RelationTableLoader } from '../../src/relationship/RelationTableLoader'
@@ -34,6 +39,40 @@ afterEach(() => {
 })
 
 describe('persisted column mappings', () => {
+  it('stages mappings to disk and the shared cache, skipping an empty state', () => {
+    const workspace = makeTempDir('arkormx-staged-mappings-')
+    process.chdir(workspace)
+
+    const filePath = join(workspace, '.arkormx', 'column-mappings.json')
+
+    expect(getPersistedColumnMap('users')).toEqual({})
+
+    stagePersistedColumnMappingsState(filePath, { version: 1, tables: {} })
+
+    expect(existsSync(filePath)).toBe(false)
+
+    stagePersistedColumnMappingsState(filePath, {
+      version: 1,
+      tables: {
+        users: { columns: { emailVerificationCode: 'email_verification_code' }, enums: {} },
+      },
+    })
+
+    expect(JSON.parse(readFileSync(filePath, 'utf-8')).tables.users.columns).toEqual({
+      emailVerificationCode: 'email_verification_code',
+    })
+    expect(getPersistedColumnMap('users')).toEqual({
+      emailVerificationCode: 'email_verification_code',
+    })
+
+    const shared = (globalThis as Record<symbol, unknown>)[
+      Symbol.for('arkormx.columnMappingsCache')
+    ] as { path?: string; state?: unknown }
+
+    expect(shared.path).toBe(filePath)
+    expect(shared.state).toBe(readPersistedColumnMappingsState(filePath))
+  })
+
   it('applies persisted mappings to relation-table lookups', async () => {
     const workspace = makeTempDir('arkormx-relation-table-mappings-')
     process.chdir(workspace)
