@@ -94,16 +94,23 @@ export class MigrateRollbackCommand extends Command<CliApp> {
       return void this.error('Error: No tracked migrations available to rollback.')
 
     const available = await this.loadAllMigrations(migrationDirs)
+    // Resolve each target by its identity. Fall back to the class name only when
+    // exactly one migration has it: anonymous default exports all share one name.
     const rollbackClasses = targets
-      .map((target) => {
-        return available.find(([migrationClass, file]) => {
-          return (
-            buildMigrationIdentity(file, migrationClass.name) === target.id ||
-            migrationClass.name === target.className
-          )
-        })
+      .map((target): [MigrationClass, string, string] | undefined => {
+        const byIdentity = available.find(
+          ([migrationClass, file]) =>
+            buildMigrationIdentity(file, migrationClass.name) === target.id,
+        )
+        if (byIdentity) return [...byIdentity, target.id]
+
+        const byClassName = available.filter(
+          ([migrationClass]) => migrationClass.name === target.className,
+        )
+
+        return byClassName.length === 1 ? [...byClassName[0], target.id] : undefined
       })
-      .filter((entry): entry is [MigrationClass, string] => Boolean(entry))
+      .filter((entry): entry is [MigrationClass, string, string] => Boolean(entry))
 
     if (rollbackClasses.length === 0)
       return void this.error(
@@ -128,9 +135,8 @@ export class MigrateRollbackCommand extends Command<CliApp> {
       await applyMigrationRollbackToPrismaSchema(MigrationClassItem, { schemaPath, write: true })
     }
 
-    for (const [migrationClass, file] of rollbackClasses) {
-      const identity = buildMigrationIdentity(file, migrationClass.name)
-      appliedState = removeAppliedMigration(appliedState, identity)
+    for (const [, , trackedId] of rollbackClasses) {
+      appliedState = removeAppliedMigration(appliedState, trackedId)
     }
 
     await writeAppliedMigrationsStateToStore(adapter, stateFilePath, appliedState)
