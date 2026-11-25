@@ -94,14 +94,21 @@ export class MigrateRollbackCommand extends Command<CliApp> {
       return void this.error('Error: No tracked migrations available to rollback.')
 
     const available = await this.loadAllMigrations(migrationDirs)
+    // Resolve each target by its identity. Fall back to the class name only when
+    // exactly one migration has it: anonymous default exports all share one name.
     const rollbackClasses = targets
       .map((target) => {
-        return available.find(([migrationClass, file]) => {
-          return (
-            buildMigrationIdentity(file, migrationClass.name) === target.id ||
-            migrationClass.name === target.className
-          )
-        })
+        const byIdentity = available.find(
+          ([migrationClass, file]) =>
+            buildMigrationIdentity(file, migrationClass.name) === target.id,
+        )
+        if (byIdentity) return byIdentity
+
+        const byClassName = available.filter(
+          ([migrationClass]) => migrationClass.name === target.className,
+        )
+
+        return byClassName.length === 1 ? byClassName[0] : undefined
       })
       .filter((entry): entry is [MigrationClass, string] => Boolean(entry))
 

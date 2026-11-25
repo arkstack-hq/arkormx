@@ -612,6 +612,65 @@ describe('database-backed migration command fallback', () => {
     expect(adapter.state.migrations).toHaveLength(0)
   })
 
+  it('rolls back each anonymous default-export migration of a batch by its own file', async () => {
+    const workspace = makeTempDir('arkormx-db-rollback-anonymous-')
+    process.chdir(workspace)
+
+    const migrationsDir = join(workspace, 'database', 'migrations')
+    mkdirSync(migrationsDir, { recursive: true })
+
+    const migrationBaseImport = `${originalCwd.replace(/\\/g, '/')}/src/database/Migration.ts`
+    const writeMigration = (fileName: string, table: string) =>
+      writeFileSync(
+        join(migrationsDir, fileName),
+        [
+          `import { Migration } from '${migrationBaseImport}'`,
+          '',
+          'export default class extends Migration {',
+          '  async up (schema) {',
+          `    schema.createTable('${table}', (table) => { table.id() })`,
+          '  }',
+          '',
+          '  async down (schema) {',
+          `    schema.dropTable('${table}')`,
+          '  }',
+          '}',
+          '',
+        ].join('\n'),
+      )
+
+    writeMigration('2026_01_01_create_alpha.ts', 'alpha')
+    writeMigration('2026_01_02_create_bravo.ts', 'bravo')
+    writeMigration('2026_01_03_create_charlie.ts', 'charlie')
+
+    const adapter = createNoopAdapter() as DatabaseAdapter & {
+      state: AppliedMigrationsState
+      executed: SchemaOperation[][]
+    }
+
+    configureArkormRuntime(() => ({}), { adapter, paths: { migrations: migrationsDir } })
+
+    const app = new CliApp()
+
+    const migrate = new MigrateCommand(app, new Kernel(app))
+    ;(migrate as unknown as { app: CliApp }).app = app
+    const migrateIo = attachCommandIo(migrate as unknown as any, { all: true })
+    await migrate.handle()
+    expect(migrateIo.errorLines).toHaveLength(0)
+    adapter.executed.splice(0, adapter.executed.length)
+
+    const rollback = new MigrateRollbackCommand(app, new Kernel(app))
+    ;(rollback as unknown as { app: CliApp }).app = app
+    const rollbackIo = attachCommandIo(rollback as unknown as any, {})
+    await rollback.handle()
+
+    expect(rollbackIo.errorLines).toHaveLength(0)
+    expect(
+      adapter.executed.map((operations) => (operations[0] as { table: string }).table),
+    ).toEqual(['charlie', 'bravo', 'alpha'])
+    expect(adapter.state.migrations).toHaveLength(0)
+  })
+
   it('treats an empty --step string as the default last batch (regression)', async () => {
     // musket yields '' for a declared-but-unpassed value option like `--step=`;
     // the command must not read that as step 0.
