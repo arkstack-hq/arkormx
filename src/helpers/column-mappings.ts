@@ -40,8 +40,15 @@ export interface PersistedColumnMappingsState {
   tables: Record<string, PersistedTableMetadata>
 }
 
-let cachedColumnMappingsPath: string | undefined
-let cachedColumnMappingsState: PersistedColumnMappingsState | undefined
+// The CLI and library bundles share one cache through the global symbol
+// registry, so mappings the CLI stages mid-batch reach models in migrations.
+const CACHE_KEY = Symbol.for('arkormx.columnMappingsCache')
+
+const globalScope = globalThis as typeof globalThis & {
+  [CACHE_KEY]?: { path?: string; state?: PersistedColumnMappingsState }
+}
+
+const columnMappingsCache = globalScope[CACHE_KEY] ?? (globalScope[CACHE_KEY] = {})
 
 export const resolvePersistedMetadataFeatures = (
   features?: ArkormConfig['features'],
@@ -259,20 +266,20 @@ const buildEnumUnionType = (values: string[]): string => {
 }
 
 export const resetPersistedColumnMappingsCache = (): void => {
-  cachedColumnMappingsPath = undefined
-  cachedColumnMappingsState = undefined
+  columnMappingsCache.path = undefined
+  columnMappingsCache.state = undefined
 }
 
 export const readPersistedColumnMappingsState = (
   filePath: string,
 ): PersistedColumnMappingsState => {
-  if (cachedColumnMappingsPath === filePath && cachedColumnMappingsState)
-    return cachedColumnMappingsState
+  if (columnMappingsCache.path === filePath && columnMappingsCache.state)
+    return columnMappingsCache.state
 
   if (!existsSync(filePath)) {
     const empty = createEmptyPersistedColumnMappingsState()
-    cachedColumnMappingsPath = filePath
-    cachedColumnMappingsState = empty
+    columnMappingsCache.path = filePath
+    columnMappingsCache.state = empty
 
     return empty
   }
@@ -282,14 +289,14 @@ export const readPersistedColumnMappingsState = (
       readFileSync(filePath, 'utf-8'),
     ) as Partial<PersistedColumnMappingsState>
     const normalized = normalizePersistedColumnMappingsState(parsed)
-    cachedColumnMappingsPath = filePath
-    cachedColumnMappingsState = normalized
+    columnMappingsCache.path = filePath
+    columnMappingsCache.state = normalized
 
     return normalized
   } catch {
     const empty = createEmptyPersistedColumnMappingsState()
-    cachedColumnMappingsPath = filePath
-    cachedColumnMappingsState = empty
+    columnMappingsCache.path = filePath
+    columnMappingsCache.state = empty
 
     return empty
   }
@@ -305,8 +312,25 @@ export const writePersistedColumnMappingsState = (
   if (!existsSync(directory)) mkdirSync(directory, { recursive: true })
 
   writeFileSync(filePath, JSON.stringify(normalized, null, 2))
-  cachedColumnMappingsPath = filePath
-  cachedColumnMappingsState = normalized
+  columnMappingsCache.path = filePath
+  columnMappingsCache.state = normalized
+}
+
+/**
+ * Makes mappings visible to the runtime while a migration batch is still running.
+ * An empty state leaves the file untouched; the final sync after the batch
+ * rebuilds it from the applied-migration state.
+ *
+ * @param filePath
+ * @param state
+ */
+export const stagePersistedColumnMappingsState = (
+  filePath: string,
+  state: PersistedColumnMappingsState,
+): void => {
+  if (Object.keys(state.tables).length === 0) return
+
+  writePersistedColumnMappingsState(filePath, state)
 }
 
 export const deletePersistedColumnMappingsState = (filePath: string): void => {
