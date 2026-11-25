@@ -2,6 +2,7 @@ import { MigrationClass, MigrationInstanceLike, SchemaOperation } from 'src/type
 import {
   applyMigrationToDatabase,
   applyMigrationToPrismaSchema,
+  getMigrationPlan,
   runPrismaCommand,
   stripPrismaSchemaModelsAndEnums,
   supportsDatabaseCreation,
@@ -22,7 +23,11 @@ import { existsSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { getRegisteredMigrations, getRegisteredPaths } from '../../helpers/runtime-registry'
 import { join, resolve } from 'node:path'
 import {
+  applyOperationsToPersistedColumnMappingsState,
+  createEmptyPersistedColumnMappingsState,
+  resolveColumnMappingsFilePath,
   resolvePersistedMetadataFeatures,
+  stagePersistedColumnMappingsState,
   syncPersistedColumnMappingsFromState,
   validatePersistedMetadataFeaturesForMigrations,
 } from '../../helpers/column-mappings'
@@ -111,11 +116,27 @@ export class MigrateFreshCommand extends Command<CliApp> {
     // The plan each migration actually executed, keyed by identity, so the
     // applied-state entry records what ran instead of what the file says later.
     const executedPlans = new Map<string, SchemaOperation[]>()
+    // Staged before each migration runs so models used in its up() or done()
+    // resolve the columns created earlier in the batch.
+    const columnMappingsPath = resolveColumnMappingsFilePath(process.cwd())
+    let columnMappingsState = createEmptyPersistedColumnMappingsState()
 
     for (const [MigrationClassItem, file] of migrations) {
       const identity = buildMigrationIdentity(file, MigrationClassItem.name)
 
       if (useDatabaseMigrations) {
+        const planned = await this.runWithDatabaseCreationRetry(adapter, () =>
+          getMigrationPlan(MigrationClassItem, 'up', { inert: true }),
+        )
+        if (!planned.ok) return
+
+        columnMappingsState = applyOperationsToPersistedColumnMappingsState(
+          columnMappingsState,
+          planned.value,
+          persistedFeatures,
+        )
+        stagePersistedColumnMappingsState(columnMappingsPath, columnMappingsState)
+
         const applied = await this.runWithDatabaseCreationRetry(adapter, () =>
           applyMigrationToDatabase(adapter, MigrationClassItem),
         )

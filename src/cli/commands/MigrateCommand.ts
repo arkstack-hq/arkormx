@@ -9,8 +9,10 @@ import {
 } from '../../helpers/migrations'
 import {
   applyOperationsToPersistedColumnMappingsState,
-  createEmptyPersistedColumnMappingsState,
+  readPersistedColumnMappingsState,
+  resolveColumnMappingsFilePath,
   resolvePersistedMetadataFeatures,
+  stagePersistedColumnMappingsState,
   syncPersistedColumnMappingsFromState,
 } from '../../helpers/column-mappings'
 import {
@@ -183,7 +185,12 @@ export class MigrateCommand extends Command<CliApp> {
     // constraint referencing a table from an earlier migration) before that
     // table exists, breaking a from-zero migrate. Per-migration validation still
     // aborts before applying a migration that uses a disabled feature.
-    let columnMappingsState = createEmptyPersistedColumnMappingsState()
+    //
+    // The mappings each migration adds are staged before it runs, so models used
+    // in its up() or done(), and in every later migration of the batch, resolve
+    // the columns created earlier in the same batch.
+    const columnMappingsPath = resolveColumnMappingsFilePath(process.cwd())
+    let columnMappingsState = readPersistedColumnMappingsState(columnMappingsPath)
     // The plan each migration actually executed, keyed by identity, so the
     // applied-state entry records what ran instead of what the file says later.
     const executedPlans = new Map<string, SchemaOperation[]>()
@@ -209,6 +216,8 @@ export class MigrateCommand extends Command<CliApp> {
         } catch (error) {
           return void this.error(`Error: ${error instanceof Error ? error.message : String(error)}`)
         }
+
+        stagePersistedColumnMappingsState(columnMappingsPath, columnMappingsState)
 
         const applied = await this.runWithDatabaseCreationRetry(adapter, () =>
           applyMigrationToDatabase(adapter, MigrationClassItem),

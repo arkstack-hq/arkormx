@@ -954,6 +954,92 @@ describe('database-backed migration command fallback', () => {
     expect(adapter.state.migrations).toHaveLength(1)
   })
 
+  it.each([
+    ['migrate --all', MigrateCommand, { all: true }],
+    ['migrate:fresh', MigrateFreshCommand, {}],
+  ] as const)(
+    '%s exposes mappings from earlier migrations in the batch to later ones',
+    async (_name, CommandClass, options) => {
+      const workspace = makeTempDir('arkormx-db-staged-mappings-')
+      process.chdir(workspace)
+
+      const migrationsDir = join(workspace, 'database', 'migrations')
+      mkdirSync(migrationsDir, { recursive: true })
+
+      const root = originalCwd.replace(/\\/g, '/')
+      writeFileSync(
+        join(migrationsDir, '2026_01_01_000000_CreateUsersMigration.ts'),
+        [
+          `import { Migration } from '${root}/src/database/Migration.ts'`,
+          '',
+          'export class CreateUsersMigration extends Migration {',
+          '  async up (schema) {',
+          "    schema.createTable('users', (table) => {",
+          '      table.id()',
+          "      table.string('emailVerificationCode').map('email_verification_code')",
+          '    })',
+          '  }',
+          '',
+          '  async down (schema) {',
+          "    schema.dropTable('users')",
+          '  }',
+          '}',
+          '',
+        ].join('\n'),
+      )
+      writeFileSync(
+        join(migrationsDir, '2026_01_02_000000_BackfillUsersMigration.ts'),
+        [
+          `import { Migration } from '${root}/src/database/Migration.ts'`,
+          `import { getPersistedColumnMap } from '${root}/src/helpers/column-mappings.ts'`,
+          '',
+          'export class BackfillUsersMigration extends Migration {',
+          '  async up () {',
+          "    globalThis.__arkormStagedUp = getPersistedColumnMap('users')",
+          '  }',
+          '',
+          '  async done (direction) {',
+          "    if (direction === 'up') globalThis.__arkormStagedDone = getPersistedColumnMap('users')",
+          '  }',
+          '',
+          '  async down () {}',
+          '}',
+          '',
+        ].join('\n'),
+      )
+
+      const adapter = createNoopAdapter()
+
+      configureArkormRuntime(() => ({}), {
+        adapter,
+        paths: {
+          migrations: migrationsDir,
+        },
+      })
+
+      const app = new CliApp()
+      const command = new CommandClass(app, new Kernel(app))
+      ;(command as unknown as { app: CliApp }).app = app
+      const io = attachCommandIo(command as unknown as any, options)
+      const staged = globalThis as { __arkormStagedUp?: unknown; __arkormStagedDone?: unknown }
+
+      try {
+        await command.handle()
+
+        expect(io.errorLines).toHaveLength(0)
+        expect(staged.__arkormStagedUp).toEqual({
+          emailVerificationCode: 'email_verification_code',
+        })
+        expect(staged.__arkormStagedDone).toEqual({
+          emailVerificationCode: 'email_verification_code',
+        })
+      } finally {
+        delete staged.__arkormStagedUp
+        delete staged.__arkormStagedDone
+      }
+    },
+  )
+
   it('reports an error when persisted column mappings are disabled for database-backed migrations', async () => {
     const workspace = makeTempDir('arkormx-db-migrate-no-column-map-')
     process.chdir(workspace)
