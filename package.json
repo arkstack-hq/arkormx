@@ -1,6 +1,6 @@
 {
   "name": "arkormx",
-  "version": "2.12.17",
+  "version": "2.12.18",
   "description": "Modern TypeScript-first ORM for Node.js.",
   "keywords": [
     "orm",
@@ -88,6 +88,8 @@
     "barrelize": "^1.7.3",
     "dotenv": "^17.3.1",
     "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.4",
     "prisma": "^7.6.0",
     "reflect-metadata": "^0.2.2",
     "tsdown": "^0.22.2",
@@ -97,8 +99,6 @@
     "unrun": "^0.3.0",
     "vite-plugin-swc-transform": "^1.1.1",
     "vitepress": "^2.0.0-alpha.17",
-    "eslint-config-prettier": "^10.1.8",
-    "prettier": "^3.8.4",
     "vitest": "^4.1.8"
   },
   "engines": {
