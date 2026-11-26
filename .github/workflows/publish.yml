@@ -93,9 +93,6 @@ jobs:
           cache: 'pnpm'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Update npm
-        run: npm install -g npm@latest
-
       - name: Install dependencies
         run: pnpm install --no-frozen-lockfile
 
@@ -136,6 +133,9 @@ jobs:
       - name: Publish to NPM
         run: pnpm release:ci
         if: steps.release_version.outputs.version != ''
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: true
 
       - name: Publish summary
         if: steps.release_version.outputs.version

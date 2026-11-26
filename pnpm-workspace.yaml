@@ -1,7 +1,9 @@
-onlyBuiltDependencies:
-  - esbuild
-  - '@swc/core'
-  
+allowBuilds:
+  esbuild: true
+  '@swc/core': true
+  '@prisma/engines': false
+  prisma: false
+
 packages:
   - .
   - packages/*
